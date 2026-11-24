@@ -298,7 +298,7 @@ export function renderPose(parts: PosePart[], views: ViewName[], tile: number, r
 	if (!Number.isInteger(tile) || tile < MIN_TILE || tile > MAX_TILE || tile * views.length > MAX_WIDTH) {
 		throw new Error("the picture size is outside the limits");
 	}
-	return drawGrid([parts], views, tile, rest, "views");
+	return drawCells([views.map((view) => ({ parts, view }))], tile, rest, false);
 }
 
 export const MAX_FRAMES = 8;
@@ -315,39 +315,45 @@ export function renderStrip(frames: PosePart[][], views: ViewName[], tile: numbe
 	if (!Number.isInteger(tile) || tile < MIN_TILE || tile > MAX_TILE || tile * frames.length > MAX_WIDTH) {
 		throw new Error("the picture size is outside the limits");
 	}
-	return drawGrid(frames, views, tile, rest, "frames");
+	return drawCells(views.map((view) => frames.map((parts) => ({ parts, view }))), tile, rest, true);
 }
 
-/** Draws poses against views as a grid of tiles with one framing. `across` says which runs along a row. */
-function drawGrid(poses: PosePart[][], views: ViewName[], tile: number, rest: PosePart[] | undefined, across: "views" | "frames"): { png: Buffer; width: number; height: number } {
-	const drawn = poses.map(boxesOf);
-	let { centre, reach } = extentOf(drawn.flat());
+interface Cell {
+	parts: PosePart[];
+	view: ViewName;
+}
+
+/**
+ * Draws a grid of tiles, each one pose seen from one direction, all with one framing.
+ * `tight` frames the grid to hold just its own poses and the rest pose; otherwise room is
+ * left around the rest pose so that separate pictures line up with each other.
+ */
+function drawCells(cells: Cell[][], tile: number, rest: PosePart[] | undefined, tight: boolean): { png: Buffer; width: number; height: number } {
+	const drawn = cells.map((row) => row.map((cell) => boxesOf(cell.parts)));
+	const all = drawn.flat(2);
+	let { centre, reach } = extentOf(all);
 	if (rest && rest.length > 0) {
 		const frame = extentOf(boxesOf(rest));
 		centre = frame.centre;
-		// One picture of one pose leaves room around the rest pose, so that it lines up
-		// with the next picture whatever that shows. A filmstrip is complete in itself:
-		// it only has to hold its own frames, so the rig can be drawn larger.
-		const room = across === "frames" ? 1.05 : REST_MARGIN;
-		reach = Math.max(frame.reach * room, extentOf(drawn.flat(), centre).reach * (across === "frames" ? 1.05 : 1));
+		reach = tight ? Math.max(frame.reach, extentOf(all, centre).reach) * 1.05 : Math.max(frame.reach * REST_MARGIN, extentOf(all, centre).reach);
 	}
 	const pixelsPerStud = (tile / 2 - tile * 0.06) / Math.max(reach, 0.5);
 
-	const columns = across === "views" ? views.length : poses.length;
-	const rows = across === "views" ? poses.length : views.length;
+	const rows = cells.length;
+	const columns = (cells[0] as Cell[]).length;
 	const width = tile * columns;
 	const height = tile * rows;
 	const image = new Uint8Array(width * height * 3);
 	for (let row = 0; row < rows; row += 1) {
 		for (let column = 0; column < columns; column += 1) {
-			const boxes = drawn[across === "views" ? row : column] as Box[];
-			const view = views[across === "views" ? column : row] as ViewName;
-			const picture = drawView(boxes, view, tile, centre, pixelsPerStud);
+			const picture = drawView((drawn[row] as Box[][])[column] as Box[], ((cells[row] as Cell[])[column] as Cell).view, tile, centre, pixelsPerStud);
 			for (let y = 0; y < tile; y += 1) {
 				const start = ((row * tile + y) * width + column * tile) * 3;
 				image.set(picture.pixels.subarray(y * tile * 3, (y + 1) * tile * 3), start);
 				if (column > 0) image.set(SEPARATOR, start);
 			}
+			// A line between rows, so that two clips one above the other are told apart.
+			if (row > 0) for (let x = 0; x < tile; x += 1) image.set(SEPARATOR, (row * tile * width + column * tile + x) * 3);
 		}
 	}
 	const png = encodePng(width, height, image);
@@ -355,6 +361,18 @@ function drawGrid(poses: PosePart[][], views: ViewName[], tile: number, rest: Po
 	const checked = inspectPng(png);
 	if (checked.width !== width || checked.height !== height) throw new Error("the picture did not encode correctly");
 	return { png, width, height };
+}
+
+/**
+ * Draws two clips at the same moments, one above the other: the first along the top row,
+ * the second along the bottom, a column for each moment, all from one direction.
+ */
+export function renderComparison(first: PosePart[][], second: PosePart[][], view: ViewName, tile: number, rest?: PosePart[]): { png: Buffer; width: number; height: number } {
+	if (first.length < 2 || first.length > MAX_FRAMES || second.length !== first.length) throw new Error("a comparison has from two to eight frames of each clip");
+	if (!Number.isInteger(tile) || tile < MIN_TILE || tile > MAX_TILE || tile * first.length > MAX_WIDTH) {
+		throw new Error("the picture size is outside the limits");
+	}
+	return drawCells([first, second].map((frames) => frames.map((parts) => ({ parts, view }))), tile, rest, true);
 }
 
 /**
@@ -380,6 +398,14 @@ export function renderResult(params: unknown, payload: unknown): { payload: unkn
 			const frames = pose.frames.map((parts: unknown) => parsePose({ parts }));
 			const rows = views.slice(0, MAX_STRIP_VIEWS);
 			const each = Math.max(MIN_TILE, Math.min(size, Math.floor(MAX_WIDTH / Math.max(frames.length, 1))));
+			if (Array.isArray(pose.compare)) {
+				// The same moments of another clip: this clip along the top, that one below.
+				const other = pose.compare.map((parts: unknown) => parsePose({ parts }));
+				const view = rows[0] as ViewName;
+				const both = renderComparison(frames, other, view, each, resting);
+				rest.render = { status: "ok", layout: "one column for each time in order; top row this clip, bottom row the clip it is compared with", views: [view], frames: frames.length, width: both.width, height: both.height, legend: LEGEND };
+				return { payload: rest, image: both.png.toString("base64") };
+			}
 			const strip = renderStrip(frames, rows, each, resting);
 			rest.render = { status: "ok", layout: "one column for each time in order, one row for each view", views: rows, frames: frames.length, width: strip.width, height: strip.height, legend: LEGEND };
 			return { payload: rest, image: strip.png.toString("base64") };

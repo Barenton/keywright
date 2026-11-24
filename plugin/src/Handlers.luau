@@ -481,7 +481,7 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 		-- Checking where Studio put the parts also takes every joint.
 		local checkPlacement = params.check_placement == true
 		local sampledJoints = joints
-		if render or checkPlacement or #track > 0 then
+		if render or checkPlacement or #track > 0 or params.compare_with ~= nil then
 			sampledJoints = {}
 			for _, name in Rig.R15_ORDER do
 				if scan.joints[name] then
@@ -518,7 +518,43 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 		end
 
 		if times then
+			-- Another clip of the same rig to sample at the same times, for comparison.
+			local other: KeyframeSequence? = nil
+			local otherName: string? = nil
+			if params.compare_with ~= nil then
+				local wanted = params.compare_with
+				if wanted == "source" then
+					if Clips.sourceState(working) == "none" or Clips.sourceState(working) == "missing" then
+						Errors.throw("INVALID_ARGUMENT", "This working copy has no source to compare with.")
+					end
+					other = working.source
+				elseif type(wanted) == "string" and string.sub(wanted, 1, 6) == "saved:" then
+					local container = Saves.container(model, ServerStorage)
+					local found = container and container:FindFirstChild(string.sub(wanted, 7))
+					if not found or not found:IsA("KeyframeSequence") then
+						Errors.throw(
+							"NOT_FOUND",
+							`The rig has no saved clip "{string.sub(wanted, 7)}".`,
+							"get_workspace lists a rig's saved clips."
+						)
+					end
+					other = found :: KeyframeSequence
+				elseif type(wanted) == "string" then
+					local second = Clips.get(wanted)
+					if second.rigId ~= working.rigId then
+						Errors.throw("INVALID_ARGUMENT", "The two clips are for different rigs.")
+					end
+					other = second.instance
+				else
+					Errors.throw(
+						"INVALID_ARGUMENT",
+						'compare_with must be "source", "saved:" and a name, or a clip id.'
+					)
+				end
+				otherName = (other :: KeyframeSequence).Name
+			end
 			local frames, poses, moments = {}, {}, {}
+			local otherPoses, differences = {}, {}
 			for _, at in times do
 				if Clips.revisionOf(working) ~= revision then
 					Errors.throw(
@@ -548,6 +584,29 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 				if render then
 					table.insert(poses, Pose.parts(scan, sample.transforms, CFrame.new()))
 				end
+				if other then
+					local second = Preview.run({
+						model = model,
+						sequence = other,
+						time = at,
+						joints = sampledJoints,
+						parent = workspace,
+					})
+					-- How far apart the two clips put the rig's parts at this moment.
+					local apart = Pose.compare(
+						Pose.place(scan, sample.transforms, CFrame.new()),
+						Pose.place(scan, second.transforms, CFrame.new())
+					)
+					table.insert(differences, {
+						time = shown,
+						studs = math.round(apart.studs * 1000) / 1000,
+						degrees = math.round(apart.degrees * 100) / 100,
+						part = apart.worst,
+					})
+					if render then
+						table.insert(otherPoses, Pose.parts(scan, second.transforms, CFrame.new()))
+					end
+				end
 			end
 			return {
 				clip_id = working.id,
@@ -555,7 +614,12 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 				frames = frames,
 				-- Over all the frames: how far each tracked part ranges.
 				ranges = if #moments > 0 then Pose.ranges(moments) else nil,
-				pose = if render then { frames = poses, rest = restPose() } else nil,
+				-- At each time: the largest distance and turn between the two clips' parts,
+				-- and the part that is furthest apart.
+				compared = if other then { name = otherName, differences = differences } else nil,
+				pose = if render
+					then { frames = poses, compare = if other then otherPoses else nil, rest = restPose() }
+					else nil,
 			}
 		end
 

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { inflateSync } from "node:zlib";
 import { inspectPng } from "../src/image.js";
-import { DEFAULT_TILE, LEGEND, MAX_PARTS, type PosePart, parsePose, renderPose, renderResult, renderStrip, type ViewName } from "../src/render.js";
+import { DEFAULT_TILE, LEGEND, MAX_PARTS, type PosePart, parsePose, renderComparison, renderPose, renderResult, renderStrip, type ViewName } from "../src/render.js";
 
 type Pixel = [number, number, number];
 const BACKGROUND: Pixel = [245, 245, 245];
@@ -393,4 +393,32 @@ test("a preview of several times gets a filmstrip, and the raw poses are not pas
 	const plain = renderResult({ times: [0, 1] }, { clip_id: "clip_1", frames: [], pose });
 	assert.equal(plain.image, undefined);
 	assert.equal((plain.payload as { pose?: unknown }).pose, undefined);
+});
+
+test("two clips are drawn one above the other at the same moments", () => {
+	const torso = box("UpperTorso", [0, 0, 0], [2, 2, 1]);
+	const rest = [torso, box("RightHand", [-1.5, -1, 0])];
+	const still = [0, 1, 2].map(() => [torso, box("RightHand", [-1.5, -1, 0])]);
+	const rising = [0, 1, 2].map((step) => [torso, box("RightHand", [-1.5, -1 + step, 0])]);
+	const both = renderComparison(still, rising, "front", 128, rest);
+	assert.deepEqual([both.width, both.height], [128 * 3, 128 * 2]);
+	const image = decode(both.png);
+	const top = (column: number, row: number): number => {
+		for (let y = 2; y < 128; y += 1) for (let x = 2; x < 128; x += 1) if (isOrange(image.at(column * 128 + x, row * 128 + y))) return y;
+		return 128;
+	};
+	// Top row: the first clip, whose hand does not move.
+	assert.equal(top(0, 0), top(2, 0));
+	// Bottom row: the second, whose hand rises; at the first moment the two agree.
+	assert.equal(top(0, 1), top(0, 0));
+	assert.ok(top(2, 1) < top(0, 1));
+	assert.throws(() => renderComparison(still, rising.slice(0, 2), "front", 128, rest), /two to eight frames of each/);
+
+	const pose = { frames: still, compare: rising, rest };
+	const result = renderResult({ render: true, times: [0, 1, 2], views: ["front"] }, { clip_id: "clip_1", frames: [], compared: { name: "Other", differences: [] }, pose });
+	const payload = result.payload as { pose?: unknown; compared: { name: string }; render: { layout: string; height: number } };
+	assert.equal(payload.pose, undefined);
+	assert.equal(payload.compared.name, "Other");
+	assert.match(payload.render.layout, /top row this clip, bottom row/);
+	assert.equal(payload.render.height, DEFAULT_TILE * 2);
 });

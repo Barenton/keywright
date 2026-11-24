@@ -447,6 +447,13 @@ export function createAdapter(options: AdapterOptions): McpServer {
 				capture: z.boolean().optional().describe("Ask for a Studio screenshot. Off unless approved in Studio; see the tool description."),
 				max_edge: z.number().int().min(64).max(1536).optional().describe("Longest edge of the screenshot in pixels. Default 768."),
 				joints: z.array(z.string()).max(32).optional().describe("Joints to sample. Default: none."),
+				compare_with: z
+					.string()
+					.max(120)
+					.optional()
+					.describe(
+						'With times: also sample another clip of the same rig at the same times. "source" is the clip this working copy was opened from, "saved:" followed by a name is one of the rig\'s saved clips, anything else is the id of another working copy. The result gains compared: for each time, the largest distance in studs and turn in degrees between where the two clips put the rig\'s parts, and the part furthest apart. With render, the picture has this clip along the top row and the other along the bottom.',
+					),
 				track: z
 					.array(z.string())
 					.max(15)
