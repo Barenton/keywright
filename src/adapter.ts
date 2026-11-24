@@ -3,9 +3,10 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import type { BrokerClient } from "./client.js";
-import { screenResult, scrub } from "./image.js";
+import { IMAGE_METHOD, screenResult, scrub } from "./image.js";
 import { ensureBroker } from "./launcher.js";
 import { BridgeError, type SessionInfo } from "./protocol.js";
+import { MAX_TILE, MAX_VIEWS, MIN_TILE, renderResult, VIEWS } from "./render.js";
 
 export const ADAPTER_VERSION = "0.0.0";
 
@@ -25,12 +26,17 @@ const restoreSource = z.object({
 	type: z.literal("restore_source").describe("Reset the working copy to the clip it was opened from."),
 });
 
-// A result is text, plus at most one image, which only a preview that asked for a
-// screenshot can produce and only after the relay's own check (see image.ts).
+// A result is text, plus at most two images, both only for a preview. One is the picture
+// of the pose that the relay draws itself from the sampled joint positions. The other is a
+// Studio screenshot, which only a preview that asked for one can produce and only after
+// the relay's own check (see image.ts).
 function ok(method: string, params: unknown, result: unknown): CallToolResult {
-	const { payload, image } = screenResult(method, params, result);
-	const content: CallToolResult["content"] = [{ type: "text", text: JSON.stringify(payload) }];
-	if (image !== undefined) content.push({ type: "image", data: image, mimeType: "image/png" });
+	const screened = screenResult(method, params, result);
+	const drawn = method === IMAGE_METHOD ? renderResult(params, screened.payload) : { payload: screened.payload };
+	const content: CallToolResult["content"] = [{ type: "text", text: JSON.stringify(drawn.payload) }];
+	for (const image of [drawn.image, screened.image]) {
+		if (image !== undefined) content.push({ type: "image", data: image, mimeType: "image/png" });
+	}
 	return { content };
 }
 
@@ -164,12 +170,20 @@ export function createAdapter(options: AdapterOptions): McpServer {
 		"preview_animation",
 		{
 			description:
-				"Sample a working copy at an exact time and report the joint transforms. The clip is evaluated on a disposable copy of the rig; the rig itself and the camera are never moved. Screenshots are off by default: capture: true returns capture.status \"unavailable\" with the reason. They are possible only in a test fixture after a person in Studio has approved the scene and camera, and then the copy is shown for the picture. Even then Studio may refuse or the image may be rejected, in which case capture.status is \"unavailable\" and no image is returned. When capture.status is \"ok\", exactly one PNG of the viewport, as that person framed it, follows as an image.",
+				"Sample a working copy at an exact time and report the joint transforms. The clip is evaluated on a disposable copy of the rig; the rig itself and the camera are never moved. To see the pose, pass render: true: the result then includes a schematic picture drawn from the sampled joint positions, with each part as a box, the rig's left side blue and its right side orange, and a dark mark on the front of the head. It shows the pose, not the rig's real appearance, and is not a Studio screenshot. Studio screenshots (capture: true) are off by default and return capture.status \"unavailable\" with the reason; they are possible only in a test fixture after a person in Studio has approved the scene and camera.",
 			inputSchema: {
 				session_id: sessionId,
 				clip_id: clipId,
 				time: z.number().finite().min(0).max(300),
-				capture: z.boolean().optional().describe("Ask for a screenshot. Off unless approved in Studio; see the tool description."),
+				render: z.boolean().optional().describe("Include a schematic picture of the pose, drawn from the sampled joint positions."),
+				views: z
+					.array(z.enum(VIEWS))
+					.min(1)
+					.max(MAX_VIEWS)
+					.optional()
+					.describe('Directions to draw the pose from, side by side. Default ["three_quarter"]. "left" and "right" are the rig\'s own sides.'),
+				render_size: z.number().int().min(MIN_TILE).max(MAX_TILE).optional().describe("Height of the picture in pixels; each view is square. Default 384."),
+				capture: z.boolean().optional().describe("Ask for a Studio screenshot. Off unless approved in Studio; see the tool description."),
 				max_edge: z.number().int().min(64).max(1536).optional().describe("Longest edge of the screenshot in pixels. Default 768."),
 				joints: z.array(z.string()).max(32).optional().describe("Joints to sample. Default: none."),
 			},

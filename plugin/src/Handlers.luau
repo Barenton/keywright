@@ -11,6 +11,7 @@ local Clips = require("./Clips")
 local Codec = require("./Codec")
 local Edit = require("./Edit")
 local Errors = require("./Errors")
+local Pose = require("./Pose")
 local Preview = require("./Preview")
 local Rig = require("./Rig")
 
@@ -193,7 +194,19 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry)
 			end
 		end
 		-- The original rig is only read here. Preview samples a disposable clone of it.
-		Rig.require(model)
+		local scan = Rig.require(model)
+		-- A picture of the pose is drawn by the relay from where the parts are, which takes
+		-- the transform of every joint, not only the ones asked about.
+		local render = params.render == true
+		local sampledJoints = joints
+		if render then
+			sampledJoints = {}
+			for _, name in Rig.R15_ORDER do
+				if scan.joints[name] then
+					table.insert(sampledJoints, name)
+				end
+			end
+		end
 		local revision = Clips.revisionOf(working)
 		local maxEdge = if type(params.max_edge) == "number" then math.clamp(params.max_edge, 64, 1536) else 768
 
@@ -201,7 +214,7 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry)
 			model = model,
 			sequence = working.instance,
 			time = time,
-			joints = joints,
+			joints = sampledJoints,
 			parent = workspace,
 			-- A screenshot is taken only when the request asks for one, and then only if
 			-- the capture gate allows it. The camera is whatever a person has framed.
@@ -217,8 +230,11 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry)
 		})
 
 		local sampled = {}
-		for name, cframe in preview.transforms do
-			sampled[name] = Rig.encode(cframe)
+		for _, name in joints do
+			local cframe = preview.transforms[name]
+			if cframe then
+				sampled[name] = Rig.encode(cframe)
+			end
 		end
 		local response: any = {
 			clip_id = working.id,
@@ -227,6 +243,10 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry)
 			camera = "current",
 			joints = sampled,
 		}
+		if render then
+			-- Positions relative to the rig's root part: nothing about the place is in them.
+			response.pose = { parts = Pose.parts(scan, preview.transforms, CFrame.new()) }
+		end
 		local captured = preview.capture
 		if captured then
 			-- Exactly one image, and only for a request that asked for one and got it.

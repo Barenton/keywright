@@ -59,6 +59,7 @@ Tested by `npm test` and `npm run test:luau`:
 - The MCP adapter over stdio against a stand-in plugin, including screenshots returned as image content.
 - SHA-256, HMAC-SHA256, hex and base64 in Luau, against published test vectors and the TypeScript implementation.
 - Fixture scoping: the guard that confines probe code to a disposable fixture, and the preparation script writing only inside `build/fixture/`.
+- The picture of a pose: the plugin works out where each part is from the sampled joints, and the relay draws the parts as boxes. Both halves are deterministic and tested without Studio; that an `AnimationConstraint` places its part by the same rule as a `Motor6D` is taken from Roblox's documentation.
 - The screenshot rules, against a model of `StudioCaptureService`: nothing is asked of Studio while the gate is closed, every wait has a deadline and a late result is not a success, only a complete PNG of the requested size is returned, the camera is never moved or changed, and an image taken while the approved scene or camera changed is dropped. The relay repeats the image checks on its side. None of this has run in Studio.
 - Preview isolation, against a model of the animation engine: the preview samples a sanitized clone, never writes or steps the original rig, and removes what it created on success, failure and timeout. Whether Studio's engine matches that model is not yet verified.
 

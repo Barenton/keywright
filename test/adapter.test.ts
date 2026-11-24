@@ -56,7 +56,20 @@ describe("MCP adapter over stdio", () => {
 				const whole = Buffer.from(PNG, "base64");
 				const data = input.clip_id === "clip_cut" ? whole.subarray(0, whole.length - 12) : whole;
 				const capture = { status: "ok", format: "png", width: 1, height: 1, bytes: data.length };
-				return { clip_id: input.clip_id, time: input.time, capture, images: [{ png_base64: data.toString("base64") }] };
+				// A pose is included when a picture was asked for: two boxes, one for each side.
+				const pose = {
+					parts: [
+						{ name: "LeftHand", size: [1, 1, 1], cframe: [-3, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1] },
+						{ name: "RightHand", size: [1, 1, 1], cframe: [3, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1] },
+					],
+				};
+				return {
+					clip_id: input.clip_id,
+					time: input.time,
+					capture,
+					images: [{ png_base64: data.toString("base64") }],
+					...(input.render === true ? { pose } : {}),
+				};
 			}
 			return { method, params };
 		});
@@ -192,6 +205,42 @@ describe("MCP adapter over stdio", () => {
 		assert.equal(isError, true);
 		assert.doesNotMatch(content[0]?.text ?? "", /iVBORw0KGgo|data:image/);
 		assert.match(content[0]?.text ?? "", /UNSUPPORTED_RIG/);
+	});
+
+	test("a picture of the pose is drawn by the relay and returned as an image block", async () => {
+		const { content, json } = await callTool("preview_animation", {
+			session_id: SESSION,
+			clip_id: "clip_1",
+			time: 0.5,
+			render: true,
+			views: ["front", "top"],
+			render_size: 128,
+		});
+		assert.equal(content.length, 2);
+		assert.equal(content[1]?.type, "image");
+		assert.equal(content[1]?.mimeType, "image/png");
+		const png = Buffer.from(content[1]?.data ?? "", "base64");
+		assert.deepEqual([png.readUInt32BE(16), png.readUInt32BE(20)], [256, 128]);
+		assert.equal(json.pose, undefined);
+		assert.equal(json.render.status, "ok");
+		assert.deepEqual(json.render.views, ["front", "top"]);
+		assert.match(json.render.legend, /not a Studio screenshot/);
+		// The plugin was asked for the pose, and the screenshot it volunteered was still dropped.
+		const sent = plugin.received.at(-1)?.params as { render?: boolean };
+		assert.equal(sent.render, true);
+		assert.equal(json.capture.status, "unavailable");
+
+		// Without asking, no picture is drawn and no pose data is passed on.
+		const plain = await callTool("preview_animation", { session_id: SESSION, clip_id: "clip_1", time: 0.5 });
+		assert.equal(plain.content.length, 1);
+		assert.equal(plain.json.render, undefined);
+		assert.equal(plain.json.pose, undefined);
+
+		// Asked for both, the drawn picture comes first and the Studio screenshot second.
+		const both = await callTool("preview_animation", { session_id: SESSION, clip_id: "clip_1", time: 0.5, render: true, capture: true });
+		assert.equal(both.content.length, 3);
+		assert.notEqual(both.content[1]?.data, PNG);
+		assert.equal(both.content[2]?.data, PNG);
 	});
 
 	test("a screenshot is returned as an MCP image block, not as text", async () => {
