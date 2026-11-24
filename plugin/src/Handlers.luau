@@ -53,6 +53,9 @@ local function requireString(params: any, key: string): string
 	return value
 end
 
+-- Most moments of a clip that one preview samples for a filmstrip.
+local MAX_FRAMES = 8
+
 local function requireEdit()
 	if not RunService:IsEdit() then
 		Errors.throw("STUDIO_NOT_IN_EDIT_MODE", "Studio is running a playtest.", "Stop the playtest and try again.")
@@ -418,8 +421,27 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 		if not model or model.Parent == nil then
 			Errors.throw("NOT_FOUND", "The rig this clip was opened for no longer exists.")
 		end
-		local time = params.time
-		if type(time) ~= "number" or time ~= time or time < 0 or time > Edit.MAX_TIME then
+		local function usableTime(value: any): boolean
+			return type(value) == "number" and value == value and value >= 0 and value <= Edit.MAX_TIME
+		end
+		-- Several times at once make a filmstrip: the clip sampled at each, in order.
+		local times: { number }? = nil
+		if params.times ~= nil then
+			if type(params.times) ~= "table" or #params.times < 2 or #params.times > MAX_FRAMES then
+				Errors.throw("INVALID_ARGUMENT", `times must list from 2 to {MAX_FRAMES} times.`)
+			end
+			for _, value in params.times do
+				if not usableTime(value) then
+					Errors.throw("INVALID_ARGUMENT", `Every time must be from 0 to {Edit.MAX_TIME} seconds.`)
+				end
+			end
+			if params.capture == true or params.check_placement == true then
+				Errors.throw("INVALID_ARGUMENT", "A screenshot or a placement check is for one time, not several.")
+			end
+			times = params.times
+		end
+		local time = if times then times[1] else params.time
+		if not usableTime(time) then
 			Errors.throw("INVALID_ARGUMENT", `time must be from 0 to {Edit.MAX_TIME} seconds.`)
 		end
 		local joints: { string } = {}
@@ -460,6 +482,59 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 		end
 		local sampledTime = math.min(time, duration)
 
+		local function restPose(): { any }
+			local resting: { [string]: CFrame } = {}
+			for name in scan.joints do
+				resting[name] = CFrame.new()
+			end
+			return Pose.parts(scan, resting, CFrame.new())
+		end
+		local function encoded(transforms: { [string]: CFrame }): { [string]: any }
+			local sampled = {}
+			for _, name in joints do
+				local cframe = transforms[name]
+				if cframe then
+					sampled[name] = Rig.encode(cframe)
+				end
+			end
+			return sampled
+		end
+
+		if times then
+			local frames, poses = {}, {}
+			for _, at in times do
+				if Clips.revisionOf(working) ~= revision then
+					Errors.throw(
+						"PREVIEW_UNAVAILABLE",
+						"The clip changed while it was being sampled.",
+						"Preview it again."
+					)
+				end
+				local sample = Preview.run({
+					model = model,
+					sequence = working.instance,
+					time = at,
+					joints = sampledJoints,
+					parent = workspace,
+				})
+				local shown = math.min(at, duration)
+				table.insert(frames, {
+					time = shown,
+					requested_time = if shown ~= at then at else nil,
+					joints = if #joints > 0 then encoded(sample.transforms) else nil,
+				})
+				if render then
+					table.insert(poses, Pose.parts(scan, sample.transforms, CFrame.new()))
+				end
+			end
+			return {
+				clip_id = working.id,
+				revision = revision,
+				frames = frames,
+				pose = if render then { frames = poses, rest = restPose() } else nil,
+			}
+		end
+
 		local preview = Preview.run({
 			model = model,
 			sequence = working.instance,
@@ -480,13 +555,7 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 			end,
 		})
 
-		local sampled = {}
-		for _, name in joints do
-			local cframe = preview.transforms[name]
-			if cframe then
-				sampled[name] = Rig.encode(cframe)
-			end
-		end
+		local sampled = encoded(preview.transforms)
 		local response: any = {
 			clip_id = working.id,
 			revision = revision,
@@ -499,13 +568,9 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 			-- Positions relative to the rig's root part: nothing about the place is in them.
 			-- The rest pose goes along, so that every picture of this rig can be framed the
 			-- same way, whatever the pose: the rig then stays put from one picture to the next.
-			local resting: { [string]: CFrame } = {}
-			for name in scan.joints do
-				resting[name] = CFrame.new()
-			end
 			response.pose = {
 				parts = Pose.parts(scan, preview.transforms, CFrame.new()),
-				rest = Pose.parts(scan, resting, CFrame.new()),
+				rest = restPose(),
 			}
 		end
 		if checkPlacement and preview.placed then

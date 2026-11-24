@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { inflateSync } from "node:zlib";
 import { inspectPng } from "../src/image.js";
-import { DEFAULT_TILE, LEGEND, MAX_PARTS, type PosePart, parsePose, renderPose, renderResult, type ViewName } from "../src/render.js";
+import { DEFAULT_TILE, LEGEND, MAX_PARTS, type PosePart, parsePose, renderPose, renderResult, renderStrip, type ViewName } from "../src/render.js";
 
 type Pixel = [number, number, number];
 const BACKGROUND: Pixel = [245, 245, 245];
@@ -321,4 +321,76 @@ test("a preview's rest pose frames its picture and is not passed on", () => {
 	const bad = renderResult({ render: true }, { clip_id: "clip_1", pose: { parts: pose.parts, rest: [{ name: "x" }] } });
 	assert.equal(bad.image, undefined);
 	assert.equal((bad.payload as { render: { status: string } }).render.status, "unavailable");
+});
+
+test("a filmstrip has a column for each pose and a row for each view, all framed alike", () => {
+	const torso = box("UpperTorso", [0, 0, 0], [2, 2, 1]);
+	const rest = [torso, box("RightHand", [-1.5, -1, 0])];
+	const frames = [0, 1, 2, 3].map((step) => [torso, box("RightHand", [-1.5, -1 + step, 0])]);
+	const strip = renderStrip(frames, ["front", "top"], 128, rest);
+	assert.equal(strip.width, 128 * 4);
+	assert.equal(strip.height, 128 * 2);
+	const image = decode(strip.png);
+
+	// The torso does not move, so it covers the same pixels of every tile in a row.
+	const grey = (column: number, row: number): string => {
+		const found: number[] = [];
+		for (let y = 0; y < 128; y += 1) {
+			// The half of the tile away from the hand, whose outline would otherwise be counted.
+			for (let x = 2; x < 64; x += 1) {
+				const pixel = image.at(column * 128 + x, row * 128 + y);
+				if (!isBackground(pixel) && !isOrange(pixel) && !isBlue(pixel)) found.push(y * 128 + x);
+			}
+		}
+		return `${found.length}:${found[0]}:${found[found.length - 1]}`;
+	};
+	// (Seen from the front, where the hand is beside the torso and never in front of it.)
+	for (let column = 1; column < 4; column += 1) assert.equal(grey(column, 0), grey(0, 0));
+	assert.notEqual(grey(0, 1), grey(0, 0));
+
+	// The hand rises from one column to the next: its highest orange pixel gets higher.
+	const top = (column: number): number => {
+		for (let y = 0; y < 128; y += 1) for (let x = 2; x < 128; x += 1) if (isOrange(image.at(column * 128 + x, y))) return y;
+		return 128;
+	};
+	assert.ok(top(0) > top(1) && top(1) > top(2) && top(2) > top(3), [0, 1, 2, 3].map(top).join(" "));
+
+	// The frames are in the order given: reversing them reverses the strip.
+	const reversed = decode(renderStrip([...frames].reverse(), ["front"], 128, rest).png);
+	const topReversed = (column: number): number => {
+		for (let y = 0; y < 128; y += 1) for (let x = 2; x < 128; x += 1) if (isOrange(reversed.at(column * 128 + x, y))) return y;
+		return 128;
+	};
+	assert.ok(topReversed(0) < topReversed(3));
+});
+
+test("a filmstrip is held to its limits", () => {
+	const frame = [box("UpperTorso", [0, 0, 0])];
+	assert.throws(() => renderStrip([frame], ["front"], 128), /two to eight/);
+	assert.throws(() => renderStrip(Array(9).fill(frame), ["front"], 128), /two to eight/);
+	assert.throws(() => renderStrip([frame, frame], ["front", "top", "left"], 128), /one or two views/);
+	assert.throws(() => renderStrip(Array(8).fill(frame), ["front"], 256), /outside the limits/);
+	assert.equal(renderStrip(Array(8).fill(frame), ["front"], 192).width, 1536);
+});
+
+test("a preview of several times gets a filmstrip, and the raw poses are not passed on", () => {
+	const torso = box("UpperTorso", [0, 0, 0], [2, 2, 1]);
+	const pose = { frames: [0, 1, 2].map((step) => [torso, box("RightHand", [-1.5, step, 0])]), rest: [torso, box("RightHand", [-1.5, -1, 0])] };
+	const result = renderResult({ render: true, times: [0, 0.5, 1], views: ["right", "front", "top"] }, { clip_id: "clip_1", frames: [{ time: 0 }, { time: 0.5 }, { time: 1 }], pose });
+	const payload = result.payload as { pose?: unknown; frames: unknown[]; render: { status: string; frames: number; views: string[]; width: number; height: number } };
+	assert.equal(payload.pose, undefined);
+	assert.equal(payload.frames.length, 3);
+	assert.equal(payload.render.status, "ok");
+	assert.equal(payload.render.frames, 3);
+	// At most two rows, and the size asked for is kept when it fits.
+	assert.deepEqual(payload.render.views, ["right", "front"]);
+	assert.equal(payload.render.width, DEFAULT_TILE * 3);
+	assert.equal(payload.render.height, DEFAULT_TILE * 2);
+	assert.ok(result.image);
+	const { width, height } = inspectPng(Buffer.from(result.image as string, "base64"));
+	assert.deepEqual([width, height], [payload.render.width, payload.render.height]);
+	// Without render, no picture and no poses.
+	const plain = renderResult({ times: [0, 1] }, { clip_id: "clip_1", frames: [], pose });
+	assert.equal(plain.image, undefined);
+	assert.equal((plain.payload as { pose?: unknown }).pose, undefined);
 });

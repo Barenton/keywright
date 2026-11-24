@@ -298,29 +298,63 @@ export function renderPose(parts: PosePart[], views: ViewName[], tile: number, r
 	if (!Number.isInteger(tile) || tile < MIN_TILE || tile > MAX_TILE || tile * views.length > MAX_WIDTH) {
 		throw new Error("the picture size is outside the limits");
 	}
-	const boxes = boxesOf(parts);
-	let { centre, reach } = extentOf(boxes);
+	return drawGrid([parts], views, tile, rest, "views");
+}
+
+export const MAX_FRAMES = 8;
+export const MAX_STRIP_VIEWS = 2;
+
+/**
+ * Draws several poses of one rig as a filmstrip: one column for each pose, in the order
+ * given, and one row for each view. Every tile has the same framing, so a part that does
+ * not move is in the same place in every column.
+ */
+export function renderStrip(frames: PosePart[][], views: ViewName[], tile: number, rest?: PosePart[]): { png: Buffer; width: number; height: number } {
+	if (frames.length < 2 || frames.length > MAX_FRAMES) throw new Error("a filmstrip has from two to eight frames");
+	if (views.length === 0 || views.length > MAX_STRIP_VIEWS) throw new Error("a filmstrip is drawn from one or two views");
+	if (!Number.isInteger(tile) || tile < MIN_TILE || tile > MAX_TILE || tile * frames.length > MAX_WIDTH) {
+		throw new Error("the picture size is outside the limits");
+	}
+	return drawGrid(frames, views, tile, rest, "frames");
+}
+
+/** Draws poses against views as a grid of tiles with one framing. `across` says which runs along a row. */
+function drawGrid(poses: PosePart[][], views: ViewName[], tile: number, rest: PosePart[] | undefined, across: "views" | "frames"): { png: Buffer; width: number; height: number } {
+	const drawn = poses.map(boxesOf);
+	let { centre, reach } = extentOf(drawn.flat());
 	if (rest && rest.length > 0) {
 		const frame = extentOf(boxesOf(rest));
 		centre = frame.centre;
-		reach = Math.max(frame.reach * REST_MARGIN, extentOf(boxes, centre).reach);
+		// One picture of one pose leaves room around the rest pose, so that it lines up
+		// with the next picture whatever that shows. A filmstrip is complete in itself:
+		// it only has to hold its own frames, so the rig can be drawn larger.
+		const room = across === "frames" ? 1.05 : REST_MARGIN;
+		reach = Math.max(frame.reach * room, extentOf(drawn.flat(), centre).reach * (across === "frames" ? 1.05 : 1));
 	}
 	const pixelsPerStud = (tile / 2 - tile * 0.06) / Math.max(reach, 0.5);
 
-	const width = tile * views.length;
-	const image = new Uint8Array(width * tile * 3);
-	views.forEach((view, index) => {
-		const drawn = drawView(boxes, view, tile, centre, pixelsPerStud);
-		for (let y = 0; y < tile; y += 1) {
-			image.set(drawn.pixels.subarray(y * tile * 3, (y + 1) * tile * 3), (y * width + index * tile) * 3);
-			if (index > 0) image.set(SEPARATOR, (y * width + index * tile) * 3);
+	const columns = across === "views" ? views.length : poses.length;
+	const rows = across === "views" ? poses.length : views.length;
+	const width = tile * columns;
+	const height = tile * rows;
+	const image = new Uint8Array(width * height * 3);
+	for (let row = 0; row < rows; row += 1) {
+		for (let column = 0; column < columns; column += 1) {
+			const boxes = drawn[across === "views" ? row : column] as Box[];
+			const view = views[across === "views" ? column : row] as ViewName;
+			const picture = drawView(boxes, view, tile, centre, pixelsPerStud);
+			for (let y = 0; y < tile; y += 1) {
+				const start = ((row * tile + y) * width + column * tile) * 3;
+				image.set(picture.pixels.subarray(y * tile * 3, (y + 1) * tile * 3), start);
+				if (column > 0) image.set(SEPARATOR, start);
+			}
 		}
-	});
-	const png = encodePng(width, tile, image);
+	}
+	const png = encodePng(width, height, image);
 	// What is sent on is held to the same rules as any other image the relay passes.
 	const checked = inspectPng(png);
-	if (checked.width !== width || checked.height !== tile) throw new Error("the picture did not encode correctly");
-	return { png, width, height: tile };
+	if (checked.width !== width || checked.height !== height) throw new Error("the picture did not encode correctly");
+	return { png, width, height };
 }
 
 /**
@@ -339,9 +373,18 @@ export function renderResult(params: unknown, payload: unknown): { payload: unkn
 		if (views.length === 0 || views.length !== requested.length) throw new Error("the views asked for are not ones that can be drawn");
 		const asked = input.render_size;
 		const size = typeof asked === "number" && Number.isInteger(asked) && asked >= MIN_TILE && asked <= MAX_TILE ? asked : DEFAULT_TILE;
-		const tile = Math.min(size, Math.floor(MAX_WIDTH / views.length));
 		// A plugin from before rest poses were sent has none; the picture is then framed on the pose.
 		const resting = isRecord(pose) && Array.isArray(pose.rest) ? parsePose({ parts: pose.rest }) : undefined;
+		if (isRecord(pose) && Array.isArray(pose.frames)) {
+			// Several moments of the clip: a filmstrip, one column for each.
+			const frames = pose.frames.map((parts: unknown) => parsePose({ parts }));
+			const rows = views.slice(0, MAX_STRIP_VIEWS);
+			const each = Math.max(MIN_TILE, Math.min(size, Math.floor(MAX_WIDTH / Math.max(frames.length, 1))));
+			const strip = renderStrip(frames, rows, each, resting);
+			rest.render = { status: "ok", layout: "one column for each time in order, one row for each view", views: rows, frames: frames.length, width: strip.width, height: strip.height, legend: LEGEND };
+			return { payload: rest, image: strip.png.toString("base64") };
+		}
+		const tile = Math.min(size, Math.floor(MAX_WIDTH / views.length));
 		const drawn = renderPose(parsePose(pose), views, tile, resting);
 		rest.render = { status: "ok", views, width: drawn.width, height: drawn.height, legend: LEGEND };
 		return { payload: rest, image: drawn.png.toString("base64") };

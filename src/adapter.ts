@@ -427,7 +427,15 @@ export function createAdapter(options: AdapterOptions): McpServer {
 			inputSchema: {
 				studio_session: studioSession,
 				clip_id: clipId,
-				time: z.number().finite().min(0).max(300),
+				time: z.number().finite().min(0).max(300).optional().describe("The time to sample, in seconds. Give this or times."),
+				times: z
+					.array(z.number().finite().min(0).max(300))
+					.min(2)
+					.max(8)
+					.optional()
+					.describe(
+						"Several times to sample in one call, in place of time. With render, the picture is a filmstrip: one column for each time in the order given, one row for each view (at most two), all framed alike so that what moves can be seen. The result lists the frames in the same order.",
+					),
 				render: z.boolean().optional().describe("Include a schematic picture of the pose, drawn from the sampled joint positions."),
 				views: z
 					.array(z.enum(VIEWS))
