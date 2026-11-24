@@ -203,6 +203,61 @@ case("the list of remembered places is kept to a limit", function()
 	check("repeating a setting changes nothing", Access.remembered(stored, Access.MAX_PLACES + 19) == before)
 end)
 
+case("what a working copy was opened from is written down and read back", function()
+	local links = Instance.new("Folder")
+	local function create(className: string): any
+		return Instance.new(className)
+	end
+	local working = Instance.new("KeyframeSequence")
+	working.Name = "Wave edit"
+	local source = Instance.new("KeyframeSequence")
+	source.Name = "Wave"
+	check("nothing recorded to begin with", WorkingStore.recall(links, working) == nil)
+
+	WorkingStore.remember(links, working, source, "abc123", create)
+	local link = WorkingStore.recall(links, working) :: any
+	check("the source is recalled", link ~= nil and link.source == source)
+	check("with its fingerprint", link.fingerprint == "abc123")
+	check("one record, named after the working copy", #links:GetChildren() == 1 and link.record.Name == "Wave edit")
+	check("another working copy has no record", WorkingStore.recall(links, Instance.new("KeyframeSequence")) == nil)
+
+	WorkingStore.remember(links, working, source, "def456", create)
+	check(
+		"recording again replaces, not adds",
+		#links:GetChildren() == 1 and (WorkingStore.recall(links, working) :: any).fingerprint == "def456"
+	)
+
+	local other = Instance.new("KeyframeSequence")
+	WorkingStore.remember(links, other, source, "zzz", create)
+	check(
+		"two copies of one clip each have a record",
+		#links:GetChildren() == 2 and (WorkingStore.recall(links, other) :: any).fingerprint == "zzz"
+	)
+
+	local record = (WorkingStore.recall(links, working) :: any).record
+	WorkingStore.forget(links, working)
+	check(
+		"a forgotten record is out of the folder",
+		WorkingStore.recall(links, working) == nil and #links:GetChildren() == 1
+	)
+	check(
+		"but whole, so that an undo can bring it back",
+		record.Parent == nil and record:FindFirstChild(WorkingStore.SOURCE) ~= nil
+	)
+	WorkingStore.forget(links, working)
+	check("forgetting twice is harmless", #links:GetChildren() == 1)
+
+	-- A record someone has damaged is read as far as it can be.
+	local broken = Instance.new("ObjectValue")
+	broken.Value = working
+	broken.Parent = links
+	local partial = WorkingStore.recall(links, working) :: any
+	check(
+		"a record with nothing in it gives no source",
+		partial ~= nil and partial.source == nil and partial.fingerprint == nil
+	)
+end)
+
 print(`{count - failures}/{count} working store checks passed`)
 if failures > 0 then
 	process.exit(1)

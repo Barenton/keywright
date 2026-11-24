@@ -328,7 +328,7 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 				if state == "none" then
 					Errors.throw(
 						"INVALID_ARGUMENT",
-						"This working copy has no clip to replace: it was opened blank, or the plugin was reloaded since it was opened.",
+						"This working copy has no clip to replace: it was opened blank.",
 						"Save it as a new clip instead."
 					)
 				elseif state ~= "unchanged" then
@@ -391,6 +391,7 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 		local ok, problem = pcall(function()
 			-- Taken out of the place, not destroyed, so that undo can put it back.
 			working.instance.Parent = nil
+			Clips.unlink(working)
 		end)
 		Recording.finish(recording, ok)
 		if not ok then
