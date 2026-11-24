@@ -4,7 +4,8 @@
 --
 -- Real here: Lune's instances and its CFrame arithmetic. The rule being applied is the
 -- one Roblox documents for a Motor6D (Part1 = Part0 * C0 * Transform * C1 inverse).
--- Whether Studio places an AnimationConstraint's part the same way is not tested here.
+-- Whether Studio places an AnimationConstraint's part the same way is not tested here;
+-- the comparison that checks it in Studio (Pose.compare) is.
 
 local process = require("@lune/process")
 local roblox = require("@lune/roblox") :: any
@@ -227,6 +228,51 @@ case("a pose that cannot be worked out is refused", function()
 	local broken = Rig.scan(buildRig("LeftLowerArm"))
 	local again, why = pcall(Pose.parts, broken, rest(), CFrame.new())
 	check("a broken chain is refused", not again and (why :: any).code == "PREVIEW_UNAVAILABLE", why)
+end)
+
+case("placement is by name, unrounded, and leaves out the root", function()
+	local scan = Rig.scan(buildRig())
+	local placed = Pose.place(scan, rest(), CFrame.new())
+	local names = 0
+	for _ in placed do
+		names += 1
+	end
+	check("fifteen driven parts", names == 15, names)
+	check("no entry for the root part", placed.HumanoidRootPart == nil)
+	local parts = byName(Pose.parts(scan, rest(), CFrame.new()))
+	check("the same place the picture uses", near(placed.Head.Position.Y, parts.Head.cframe[2]))
+end)
+
+case("where parts are is compared with where they should be", function()
+	local scan = Rig.scan(buildRig())
+	local expected = Pose.place(scan, rest(), CFrame.new())
+	local same = Pose.compare(expected, Pose.place(scan, rest(), CFrame.new()))
+	check("identical placements differ by nothing", same.parts == 15 and same.studs == 0 and same.degrees == 0)
+	check("and name no part", same.worst == nil, same.worst)
+
+	local moved = Pose.place(scan, rest(), CFrame.new())
+	moved.LeftHand = CFrame.new(0.3, 0, 0.4) * moved.LeftHand
+	local displaced = Pose.compare(expected, moved)
+	check("a part half a stud away is found", math.abs(displaced.studs - 0.5) < 1e-5, displaced.studs)
+	check("and named", displaced.worst == "LeftHand", displaced.worst)
+	check("without a turn", displaced.degrees < 1e-4, displaced.degrees)
+
+	-- A turn far below a hundredth of a degree must be measured, not lost in rounding.
+	for _, degrees in { 0.005, 0.5, 30 } do
+		local turned = Pose.place(scan, rest(), CFrame.new())
+		turned.Head = turned.Head * CFrame.Angles(0, math.rad(degrees), 0)
+		local found = Pose.compare(expected, turned)
+		check(
+			`a turn of {degrees} degrees is measured`,
+			math.abs(found.degrees - degrees) < math.max(0.001, degrees * 0.001),
+			found.degrees
+		)
+		check("and the turned part is named", found.worst == "Head", found.worst)
+	end
+
+	local fewer = Pose.place(scan, rest(), CFrame.new())
+	fewer.RightFoot = nil
+	check("a part missing from one side is not compared", Pose.compare(expected, fewer).parts == 14)
 end)
 
 print(`{count - failures}/{count} pose checks passed`)

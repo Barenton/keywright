@@ -107,8 +107,8 @@ describe("MCP adapter over stdio", () => {
 		);
 		// A picture and a save are both asked for through documented inputs.
 		const properties = (name: string) => Object.keys((tools.find((tool) => tool.name === name)?.inputSchema.properties ?? {}) as object);
-		assert.ok(["render", "views", "render_size"].every((key) => properties("preview_animation").includes(key)));
-		assert.deepEqual(properties("save_animation").sort(), ["clip_id", "expected_revision", "name", "session_id"]);
+		assert.ok(["render", "views", "render_size", "check_placement"].every((key) => properties("preview_animation").includes(key)));
+		assert.deepEqual(properties("save_animation").sort(), ["clip_id", "expected_revision", "name", "studio_session"]);
 		for (const tool of tools) assert.equal(tool.inputSchema.type, "object");
 	});
 
@@ -120,15 +120,15 @@ describe("MCP adapter over stdio", () => {
 		assert.equal(json.sessions[0].rigs[0].rig_id, "rig_1");
 	});
 
-	test("session_id routes the call and is not forwarded as a parameter", async () => {
-		const { json } = await callTool("inspect_rig", { session_id: SESSION, rig_id: "rig_1", detail: true });
+	test("studio_session routes the call and is not forwarded as a parameter", async () => {
+		const { json } = await callTool("inspect_rig", { studio_session: SESSION, rig_id: "rig_1", detail: true });
 		assert.deepEqual(json, { method: "inspect_rig", params: { rig_id: "rig_1", detail: true } });
 	});
 
 	test("a stale revision comes back as a structured error and a fresh one succeeds", async () => {
 		const edit = (expected: string) =>
 			callTool("edit_animation", {
-				session_id: SESSION,
+				studio_session: SESSION,
 				clip_id: "clip_1",
 				expected_revision: expected,
 				operations: [{ type: "set_pose", joint: "RightUpperArm", time: 0.5, rotation: [0, 0, 90] }],
@@ -147,7 +147,7 @@ describe("MCP adapter over stdio", () => {
 		const result = await mcp.callTool({
 			name: "edit_animation",
 			arguments: {
-				session_id: SESSION,
+				studio_session: SESSION,
 				clip_id: "clip_1",
 				expected_revision: "r2",
 				operations: [{ type: "set_pose", joint: "RightUpperArm", time: -1 }],
@@ -158,7 +158,7 @@ describe("MCP adapter over stdio", () => {
 	});
 
 	test("an image that was not asked for never reaches the client", async () => {
-		const preview = await callTool("preview_animation", { session_id: SESSION, clip_id: "clip_1", time: 0.5 });
+		const preview = await callTool("preview_animation", { studio_session: SESSION, clip_id: "clip_1", time: 0.5 });
 		assert.equal(preview.content.length, 1);
 		assert.equal(preview.json.images, undefined);
 		assert.equal(preview.json.capture.status, "unavailable");
@@ -172,7 +172,7 @@ describe("MCP adapter over stdio", () => {
 
 	test("a cut-short image is rejected by the relay and reported as unavailable", async () => {
 		const { content, json } = await callTool("preview_animation", {
-			session_id: SESSION,
+			studio_session: SESSION,
 			clip_id: "clip_cut",
 			time: 0.5,
 			capture: true,
@@ -186,7 +186,7 @@ describe("MCP adapter over stdio", () => {
 		const before = plugin.cancelled.length;
 		const controller = new AbortController();
 		const pending = mcp
-			.callTool({ name: "preview_animation", arguments: { session_id: SESSION, clip_id: "clip_slow", time: 0.5, capture: true } }, undefined, {
+			.callTool({ name: "preview_animation", arguments: { studio_session: SESSION, clip_id: "clip_slow", time: 0.5, capture: true } }, undefined, {
 				signal: controller.signal,
 			})
 			.then(
@@ -202,12 +202,12 @@ describe("MCP adapter over stdio", () => {
 		assert.equal(plugin.cancelled.at(-1), plugin.requestIds.at(-1));
 		// The adapter is still usable after the late answer has come and gone.
 		await new Promise((resolve) => setTimeout(resolve, 350));
-		const { json } = await callTool("read_animation", { session_id: SESSION, clip_id: "clip_1" });
+		const { json } = await callTool("read_animation", { studio_session: SESSION, clip_id: "clip_1" });
 		assert.equal(json.method, "read_animation");
 	});
 
 	test("an image carried in an error message never reaches the client", async () => {
-		const { isError, content } = await callTool("open_animation", { session_id: SESSION, rig_id: "rig_leaky" });
+		const { isError, content } = await callTool("open_animation", { studio_session: SESSION, rig_id: "rig_leaky" });
 		assert.equal(isError, true);
 		assert.doesNotMatch(content[0]?.text ?? "", /iVBORw0KGgo|data:image/);
 		assert.match(content[0]?.text ?? "", /UNSUPPORTED_RIG/);
@@ -215,7 +215,7 @@ describe("MCP adapter over stdio", () => {
 
 	test("a picture of the pose is drawn by the relay and returned as an image block", async () => {
 		const { content, json } = await callTool("preview_animation", {
-			session_id: SESSION,
+			studio_session: SESSION,
 			clip_id: "clip_1",
 			time: 0.5,
 			render: true,
@@ -237,7 +237,7 @@ describe("MCP adapter over stdio", () => {
 		assert.equal(json.capture.status, "unavailable");
 
 		// Without asking, no picture is drawn and no pose data is passed on.
-		const plain = await callTool("preview_animation", { session_id: SESSION, clip_id: "clip_1", time: 0.5 });
+		const plain = await callTool("preview_animation", { studio_session: SESSION, clip_id: "clip_1", time: 0.5 });
 		assert.equal(plain.content.length, 1);
 		// An empty set of joints reaches the client as an object, whatever Studio sent.
 		assert.deepEqual(plain.json.joints, {});
@@ -245,7 +245,7 @@ describe("MCP adapter over stdio", () => {
 		assert.equal(plain.json.pose, undefined);
 
 		// Asked for both, the drawn picture comes first and the Studio screenshot second.
-		const both = await callTool("preview_animation", { session_id: SESSION, clip_id: "clip_1", time: 0.5, render: true, capture: true });
+		const both = await callTool("preview_animation", { studio_session: SESSION, clip_id: "clip_1", time: 0.5, render: true, capture: true });
 		assert.equal(both.content.length, 3);
 		assert.notEqual(both.content[1]?.data, PNG);
 		assert.equal(both.content[2]?.data, PNG);
@@ -253,7 +253,7 @@ describe("MCP adapter over stdio", () => {
 
 	test("a screenshot is returned as an MCP image block, not as text", async () => {
 		const { content, json } = await callTool("preview_animation", {
-			session_id: SESSION,
+			studio_session: SESSION,
 			clip_id: "clip_1",
 			time: 0.5,
 			capture: true,
@@ -264,8 +264,21 @@ describe("MCP adapter over stdio", () => {
 		assert.deepEqual(content[1], { type: "image", data: PNG, mimeType: "image/png" });
 	});
 
+	test("every tool that acts in Studio requires studio_session, and none takes session_id", async () => {
+		const { tools } = await mcp.listTools();
+		for (const tool of tools) {
+			const schema = tool.inputSchema as { properties?: Record<string, unknown>; required?: string[] };
+			assert.equal(Object.hasOwn(schema.properties ?? {}, "session_id"), false, tool.name);
+			if (tool.name !== "get_workspace") assert.ok(schema.required?.includes("studio_session"), tool.name);
+		}
+		// A call without it is refused before anything is sent to Studio.
+		const refused = await mcp.callTool({ name: "read_animation", arguments: { clip_id: "clip_1" } });
+		assert.equal(refused.isError, true);
+		assert.match((refused.content as Content)[0]?.text ?? "", /studio_session/);
+	});
+
 	test("an unknown session is a structured error", async () => {
-		const { isError, json } = await callTool("read_animation", { session_id: "e".repeat(16), clip_id: "clip_1" });
+		const { isError, json } = await callTool("read_animation", { studio_session: "e".repeat(16), clip_id: "clip_1" });
 		assert.equal(isError, true);
 		assert.equal(json.error.code, "SESSION_NOT_FOUND");
 	});

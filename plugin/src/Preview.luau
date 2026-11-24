@@ -63,10 +63,15 @@ export type Request = {
 	capture: ((guard: () -> string?) -> CaptureResult)?,
 	-- False once what is being previewed has changed, which makes a screenshot stale.
 	current: (() -> boolean)?,
+	-- Also report where Studio has put each driven part of the clone.
+	measure: boolean?,
 }
 
 export type Result = {
 	transforms: { [string]: CFrame },
+	-- Where each driven part of the clone is, relative to its root part, as Studio has
+	-- placed it after the seek. Only when asked for.
+	placed: { [string]: CFrame }?,
 	capture: CaptureResult?,
 }
 
@@ -403,6 +408,24 @@ function Preview.run(request: Request): Result
 		checkBudget()
 
 		local result: Result = { transforms = Sampler.transforms(sampler, request.joints or {}) }
+		if request.measure then
+			-- Read from the parts themselves, not worked out from the joints.
+			local root: BasePart? = nil
+			for _, joint in scan.joints do
+				if joint.part0.Name == Rig.ROOT then
+					root = joint.part0
+				end
+			end
+			if not root then
+				unavailable("The preview clone has no root part to measure from.")
+			end
+			local origin = (root :: BasePart).CFrame:Inverse()
+			local placed = {}
+			for name, joint in scan.joints do
+				placed[name] = origin * joint.part1.CFrame
+			end
+			result.placed = placed
+		end
 		if request.capture then
 			result.capture = if wantsCapture
 				then shoot(request.capture)

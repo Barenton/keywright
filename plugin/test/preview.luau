@@ -415,6 +415,22 @@ local function expectError(run: () -> any): any
 	return if ok then {} else problem
 end
 
+case("where the clone's parts are is reported only when asked, relative to its root", function()
+	local world = newWorld()
+	local rig = buildRig(world)
+	rig.model.HumanoidRootPart.CFrame = CFrame.new(10, 0, -4)
+	rig.model.LowerTorso.CFrame = CFrame.new(10, 1, -4)
+	rig.model.Head.CFrame = CFrame.new(10, 3, -4)
+	local before = snapshot(rig.model)
+	check("nothing is measured unless asked", Preview.run(request(rig)).placed == nil)
+	local placed = Preview.run(request(rig, { measure = true })).placed
+	check("every driven part is measured", placed ~= nil and placed.LowerTorso ~= nil and placed.UpperTorso ~= nil)
+	check("the root part is not among them", placed.HumanoidRootPart == nil)
+	local head = placed.Head.Position
+	check("positions are relative to the root part", head.X == 0 and head.Y == 3 and head.Z == 0, head)
+	checkUntouched(world, rig, before)
+end)
+
 case("a rig in a non-identity pose is sampled without being changed", function()
 	local world = newWorld()
 	local rig = buildRig(world)

@@ -60,6 +60,20 @@ local function arm(sequence: any, index: number): any
 	return sequence:GetChildren()[index]:FindFirstChild("RightUpperArm", true)
 end
 
+-- The one fingerprint that can be compared with Studio exactly: a clip with no keyframes.
+-- Studio gave this value for a blank working copy on 2026-11-24, so the hashing, the
+-- line format and the way settings are written out agree between Lune and Studio.
+-- Clips with poses cannot be compared this way: the two runtimes differ in the last
+-- digits of a rotation (Lune gives 0.866027832 for the cosine of 30 degrees).
+local blank = Instance.new("KeyframeSequence")
+blank.Loop = false
+blank.Priority = Enum.AnimationPriority.Action
+check(
+	"a blank clip has the fingerprint Studio computed for one",
+	Digest.of(blank) == "26b8727a147a5903c0e432ee98d5ee4798b7d2dd5168d6858736831939f108a6",
+	Digest.of(blank)
+)
+
 local base = Digest.of(build())
 check("a fingerprint is 64 hexadecimal characters", #base == 64 and string.match(base, "^%x+$") ~= nil, base)
 check("the same clip built twice has the same fingerprint", Digest.of(build()) == base)

@@ -10,7 +10,11 @@ import { MAX_TILE, MAX_VIEWS, MIN_TILE, renderResult, VIEWS } from "./render.js"
 
 export const ADAPTER_VERSION = "0.0.0";
 
-const sessionId = z.string().describe("Studio session id from get_workspace.");
+// Not named "session_id": Claude Desktop was seen to leave an argument of that name out of
+// the calls it sends, while passing the others on. It stays required. A session id changes
+// when the plugin reloads, and clip ids are numbered afresh then, so a call that names a
+// session from before a reload is refused instead of reaching a different clip.
+const studioSession = z.string().describe("Which Studio window to act in: a session id from get_workspace.");
 const clipId = z.string().describe("Working copy id from open_animation or get_workspace.");
 const vec3 = z.array(z.number().finite()).length(3);
 
@@ -112,13 +116,13 @@ export function createAdapter(options: AdapterOptions): McpServer {
 			description:
 				"Describe a rig: joint names, hierarchy, joint class (Motor6D or AnimationConstraint) and rest transforms. Returns a summary unless detail is true.",
 			inputSchema: {
-				session_id: sessionId,
+				studio_session: studioSession,
 				rig_id: z.string(),
 				detail: z.boolean().optional().describe("Include per-joint rest transforms and part sizes."),
 			},
 			annotations: { readOnlyHint: true },
 		},
-		async ({ session_id, ...params }, extra) => call("inspect_rig", session_id, params, extra.signal),
+		async ({ studio_session, ...params }, extra) => call("inspect_rig", studio_session, params, extra.signal),
 	);
 
 	server.registerTool(
@@ -127,7 +131,7 @@ export function createAdapter(options: AdapterOptions): McpServer {
 			description:
 				"Create a working copy to edit: blank, or copied from an existing KeyframeSequence. The source clip is never changed.",
 			inputSchema: {
-				session_id: sessionId,
+				studio_session: studioSession,
 				rig_id: z.string(),
 				name: z.string().min(1).max(100).optional(),
 				source: z
@@ -139,7 +143,7 @@ export function createAdapter(options: AdapterOptions): McpServer {
 					),
 			},
 		},
-		async ({ session_id, ...params }, extra) => call("open_animation", session_id, params, extra.signal),
+		async ({ studio_session, ...params }, extra) => call("open_animation", studio_session, params, extra.signal),
 	);
 
 	server.registerTool(
@@ -148,7 +152,7 @@ export function createAdapter(options: AdapterOptions): McpServer {
 			description:
 				"Read a working copy. Returns a summary (keyframe times, animated joints, revision). Pose values are returned only for the joints listed.",
 			inputSchema: {
-				session_id: sessionId,
+				studio_session: studioSession,
 				clip_id: clipId,
 				joints: z.array(z.string()).max(32).optional(),
 				time_from: z.number().finite().min(0).optional(),
@@ -160,7 +164,7 @@ export function createAdapter(options: AdapterOptions): McpServer {
 			},
 			annotations: { readOnlyHint: true },
 		},
-		async ({ session_id, ...params }, extra) => call("read_animation", session_id, params, extra.signal),
+		async ({ studio_session, ...params }, extra) => call("read_animation", studio_session, params, extra.signal),
 	);
 
 	server.registerTool(
@@ -169,13 +173,13 @@ export function createAdapter(options: AdapterOptions): McpServer {
 			description:
 				"Apply a batch of operations to a working copy atomically. All operations are validated first; if any fails nothing changes. Requires the current revision. One Studio undo reverts the whole batch.",
 			inputSchema: {
-				session_id: sessionId,
+				studio_session: studioSession,
 				clip_id: clipId,
 				expected_revision: z.string().describe("Revision from the last read or edit of this clip."),
 				operations: z.array(z.discriminatedUnion("type", [setPose, restoreSource])).min(1).max(256),
 			},
 		},
-		async ({ session_id, ...params }, extra) => call("edit_animation", session_id, params, extra.signal),
+		async ({ studio_session, ...params }, extra) => call("edit_animation", studio_session, params, extra.signal),
 	);
 
 	server.registerTool(
@@ -184,13 +188,13 @@ export function createAdapter(options: AdapterOptions): McpServer {
 			description:
 				"Save a copy of a working copy as a new clip for its rig, where Roblox's Animation Editor keeps that rig's clips, so that it can be loaded in the editor. The working copy stays open and unchanged. Nothing already saved is replaced: a name that is taken is refused. One Studio undo removes the saved clip.",
 			inputSchema: {
-				session_id: sessionId,
+				studio_session: studioSession,
 				clip_id: clipId,
 				expected_revision: z.string().describe("Revision from the last read or edit of this clip."),
 				name: z.string().min(1).max(100).optional().describe("Name for the saved clip. Default: the working copy's name."),
 			},
 		},
-		async ({ session_id, ...params }, extra) => call("save_animation", session_id, params, extra.signal),
+		async ({ studio_session, ...params }, extra) => call("save_animation", studio_session, params, extra.signal),
 	);
 
 	server.registerTool(
@@ -199,12 +203,12 @@ export function createAdapter(options: AdapterOptions): McpServer {
 			description:
 				"Remove a working copy that is no longer needed. Saved clips are not affected. One Studio undo brings the working copy back.",
 			inputSchema: {
-				session_id: sessionId,
+				studio_session: studioSession,
 				clip_id: clipId,
 				expected_revision: z.string().describe("Revision from the last read or edit of this clip."),
 			},
 		},
-		async ({ session_id, ...params }, extra) => call("discard_animation", session_id, params, extra.signal),
+		async ({ studio_session, ...params }, extra) => call("discard_animation", studio_session, params, extra.signal),
 	);
 
 	server.registerTool(
@@ -213,7 +217,7 @@ export function createAdapter(options: AdapterOptions): McpServer {
 			description:
 				"Sample a working copy at an exact time and report the joint transforms. The clip is evaluated on a disposable copy of the rig; the rig itself and the camera are never moved. To see the pose, pass render: true: the result then includes a schematic picture drawn from the sampled joint positions, with each part as a box, the rig's left side blue and its right side orange, and a dark mark on the front of the head. It shows the pose, not the rig's real appearance, and is not a Studio screenshot. Studio screenshots (capture: true) are off by default and return capture.status \"unavailable\" with the reason; they are possible only in a test fixture after a person in Studio has approved the scene and camera.",
 			inputSchema: {
-				session_id: sessionId,
+				studio_session: studioSession,
 				clip_id: clipId,
 				time: z.number().finite().min(0).max(300),
 				render: z.boolean().optional().describe("Include a schematic picture of the pose, drawn from the sampled joint positions."),
@@ -227,10 +231,16 @@ export function createAdapter(options: AdapterOptions): McpServer {
 				capture: z.boolean().optional().describe("Ask for a Studio screenshot. Off unless approved in Studio; see the tool description."),
 				max_edge: z.number().int().min(64).max(1536).optional().describe("Longest edge of the screenshot in pixels. Default 768."),
 				joints: z.array(z.string()).max(32).optional().describe("Joints to sample. Default: none."),
+				check_placement: z
+					.boolean()
+					.optional()
+					.describe(
+						"A check on Studio itself, not needed for animating. Also compare where Studio put each part of the disposable copy with where the joint transforms say it should be. The result then includes placement: the number of parts compared, the largest difference in studs and in degrees, and the part it was on.",
+					),
 			},
 			annotations: { readOnlyHint: true },
 		},
-		async ({ session_id, ...params }, extra) => call("preview_animation", session_id, params, extra.signal, 60_000),
+		async ({ studio_session, ...params }, extra) => call("preview_animation", studio_session, params, extra.signal, 60_000),
 	);
 
 	return server;

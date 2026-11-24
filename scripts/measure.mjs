@@ -10,6 +10,7 @@
 //
 // Usage: node scripts/measure.mjs --place-id <id> [--rounds 10000]
 
+import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -46,6 +47,153 @@ export function largestDifference(first, second) {
 	return { degrees, studs, compared };
 }
 
+/**
+ * The largest difference between two sets of parts, each as { name, cframe } with the
+ * twelve numbers of a CFrame: position in studs, and the turn between their rotations in
+ * degrees. Parts are matched by name.
+ */
+export function largestPartDifference(first, second) {
+	const others = new Map(second.map((part) => [part.name, part.cframe]));
+	let degrees = 0;
+	let studs = 0;
+	let compared = 0;
+	for (const { name, cframe } of first) {
+		const other = others.get(name);
+		if (!other) continue;
+		compared += 1;
+		studs = Math.max(studs, Math.hypot(cframe[0] - other[0], cframe[1] - other[1], cframe[2] - other[2]));
+		// The size of the difference between two rotations gives the angle between them.
+		// (The usual formula, from the trace, magnifies the rounding in these numbers into
+		// half a degree when the angle is small.)
+		let squares = 0;
+		for (let index = 3; index < 12; index += 1) squares += (cframe[index] - other[index]) ** 2;
+		degrees = Math.max(degrees, (2 * Math.asin(Math.min(1, Math.sqrt(squares / 8))) * 180) / Math.PI);
+	}
+	return { degrees, studs, compared };
+}
+
+/** The rotation the large clip gives one joint at one keyframe: one axis, well inside a quarter turn. */
+export function largeRotation(keyframe, joint) {
+	const rotation = [0, 0, 0];
+	rotation[joint % 3] = ((keyframe * 7 + joint * 13) % 160) - 80 + 0.25;
+	return rotation;
+}
+
+// --- Studio's own numbers, recovered from a fingerprint -------------------------------
+//
+// No tool returns the numbers of a CFrame as Studio holds them. A clip's fingerprint,
+// though, is a hash of those numbers written to nine digits. So for a clip with one pose,
+// the numbers can be found: start from the true value of each, try the few nearest
+// single-precision values, and stop when the hash is the one Studio reported. A match
+// means those are Studio's numbers, digit for digit.
+
+/** A number as Luau's string.format("%.9g") writes it. */
+export function nineDigits(value) {
+	if (value === 0) return Object.is(value, -0) ? "-0" : "0";
+	const [mantissa, exponent] = value.toExponential(8).split("e");
+	const power = Number(exponent);
+	if (power < -4 || power >= 9) {
+		const digits = mantissa.includes(".") ? mantissa.replace(/\.?0+$/, "") : mantissa;
+		return `${digits}e${power < 0 ? "-" : "+"}${String(Math.abs(power)).padStart(2, "0")}`;
+	}
+	return Number(value.toPrecision(9)).toString();
+}
+
+const multiply = (a, b) => a.map((_, index) => a[Math.floor(index / 3) * 3] * b[index % 3] + a[Math.floor(index / 3) * 3 + 1] * b[3 + (index % 3)] + a[Math.floor(index / 3) * 3 + 2] * b[6 + (index % 3)]);
+
+/**
+ * The nine numbers of the rotation for Euler angles in degrees, applied in X, Y, Z order,
+ * as the plugin builds it: degrees to radians, radians to single precision, then exact.
+ */
+export function eulerRotation([x, y, z]) {
+	const [a, b, c] = [x, y, z].map((degrees) => Math.fround((degrees * Math.PI) / 180));
+	const aboutX = [1, 0, 0, 0, Math.cos(a), -Math.sin(a), 0, Math.sin(a), Math.cos(a)];
+	const aboutY = [Math.cos(b), 0, Math.sin(b), 0, 1, 0, -Math.sin(b), 0, Math.cos(b)];
+	const aboutZ = [Math.cos(c), -Math.sin(c), 0, Math.sin(c), Math.cos(c), 0, 0, 0, 1];
+	return multiply(multiply(aboutX, aboutY), aboutZ);
+}
+
+/** The rotation a list of rotations gives when each is applied on top of the one before. */
+export function composedRotation(rotations) {
+	return rotations.map(eulerRotation).reduce(multiply);
+}
+
+const single = new Float32Array(1);
+const bits = new Int32Array(single.buffer);
+/** The single-precision value the given number of steps away from the nearest one to `value`. */
+function stepped(value, steps) {
+	single[0] = value;
+	bits[0] += single[0] < 0 ? -steps : steps;
+	return single[0];
+}
+
+const HEAD_PATHS = ["/HumanoidRootPart", "/HumanoidRootPart/LowerTorso", "/HumanoidRootPart/LowerTorso/UpperTorso"];
+const EASING = "|Enum.PoseEasingStyle.Linear|Enum.PoseEasingDirection.In";
+
+/**
+ * The fingerprint of a blank working copy given one pose for the head at one second: the
+ * twelve numbers of that pose's CFrame, each already as text. Follows plugin/src/Digest.luau.
+ */
+export function headPoseFingerprint(numbers) {
+	const lines = [
+		"1|keyframe",
+		`1|pose|${HEAD_PATHS[2]}/Head|${numbers.join(",")}|1${EASING}`,
+		...HEAD_PATHS.map((path) => `1|pose|${path}|0,0,0,1,0,0,0,1,0,0,0,1|0${EASING}`),
+		"loop|false",
+		"priority|Enum.AnimationPriority.Action",
+	];
+	lines.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+	return createHash("sha256").update(lines.join("\n")).digest("hex");
+}
+
+/**
+ * Studio's twelve numbers for a head pose whose fingerprint is known, or undefined when
+ * none within `reach` single-precision steps of the true rotation gives that fingerprint.
+ * The position must be exact in single precision; the rotation is what is searched.
+ */
+export function recoverPose(fingerprint, position, rotation, reach = 2) {
+	const fixed = position.map((value) => nineDigits(Math.fround(value)));
+	for (let radius = 0; radius <= reach; radius += 1) {
+		// A rotation number that is exactly 0 or 1 is taken as it is; the rest may be off by a few steps.
+		const choices = rotation.map((value) => {
+			if (value === 0 || Math.abs(value) === 1) return [value];
+			const near = [];
+			for (let step = -radius; step <= radius; step += 1) near.push(stepped(value, step));
+			return near;
+		});
+		const texts = choices.map((list) => list.map(nineDigits));
+		const pick = new Array(9).fill(0);
+		for (;;) {
+			if (headPoseFingerprint([...fixed, ...pick.map((chosen, index) => texts[index][chosen])]) === fingerprint) {
+				return [...position.map(Math.fround), ...pick.map((chosen, index) => choices[index][chosen])];
+			}
+			let place = 0;
+			while (place < 9 && pick[place] === choices[place].length - 1) pick[place++] = 0;
+			if (place === 9) break;
+			pick[place] += 1;
+		}
+	}
+	return undefined;
+}
+
+/**
+ * The fixed set of poses whose numbers are compared between Studio and Lune (E10). Each is
+ * a list of steps for the head at one second; a step after the first is applied on top of
+ * the pose so far. Positions are exact in single precision.
+ */
+export const VECTORS = [
+	{ name: "about Y", steps: [{ rotation: [0, 30, 0] }] },
+	{ name: "about X", steps: [{ rotation: [45, 0, 0] }] },
+	{ name: "about Z, negative", steps: [{ rotation: [0, 0, -60] }] },
+	{ name: "a quarter turn", steps: [{ rotation: [90, 0, 0] }] },
+	{ name: "three axes", steps: [{ rotation: [10, 20, 30] }] },
+	{ name: "three axes with an offset", steps: [{ rotation: [-75, 40, 115], position: [0.5, -1.25, 2] }] },
+	{ name: "uneven angles with an offset", steps: [{ rotation: [123.4, -56.7, 89.1], position: [0.125, 0.25, -0.5] }] },
+	{ name: "very small angles", steps: [{ rotation: [0.01, 0.02, 0.03] }] },
+	{ name: "one turn on top of another", steps: [{ rotation: [0, 30, 0] }, { rotation: [0, 30, 0] }] },
+	{ name: "three axes on top of three axes", steps: [{ rotation: [10, 20, 30] }, { rotation: [-40, 15, 70] }] },
+];
+
 /** Turns a measured value into a result line with a verdict against its limit. */
 export function judge(id, question, measured, limit, unit, detail = "") {
 	const passed = typeof measured === "number" && Number.isFinite(measured) && measured <= limit;
@@ -73,6 +221,16 @@ function parseArguments(argv) {
 // it is uniform, with turns about one axis per joint so that angles compare cleanly.
 const JOINTS = ["Head", "UpperTorso", "RightUpperArm", "RightLowerArm", "LeftUpperLeg", "LeftLowerLeg"];
 const TIMES = [0, 0.5, 1];
+// Every driven part of an R15 character.
+const R15 = [
+	"Head", "UpperTorso", "LowerTorso",
+	"RightUpperArm", "RightLowerArm", "RightHand", "LeftUpperArm", "LeftLowerArm", "LeftHand",
+	"RightUpperLeg", "RightLowerLeg", "RightFoot", "LeftUpperLeg", "LeftLowerLeg", "LeftFoot",
+];
+const MEBIBYTE = 1024 * 1024;
+// Enough keyframes of all fifteen joints for the clip, read back whole, to pass 1 MiB.
+const LARGE_KEYFRAMES = 714;
+const LARGE_STEP = 0.25;
 function clipOperations() {
 	const operations = [];
 	TIMES.forEach((time, step) => {
@@ -166,7 +324,47 @@ async function main() {
 			}
 			const outOfOrder = (await Promise.all(pending)).filter((ok) => !ok).length;
 			results.push(judge("E1", `${chain} dependent edits sent at once are applied in the order sent`, outOfOrder, 0, "refused"));
-			results.push(skipped("E1", "A 1 MiB message, reconnection after a broker restart, and two Studio windows", "Not measured by this script."));
+
+			// A message of more than 1 MiB in each direction. From Studio: a clip large enough
+			// that reading it whole is over 1 MiB, checked pose by pose against what was
+			// written. To Studio: an edit carrying 1 MiB it has no use for, which must still
+			// be read and applied.
+			const large = await call("open_animation", { rig_id: main.rig.rig_id, name: `Measure ${stamp} large` });
+			let largeRevision = large.revision;
+			const perBatch = Math.floor(256 / R15.length);
+			for (let first = 0; first < LARGE_KEYFRAMES; first += perBatch) {
+				const operations = [];
+				for (let keyframe = first; keyframe < Math.min(LARGE_KEYFRAMES, first + perBatch); keyframe += 1) {
+					R15.forEach((joint, index) => operations.push({ type: "set_pose", joint, time: keyframe * LARGE_STEP, rotation: largeRotation(keyframe, index) }));
+				}
+				largeRevision = (await call("edit_animation", { clip_id: large.clip_id, expected_revision: largeRevision, operations }, 60000)).revision;
+			}
+			const whole = await call("read_animation", { clip_id: large.clip_id, joints: R15 }, 120000);
+			const received = Buffer.byteLength(JSON.stringify(whole));
+			let damaged = whole.poses.length === LARGE_KEYFRAMES * R15.length ? 0 : 1;
+			for (const pose of whole.poses) {
+				const expected = largeRotation(Math.round(pose.time / LARGE_STEP), R15.indexOf(pose.joint));
+				if (expected.some((angle, axis) => angleBetween(angle, pose.rotation[axis]) > 0.01)) damaged += 1;
+			}
+			results.push(
+				judge("E1", "A message of over 1 MiB from Studio arrives intact", received >= MEBIBYTE ? damaged : Number.NaN, 0, "wrong poses", `${received} bytes, ${whole.poses.length} poses, each checked against what was written`),
+			);
+
+			const padding = "0123456789abcdef".repeat(MEBIBYTE / 16);
+			const padded = await call(
+				"edit_animation",
+				{ clip_id: scratch.clip_id, expected_revision: `r${number + chain}`, operations: [{ type: "set_pose", joint: "Head", time: 5, rotation: [0, 12, 0] }], padding },
+				60000,
+			).then(
+				() => true,
+				() => false,
+			);
+			const afterPadded = padded ? await call("read_animation", { clip_id: scratch.clip_id, joints: ["Head"], time_from: 5, time_to: 5 }) : { poses: [] };
+			const applied = afterPadded.poses.length === 1 && angleBetween(afterPadded.poses[0].rotation[1], 12) <= 0.01;
+			results.push(
+				judge("E1", "A request of over 1 MiB to Studio is read and its edit applied", applied ? 0 : 1, 0, "failed", `${Buffer.byteLength(padding)} bytes of padding beside one edit; the padding itself is not read back`),
+			);
+			results.push(skipped("E1", "Reconnection after a broker restart, and two Studio windows", "Not measured by this script. Both were checked by hand."));
 		}
 
 		// E4: the engine's values at keyframes, and repeatability.
@@ -201,20 +399,62 @@ async function main() {
 		if (clips.Motor6D && clips.AnimationConstraint) {
 			let degrees = 0;
 			let studs = 0;
+			// Parts, from each rig's own rest joints and the sampled transforms, relative to
+			// its root part. At time 0 the clip is the rest pose, so a difference there is
+			// a difference between the two rigs, not between the joint classes.
+			const parts = { degrees: 0, studs: 0, restDegrees: 0, restStuds: 0, compared: 0 };
 			for (let step = 0; step <= 10; step += 1) {
 				const time = step / 10;
 				const [motor, constraint] = await Promise.all(
-					[clips.Motor6D, clips.AnimationConstraint].map((clip) => call("preview_animation", { clip_id: clip.clipId, time, joints: JOINTS }, 60000)),
+					[clips.Motor6D, clips.AnimationConstraint].map((clip) => call("preview_animation", { clip_id: clip.clipId, time, joints: JOINTS, render: true }, 60000)),
 				);
 				const difference = largestDifference(motor.joints, constraint.joints);
 				degrees = Math.max(degrees, difference.degrees);
 				studs = Math.max(studs, difference.studs);
+				const placed = largestPartDifference(motor.pose.parts, constraint.pose.parts);
+				parts.compared = placed.compared;
+				parts.degrees = Math.max(parts.degrees, placed.degrees);
+				parts.studs = Math.max(parts.studs, placed.studs);
+				if (step === 0) [parts.restDegrees, parts.restStuds] = [placed.degrees, placed.studs];
 			}
 			results.push(judge("E3", "The same clip gives the same joint rotations on both joint classes, at 11 times", degrees, 0.01, "degrees"));
 			results.push(judge("E3", "The same clip gives the same joint positions on both joint classes", studs, 0.001, "studs"));
-			results.push(skipped("E3", "Part positions, reset, and joints with IsKinematic off", "Not measured by this script. The two rigs may also differ in size."));
+			const atRest = `${parts.compared} parts, worked out from the sampled joints and each rig's rest joints, in numbers rounded to four places, which alone allows about 0.008 degrees; at rest the two rigs differ by ${parts.restStuds.toFixed(6)} studs and ${parts.restDegrees.toFixed(6)} degrees`;
+			results.push(judge("E3", "The same clip turns parts the same way on both joint classes, at 11 times", parts.compared >= R15.length ? parts.degrees : Number.NaN, 0.01, "degrees", atRest));
+			if (parts.restStuds > 0.001) {
+				// Two different bodies: their parts cannot coincide, whatever joins them.
+				results.push(skipped("E3", "The same clip puts parts in the same place on both joint classes", `Not comparable here: the two rigs are different bodies, ${parts.restStuds.toFixed(4)} studs apart at rest and ${parts.studs.toFixed(4)} at most in the clip. Needs two rigs that differ only in joint class.`));
+			} else {
+				results.push(judge("E3", "The same clip puts parts in the same place on both joint classes", parts.studs, 0.001, "studs"));
+			}
+			results.push(skipped("E3", "Reset, and joints with IsKinematic off", "Not measured by this script. Previews run on a copy, so the rig itself is never moved."));
 		} else {
 			results.push(skipped("E3", "The two joint classes against each other", "The place needs one Motor6D rig and one AnimationConstraint rig."));
+		}
+
+		// E3, on each rig by itself: does Studio put each part where the joint's rest
+		// offsets and transform say? If it does on both joint classes, and the transforms
+		// are the same on both (measured above), two rigs with the same body would have
+		// their parts in the same place. This does not need the two rigs to be alike.
+		for (const jointClass of available) {
+			const worst = { studs: 0, degrees: 0, part: "", parts: 0, missing: false };
+			for (let step = 0; step <= 10; step += 1) {
+				const sampled = await call("preview_animation", { clip_id: clips[jointClass].clipId, time: step / 10, check_placement: true }, 60000);
+				if (!sampled.placement) {
+					worst.missing = true;
+					break;
+				}
+				worst.parts = sampled.placement.parts;
+				worst.degrees = Math.max(worst.degrees, sampled.placement.degrees);
+				if (sampled.placement.studs >= worst.studs) [worst.studs, worst.part] = [sampled.placement.studs, sampled.placement.worst ?? ""];
+			}
+			const question = `On the ${jointClass} rig, Studio puts each part where the joint transforms say, at 11 times`;
+			if (worst.missing) {
+				results.push(skipped("E3", question, "The plugin in Studio predates this check. Reinstall it and run again."));
+			} else {
+				results.push(judge("E3", `${question}: position`, worst.parts === R15.length ? worst.studs : Number.NaN, 0.001, "studs", `${worst.parts} parts, read from the parts of the disposable copy${worst.part ? `; largest on ${worst.part}` : ""}`));
+				results.push(judge("E3", `${question}: rotation`, worst.degrees, 0.01, "degrees"));
+			}
 		}
 
 		// E5: a round trip through saving and opening changes nothing.
@@ -303,6 +543,29 @@ async function main() {
 			);
 		}
 
+		// E10: Studio's numbers for a fixed set of poses, recovered from fingerprints, for
+		// the offline suite to compare with Lune's (plugin/test/vectors.luau).
+		const vectors = [];
+		{
+			let unrecovered = 0;
+			for (const vector of VECTORS) {
+				const opened = await call("open_animation", { rig_id: main.rig.rig_id, name: `Measure ${stamp} vector` });
+				let revision = opened.revision;
+				for (const [index, step] of vector.steps.entries()) {
+					const operation = { type: "set_pose", joint: "Head", time: 1, rotation: step.rotation, position: step.position ?? [0, 0, 0], relative: index > 0 };
+					revision = (await call("edit_animation", { clip_id: opened.clip_id, expected_revision: revision, operations: [operation] })).revision;
+				}
+				const { content_hash: fingerprint } = await call("read_animation", { clip_id: opened.clip_id, hash: true });
+				const position = vector.steps[0].position ?? [0, 0, 0];
+				const studio = recoverPose(fingerprint, position, composedRotation(vector.steps.map((step) => step.rotation)));
+				if (!studio) unrecovered += 1;
+				vectors.push({ ...vector, fingerprint, studio: studio ?? null });
+			}
+			results.push(
+				judge("E10", `Studio's exact numbers recovered for ${VECTORS.length} poses, from their fingerprints`, unrecovered, 0, "not recovered", "compare with Lune by copying the vectors file to plugin/test/studio-vectors.json and running plugin/test/vectors.luau"),
+			);
+		}
+
 		// Timings against the targets in the requirements, on this small clip.
 		{
 			const samples = 30;
@@ -372,7 +635,9 @@ async function main() {
 			const value = result.verdict === "skipped" ? "" : ` ${result.measured} ${result.unit} (limit ${result.limit})`;
 			process.stdout.write(`${result.verdict.toUpperCase().padEnd(7)} ${result.id.padEnd(6)} ${result.question}${value}${result.detail ? ` [${result.detail}]` : ""}\n`);
 		}
-		process.stdout.write(`\nWritten to ${file}\n`);
+		const vectorsFile = join(directory, `studio-vectors-${stamp}.json`);
+		writeFileSync(vectorsFile, `${JSON.stringify({ recorded_at: report.measured_at, joint: "Head", time: 1, vectors }, null, 2)}\n`);
+		process.stdout.write(`\nWritten to ${file}\nand ${vectorsFile}\n`);
 		return results.some((result) => result.verdict === "fail") ? 1 : 0;
 	} finally {
 		broker.close();

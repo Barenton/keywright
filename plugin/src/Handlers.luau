@@ -297,8 +297,10 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry)
 		-- A picture of the pose is drawn by the relay from where the parts are, which takes
 		-- the transform of every joint, not only the ones asked about.
 		local render = params.render == true
+		-- Checking where Studio put the parts also takes every joint.
+		local checkPlacement = params.check_placement == true
 		local sampledJoints = joints
-		if render then
+		if render or checkPlacement then
 			sampledJoints = {}
 			for _, name in Rig.R15_ORDER do
 				if scan.joints[name] then
@@ -322,6 +324,7 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry)
 			time = time,
 			joints = sampledJoints,
 			parent = workspace,
+			measure = checkPlacement,
 			-- A screenshot is taken only when the request asks for one, and then only if
 			-- the capture gate allows it. The camera is whatever a person has framed.
 			capture = if params.capture == true
@@ -353,6 +356,10 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry)
 		if render then
 			-- Positions relative to the rig's root part: nothing about the place is in them.
 			response.pose = { parts = Pose.parts(scan, preview.transforms, CFrame.new()) }
+		end
+		if checkPlacement and preview.placed then
+			-- How far Studio's own placement of the parts is from what the joints say.
+			response.placement = Pose.compare(Pose.place(scan, preview.transforms, CFrame.new()), preview.placed)
 		end
 		local captured = preview.capture
 		if captured then

@@ -1,7 +1,8 @@
 --!strict
 -- Prints the E10 CFrame vectors as computed by Lune's Roblox datatypes, as JSON.
--- The E10 parity check compares this output with the same vectors computed in Studio,
--- which needs a person in Studio and has not been done.
+-- These were meant to be compared with the same vectors computed in Studio by the probe,
+-- which was never run. The comparison with Studio is done another way, through the
+-- ordinary tools: see vectors.luau.
 
 local roblox = require("@lune/roblox") :: any
 local serde = require("@lune/serde")
