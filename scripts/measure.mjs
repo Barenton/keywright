@@ -339,7 +339,8 @@ async function main() {
 				}
 				largeRevision = (await call("edit_animation", { clip_id: large.clip_id, expected_revision: largeRevision, operations }, 60000)).revision;
 			}
-			const whole = await call("read_animation", { clip_id: large.clip_id, joints: R15 }, 120000);
+			// Asked for in one piece: by default the plugin returns poses a page at a time.
+			const whole = await call("read_animation", { clip_id: large.clip_id, joints: R15, limit: 20000 }, 120000);
 			const received = Buffer.byteLength(JSON.stringify(whole));
 			let damaged = whole.poses.length === LARGE_KEYFRAMES * R15.length ? 0 : 1;
 			for (const pose of whole.poses) {
@@ -564,6 +565,124 @@ async function main() {
 			results.push(
 				judge("E10", `Studio's exact numbers recovered for ${VECTORS.length} poses, from their fingerprints`, unrecovered, 0, "not recovered", "compare with Lune by copying the vectors file to plugin/test/studio-vectors.json and running plugin/test/vectors.luau"),
 			);
+		}
+
+		// Phase 1: every kind of edit, each checked by reading the clip back.
+		{
+			const failed = [];
+			const step = (name, passed) => {
+				if (!passed) failed.push(name);
+			};
+			const same = (list, expected) => list.length === expected.length && list.every((value, index) => Math.abs(value - expected[index]) < 0.0015);
+			let outdated = false;
+			try {
+				const opened = await call("open_animation", { rig_id: main.rig.rig_id, name: `Measure ${stamp} operations` });
+				const clipId = opened.clip_id;
+				let revision = opened.revision;
+				const edit = async (operations) => {
+					const result = await call("edit_animation", { clip_id: clipId, expected_revision: revision, operations });
+					revision = result.revision;
+					return result.changed;
+				};
+				const read = () => call("read_animation", { clip_id: clipId, joints: ["Head", "LeftUpperArm"], hash: true });
+				const headAt = (clip, time) => clip.poses.find((pose) => pose.joint === "Head" && Math.abs(pose.time - time) < 0.0015);
+				const turn = (clip, time) => headAt(clip, time)?.rotation[1];
+
+				await edit([
+					{ type: "set_pose", joint: "Head", time: 0, rotation: [0, 10, 0] },
+					{ type: "set_pose", joint: "Head", time: 1, rotation: [0, 20, 0], easing_style: "Bounce", easing_direction: "Out" },
+					{ type: "set_pose", joint: "Head", time: 2, rotation: [0, 30, 0] },
+					{ type: "set_pose", joint: "LeftUpperArm", time: 1, rotation: [0, 0, -45] },
+					{ type: "set_marker", time: 1, name: "Step", value: "left" },
+				]);
+				let clip = await read();
+				step("poses with easing", same(clip.keyframe_times, [0, 1, 2]) && headAt(clip, 1)?.easing_style === "Bounce" && headAt(clip, 1)?.easing_direction === "Out");
+				step("a marker", clip.markers.length === 1 && clip.markers[0].name === "Step" && clip.markers[0].value === "left");
+
+				// Reads come a page at a time, and rotations as quaternions on request.
+				const page = await call("read_animation", { clip_id: clipId, joints: ["Head"], rotation_format: "quaternion", limit: 2 });
+				const rest = await call("read_animation", { clip_id: clipId, joints: ["Head"], offset: page.next_offset, limit: 2, poses_only: true });
+				const halfTurn = (degrees) => [Math.sin((degrees * Math.PI) / 360), Math.cos((degrees * Math.PI) / 360)];
+				const second = page.poses?.[1]?.quaternion ?? [];
+				step("a read in two pages", page.poses?.length === 2 && page.poses_total === 3 && page.next_offset === 2 && rest.poses?.length === 1 && rest.next_offset === undefined && rest.name === undefined);
+				step("a rotation as a quaternion", page.poses?.[1]?.rotation === undefined && Math.abs(second[1] - halfTurn(20)[0]) < 1e-4 && Math.abs(second[3] - halfTurn(20)[1]) < 1e-4);
+				await edit([{ type: "set_pose", joint: "Head", time: 2, quaternion: [0, halfTurn(30)[0], 0, halfTurn(30)[1]] }]);
+				step("a pose set from a quaternion", angleBetween(turn(await read(), 2), 30) < 0.01);
+
+				await edit([{ type: "offset_pose", joint: "Head", time_from: 1, time_to: 2, rotation: [0, 5, 0] }]);
+				clip = await read();
+				step("an offset over a range", angleBetween(turn(clip, 0), 10) < 0.01 && angleBetween(turn(clip, 1), 25) < 0.01 && angleBetween(turn(clip, 2), 35) < 0.01);
+
+				await edit([{ type: "set_easing", joint: "Head", time_from: 0, time_to: 0, easing_style: "Elastic", easing_direction: "InOut" }]);
+				clip = await read();
+				step("easing over a range", headAt(clip, 0)?.easing_style === "Elastic" && headAt(clip, 0)?.easing_direction === "InOut" && headAt(clip, 2)?.easing_style === "Linear");
+
+				await edit([
+					{ type: "add_keyframe", time: 0.5 },
+					{ type: "duplicate_keyframe", time: 1, to: 3 },
+					{ type: "move_keyframe", time: 3, to: 2.5 },
+					{ type: "remove_keyframe", time: 0.5 },
+				]);
+				clip = await read();
+				step("keyframes added, duplicated, moved and removed", same(clip.keyframe_times, [0, 1, 2, 2.5]) && angleBetween(turn(clip, 2.5), 25) < 0.01 && clip.markers.length === 2);
+
+				await edit([{ type: "shift_time", time_from: 2, time_to: 2.5, offset: 1 }]);
+				step("a range shifted", same((await read()).keyframe_times, [0, 1, 3, 3.5]));
+				await edit([{ type: "scale_time", time_from: 0, time_to: 3.5, factor: 0.5 }]);
+				clip = await read();
+				step("a range scaled", same(clip.keyframe_times, [0, 0.5, 1.5, 1.75]) && Math.abs(clip.duration - 1.75) < 0.0015);
+
+				await edit([{ type: "set_properties", name: `Measure ${stamp} renamed`, loop: true, priority: "Movement" }]);
+				clip = await read();
+				step("the clip's settings", clip.name === `Measure ${stamp} renamed` && clip.loop === true && clip.priority === "Movement");
+
+				await edit([
+					{ type: "set_marker", time: 0.5, name: "Step", value: "right" },
+					{ type: "remove_marker", time: 1.75, name: "Step" },
+				]);
+				clip = await read();
+				step("a marker changed and one removed", clip.markers.length === 1 && clip.markers[0].value === "right");
+
+				await edit([{ type: "remove_pose", joint: "LeftUpperArm", time: 0.5 }]);
+				clip = await read();
+				// The arm was keyed at one keyframe, which was then duplicated: only the one named goes.
+				const armTimes = clip.poses.filter((pose) => pose.joint === "LeftUpperArm").map((pose) => pose.time);
+				step("a pose removed", same(armTimes, [1.75]) && headAt(clip, 0.5) !== undefined);
+
+				// A batch whose last operation cannot be done changes nothing at all.
+				const before = await read();
+				const refusal = await call("edit_animation", {
+					clip_id: clipId,
+					expected_revision: revision,
+					operations: [
+						{ type: "set_pose", joint: "Head", time: 0, rotation: [0, 99, 0] },
+						{ type: "remove_keyframe", time: 0 },
+						{ type: "move_keyframe", time: 0, to: 9 },
+					],
+				}).then(
+					() => null,
+					(error) => error,
+				);
+				const after = await read();
+				step("a batch that cannot finish is refused whole", refusal?.code === "INVALID_ARGUMENT" && /operations\[3\]/.test(refusal.message) && after.content_hash === before.content_hash && after.revision === before.revision);
+
+				const unknown = await call("edit_animation", { clip_id: clipId, expected_revision: revision, operations: [{ type: "explode" }] }).then(
+					() => null,
+					(error) => error,
+				);
+				step("an unknown operation is refused by the plugin", unknown?.code === "INVALID_ARGUMENT");
+
+				// The edited clip still plays: the engine gives the head's pose at a keyframe.
+				const sampled = await call("preview_animation", { clip_id: clipId, time: 0.5, joints: ["Head"] }, 60000);
+				step("the edited clip samples", angleBetween(sampled.joints.Head.rotation[1], 25) < 0.01);
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				// A plugin from before these operations knows only how to set a pose.
+				outdated = /unknown operation type/.test(message);
+				failed.push(`stopped: ${message}`);
+			}
+			const question = "Every kind of edit does what it says, read back from Studio: poses, offsets, easing, keyframes, retiming, settings, markers, quaternions, paged reads, and a refused batch";
+			results.push(outdated ? skipped("Edits", question, "The plugin in Studio predates these operations. Reinstall it and run again.") : judge("Edits", question, failed.length, 0, "failed steps", failed.join("; ")));
 		}
 
 		// Timings against the targets in the requirements, on this small clip.

@@ -41,33 +41,40 @@ local function transform(pose: any): string
 	return table.concat(components, ",")
 end
 
--- One line for everything in the clip that affects how it plays, in a fixed order.
+-- One line for everything in the clip, in a fixed order. Content this project does not
+-- understand (a NumberPose, a Folder, anything that is not a pose or a marker) gets a
+-- line too, with its class, name and value, so that losing or changing it shows.
 function Digest.lines(sequence: Instance): { string }
 	local lines = { `loop|{text(sequence, "Loop")}`, `priority|{text(sequence, "Priority")}` }
-	for _, keyframe: any in sequence:GetChildren() do
-		if not keyframe:IsA("Keyframe") then
-			continue
-		end
-		local time = number(keyframe.Time)
-		table.insert(lines, `{time}|keyframe`)
-		local function walk(instance: any, path: string)
-			for _, child in instance:GetChildren() do
-				local here = `{path}/{child.Name}`
-				if child:IsA("Pose") then
-					table.insert(
-						lines,
-						`{time}|pose|{here}|{transform(child)}|{text(child, "Weight")}|{text(child, "EasingStyle")}|{text(
-							child,
-							"EasingDirection"
-						)}`
-					)
-					walk(child, here)
-				elseif child:IsA("KeyframeMarker") then
-					table.insert(lines, `{time}|marker|{here}|{text(child, "Value")}`)
-				end
+	local function walk(instance: any, time: string, path: string)
+		for _, child in instance:GetChildren() do
+			local here = `{path}/{child.Name}`
+			if child:IsA("Pose") then
+				table.insert(
+					lines,
+					`{time}|pose|{here}|{transform(child)}|{text(child, "Weight")}|{text(child, "EasingStyle")}|{text(
+						child,
+						"EasingDirection"
+					)}`
+				)
+			elseif child:IsA("KeyframeMarker") then
+				table.insert(lines, `{time}|marker|{here}|{text(child, "Value")}`)
+			else
+				table.insert(lines, `{time}|other|{here}|{child.ClassName}|{text(child, "Value")}`)
 			end
+			walk(child, time, here)
 		end
-		walk(keyframe, "")
+	end
+	for _, child: any in sequence:GetChildren() do
+		if child:IsA("Keyframe") then
+			local time = number(child.Time)
+			table.insert(lines, `{time}|keyframe`)
+			walk(child, time, "")
+		else
+			-- Not a keyframe: kept by every edit, and so part of what the clip is.
+			table.insert(lines, `clip|other|/{child.Name}|{child.ClassName}|{text(child, "Value")}`)
+			walk(child, "clip", `/{child.Name}`)
+		end
 	end
 	table.sort(lines)
 	return lines

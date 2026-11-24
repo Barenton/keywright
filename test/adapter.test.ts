@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { after, before, describe, test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { Broker } from "../src/broker.js";
@@ -19,6 +21,7 @@ describe("MCP adapter over stdio", () => {
 	let plugin: FakePlugin;
 	let mcp: Client;
 	let revision = 1;
+	let bigRevision = 3;
 
 	before(async () => {
 		const port = await freePort();
@@ -47,6 +50,20 @@ describe("MCP adapter over stdio", () => {
 			if (method === "open_animation" && input.rig_id === "rig_leaky") {
 				// A plugin that tries to pass an image along in the text of an error.
 				throw new PluginError({ code: "UNSUPPORTED_RIG", message: `see ${PNG}`, hint: `data:image/png;base64,${PNG}` });
+			}
+			if (method === "read_animation" && input.clip_id === "clip_big") {
+				// A clip of 900 poses, returned a page at a time as the plugin does.
+				const offset = Number(input.offset ?? 0);
+				const poses = Array.from({ length: Math.min(Number(input.limit ?? 400), 900 - offset) }, (_, index) => ({
+					joint: "Head",
+					time: (offset + index) / 10,
+					position: [0, 0, 0],
+					rotation: [0, offset + index, 0],
+					easing_style: "Linear",
+					easing_direction: "In",
+				}));
+				const summary = input.poses_only === true ? {} : { name: "Big", keyframe_times: [0, 1], markers: [] };
+				return { ...summary, clip_id: "clip_big", revision: `r${bigRevision}`, poses, poses_total: 900 };
 			}
 			if (method === "preview_animation") {
 				// This plugin always sends an image, asked or not, so the relay's checks are what is tested.
@@ -112,6 +129,57 @@ describe("MCP adapter over stdio", () => {
 		for (const tool of tools) assert.equal(tool.inputSchema.type, "object");
 	});
 
+	test("edit_animation publishes the same operations the plugin applies", async () => {
+		const { tools } = await mcp.listTools();
+		const edit = tools.find((tool) => tool.name === "edit_animation");
+		const schema = edit?.inputSchema.properties as { operations?: { items?: { oneOf?: unknown[]; anyOf?: unknown[] } } } | undefined;
+		const variants = (schema?.operations?.items?.oneOf ?? schema?.operations?.items?.anyOf ?? []) as Array<{ properties: { type: { const: string } } }>;
+		const published = variants.map((variant) => variant.properties.type.const).sort();
+		// The plugin's own list: the names its checks are keyed by.
+		const source = readFileSync(fileURLToPath(new URL("../../plugin/src/Operations.luau", import.meta.url)), "utf8");
+		const checks = source.slice(source.indexOf("local checks:"), source.indexOf("-- The names of every operation"));
+		const applied = [...checks.matchAll(/^\t(\w+) = function/gm)].map((match) => match[1] as string).sort();
+		assert.equal(applied.length, 14);
+		assert.deepEqual(published, applied);
+		// The reversed easing directions are spelt out where a client will read them.
+		assert.match(JSON.stringify(edit?.inputSchema), /In starts fast and ends slow/);
+	});
+
+	test("edit_animation refuses an operation it does not publish, before Studio hears of it", async () => {
+		const before = plugin.received.length;
+		const start = revision;
+		const refused = await mcp.callTool({
+			name: "edit_animation",
+			arguments: { studio_session: SESSION, clip_id: "clip_1", expected_revision: `r${start}`, operations: [{ type: "explode", time: 0 }] },
+		});
+		assert.equal(refused.isError, true);
+		const cubic = await mcp.callTool({
+			name: "edit_animation",
+			arguments: {
+				studio_session: SESSION,
+				clip_id: "clip_1",
+				expected_revision: `r${revision}`,
+				operations: [{ type: "set_easing", joint: "Head", time_from: 0, time_to: 1, easing_style: "Cubic" }],
+			},
+		});
+		assert.equal(cubic.isError, true);
+		assert.equal(plugin.received.length, before);
+		// Operations it does publish go through, several kinds in one batch.
+		const accepted = await callTool("edit_animation", {
+			studio_session: SESSION,
+			clip_id: "clip_1",
+			expected_revision: `r${revision}`,
+			operations: [
+				{ type: "scale_time", time_from: 0, time_to: 1, factor: 2 },
+				{ type: "set_marker", time: 1, name: "Step" },
+				{ type: "set_properties", loop: true },
+			],
+		});
+		assert.equal(accepted.isError, false);
+		assert.equal(accepted.json.revision, `r${start + 1}`);
+		assert.equal(plugin.received.length, before + 1);
+	});
+
 	test("get_workspace merges broker sessions with each session's workspace", async () => {
 		const { json, isError } = await callTool("get_workspace", {});
 		assert.equal(isError, false);
@@ -133,10 +201,11 @@ describe("MCP adapter over stdio", () => {
 				expected_revision: expected,
 				operations: [{ type: "set_pose", joint: "RightUpperArm", time: 0.5, rotation: [0, 0, 90] }],
 			});
-		const first = await edit("r1");
+		const start = revision;
+		const first = await edit(`r${start}`);
 		assert.equal(first.isError, false);
-		assert.equal(first.json.revision, "r2");
-		const stale = await edit("r1");
+		assert.equal(first.json.revision, `r${start + 1}`);
+		const stale = await edit(`r${start}`);
 		assert.equal(stale.isError, true);
 		assert.equal(stale.json.error.code, "REVISION_CONFLICT");
 		assert.equal(stale.json.error.hint, "Read the clip again and retry.");
@@ -204,6 +273,42 @@ describe("MCP adapter over stdio", () => {
 		await new Promise((resolve) => setTimeout(resolve, 350));
 		const { json } = await callTool("read_animation", { studio_session: SESSION, clip_id: "clip_1" });
 		assert.equal(json.method, "read_animation");
+	});
+
+	test("a long read comes in parts that join up, each within the size asked for", async () => {
+		const read = (extra: Record<string, unknown>) => callTool("read_animation", { studio_session: SESSION, clip_id: "clip_big", joints: ["Head"], ...extra });
+		const first = await read({});
+		assert.equal(first.isError, false);
+		assert.equal(first.json.name, "Big");
+		assert.ok(Buffer.byteLength(first.content[0]?.text ?? "") <= 16384);
+		assert.ok(first.json.poses.length > 0 && first.json.poses.length < 900);
+
+		const seen: number[] = first.json.poses.map((pose: { rotation: number[] }) => pose.rotation[1]);
+		let cursor: string | undefined = first.json.next_cursor;
+		let pages = 1;
+		while (cursor !== undefined) {
+			const next = await read({ cursor, max_bytes: 8192 });
+			assert.equal(next.isError, false);
+			assert.ok(Buffer.byteLength(next.content[0]?.text ?? "") <= 8192);
+			// Later parts carry the poses and not the summary again.
+			assert.equal(next.json.name, undefined);
+			seen.push(...next.json.poses.map((pose: { rotation: number[] }) => pose.rotation[1]));
+			cursor = next.json.next_cursor;
+			pages += 1;
+			assert.ok(pages < 100);
+		}
+		assert.deepEqual(seen, Array.from({ length: 900 }, (_, index) => index));
+
+		// A cursor from before the clip changed is refused, not answered with the wrong part.
+		const stale = first.json.next_cursor as string;
+		bigRevision += 1;
+		const refused = await read({ cursor: stale });
+		assert.equal(refused.isError, true);
+		assert.equal(refused.json.error.code, "INVALID_ARGUMENT");
+		assert.match(refused.json.error.message, /changed since this cursor/);
+		const invented = await read({ cursor: "page 2" });
+		assert.equal(invented.isError, true);
+		assert.equal(invented.json.error.code, "INVALID_ARGUMENT");
 	});
 
 	test("an image carried in an error message never reaches the client", async () => {

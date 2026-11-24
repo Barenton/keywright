@@ -18,17 +18,115 @@ const studioSession = z.string().describe("Which Studio window to act in: a sess
 const clipId = z.string().describe("Working copy id from open_animation or get_workspace.");
 const vec3 = z.array(z.number().finite()).length(3);
 
-const setPose = z.object({
-	type: z.literal("set_pose"),
-	joint: z.string().describe("Name of the driven part, for example RightUpperArm."),
-	time: z.number().finite().min(0).max(300).describe("Keyframe time in seconds. The keyframe is created if absent."),
-	position: vec3.optional().describe("Joint-local offset from the rest pose, in studs."),
-	rotation: vec3.optional().describe("Joint-local rotation as Euler angles in degrees, applied in X, Y, Z order."),
-	relative: z.boolean().optional().describe("Apply on top of the existing pose instead of replacing it."),
-});
-const restoreSource = z.object({
-	type: z.literal("restore_source").describe("Reset the working copy to the clip it was opened from."),
-});
+const time = (what: string) => z.number().finite().min(0).max(300).describe(what);
+const joint = z.string().describe("Name of the driven part, for example RightUpperArm.");
+const position = vec3.optional().describe("Joint-local offset from the rest pose, in studs.");
+const rotation = vec3.optional().describe("Joint-local rotation as Euler angles in degrees, applied in X, Y, Z order.");
+const quaternion = z
+	.array(z.number().finite())
+	.length(4)
+	.optional()
+	.describe("Joint-local rotation as a quaternion (x, y, z, w) of length 1, in place of rotation.");
+const rangeFrom = time("Start of the time range in seconds. Keyframes at the ends are included.");
+const rangeTo = time("End of the time range in seconds.");
+// Roblox names its easing directions the other way round from most other tools.
+const easingStyle = z
+	.enum(["Linear", "Constant", "Elastic", "CubicV2", "Bounce"])
+	.optional()
+	.describe("How the pose is approached from the keyframe before it. The deprecated Cubic style is kept where a clip has it but cannot be set.");
+const easingDirection = z
+	.enum(["In", "Out", "InOut"])
+	.optional()
+	.describe("Roblox reverses these relative to most other tools: In starts fast and ends slow, Out starts slow and ends fast.");
+const markerName = z.string().min(1).max(100);
+
+// Every operation of edit_animation. A batch applies them in the order given.
+const operations = [
+	z.object({
+		type: z.literal("set_pose").describe("Set a joint's pose at a time. The keyframe is created if there is none within a millisecond."),
+		joint,
+		time: time("Keyframe time in seconds."),
+		position,
+		rotation,
+		quaternion,
+		relative: z.boolean().optional().describe("Apply on top of the existing pose instead of replacing it."),
+		easing_style: easingStyle,
+		easing_direction: easingDirection,
+	}),
+	z.object({
+		type: z.literal("remove_pose").describe("Remove a joint's pose from a keyframe, so that the joint is no longer keyed there."),
+		joint,
+		time: time("Time of the keyframe in seconds."),
+	}),
+	z.object({
+		type: z.literal("offset_pose").describe("Apply an offset on top of every existing pose of a joint in a time range."),
+		joint,
+		time_from: rangeFrom,
+		time_to: rangeTo,
+		position,
+		rotation,
+		quaternion,
+	}),
+	z.object({
+		type: z.literal("set_easing").describe("Set the easing of every existing pose of a joint in a time range."),
+		joint,
+		time_from: rangeFrom,
+		time_to: rangeTo,
+		easing_style: easingStyle,
+		easing_direction: easingDirection,
+	}),
+	z.object({
+		type: z.literal("add_keyframe").describe("Add an empty keyframe. Refused if there is one within a millisecond."),
+		time: time("Time of the new keyframe in seconds."),
+	}),
+	z.object({
+		type: z.literal("remove_keyframe").describe("Remove a keyframe with everything in it."),
+		time: time("Time of the keyframe in seconds."),
+	}),
+	z.object({
+		type: z.literal("move_keyframe").describe("Move one keyframe to another time. Refused if a keyframe is already there."),
+		time: time("Time of the keyframe in seconds."),
+		to: time("Its new time in seconds."),
+	}),
+	z.object({
+		type: z.literal("duplicate_keyframe").describe("Copy a keyframe, with its poses and markers, to another time. Refused if a keyframe is already there."),
+		time: time("Time of the keyframe to copy, in seconds."),
+		to: time("Time of the copy in seconds."),
+	}),
+	z.object({
+		type: z.literal("shift_time").describe("Move every keyframe in a time range by the same amount. Refused if one would land on or pass a keyframe outside the range."),
+		time_from: rangeFrom,
+		time_to: rangeTo,
+		offset: z.number().finite().describe("Seconds to move by; negative moves earlier."),
+	}),
+	z.object({
+		type: z.literal("scale_time").describe("Stretch or squeeze the keyframes in a time range. Refused if one would land on or pass a keyframe outside the range."),
+		time_from: rangeFrom,
+		time_to: rangeTo,
+		factor: z.number().min(0.01).max(100).describe("2 makes the range twice as long, 0.5 half as long."),
+		anchor: time("The time that stays where it is. Default: time_from.").optional(),
+	}),
+	z.object({
+		type: z.literal("set_properties").describe("Change the clip's own settings. Give at least one."),
+		name: z.string().min(1).max(100).optional(),
+		loop: z.boolean().optional(),
+		priority: z.enum(["Idle", "Movement", "Action", "Action2", "Action3", "Action4", "Core"]).optional(),
+	}),
+	z.object({
+		type: z.literal("set_marker").describe("Add a marker to the keyframe at a time, or change its value. The keyframe is created if absent."),
+		time: time("Time of the keyframe in seconds."),
+		name: markerName,
+		value: z.string().max(200).optional().describe("Default: empty."),
+	}),
+	z.object({
+		type: z.literal("remove_marker").describe("Remove a marker from the keyframe at a time."),
+		time: time("Time of the keyframe in seconds."),
+		name: markerName,
+	}),
+	z.object({
+		type: z.literal("restore_source").describe("Reset the working copy to the clip it was opened from."),
+	}),
+] as const;
 
 // A result is text, plus at most two images, both only for a preview. One is the picture
 // of the pose that the relay draws itself from the sampled joint positions. The other is a
@@ -56,6 +154,50 @@ function fail(error: unknown): CallToolResult {
 			: { code: "INTERNAL", message: error instanceof Error ? error.message : String(error) };
 	// Errors are passed on as text, so they get the same screening as any other text.
 	return { isError: true, content: [{ type: "text", text: JSON.stringify({ error: scrub(wire).value }) }] };
+}
+
+// How much text one read may return, in bytes of JSON.
+export const DEFAULT_READ_BYTES = 16 * 1024;
+export const MAX_READ_BYTES = 64 * 1024;
+
+/**
+ * Cuts a read of a clip down to a number of bytes. Poses are dropped from the end first,
+ * and a cursor says where the next read should carry on. If the summary alone is too
+ * long, its lists of markers and keyframe times are shortened and marked as such.
+ */
+export function boundRead(result: Record<string, unknown>, offset: number, budget: number): Record<string, unknown> {
+	const bounded: Record<string, unknown> = { ...result };
+	delete bounded.next_offset;
+	const size = () => Buffer.byteLength(JSON.stringify(bounded));
+	const poses = Array.isArray(result.poses) ? (result.poses as unknown[]) : undefined;
+	const total = typeof result.poses_total === "number" ? result.poses_total : (poses?.length ?? 0);
+	const withPoses = (count: number) => {
+		if (!poses) return;
+		bounded.poses = poses.slice(0, count);
+		if (offset + count < total) bounded.next_cursor = `${String(result.revision)}:${offset + count}`;
+		else delete bounded.next_cursor;
+	};
+	withPoses(poses?.length ?? 0);
+	if (poses && size() > budget) {
+		// The largest number of poses that fits, and at least one so that a read always moves on.
+		let low = 1;
+		let high = poses.length;
+		while (low < high) {
+			const middle = Math.ceil((low + high) / 2);
+			withPoses(middle);
+			if (size() <= budget) low = middle;
+			else high = middle - 1;
+		}
+		withPoses(low);
+	}
+	for (const list of ["markers", "keyframe_times"]) {
+		while (size() > budget && Array.isArray(bounded[list]) && (bounded[list] as unknown[]).length > 0) {
+			const entries = bounded[list] as unknown[];
+			bounded[list] = entries.slice(0, Math.floor(entries.length / 2));
+			bounded[`${list}_truncated`] = true;
+		}
+	}
+	return bounded;
 }
 
 export interface AdapterOptions {
@@ -150,13 +292,22 @@ export function createAdapter(options: AdapterOptions): McpServer {
 		"read_animation",
 		{
 			description:
-				"Read a working copy. Returns a summary (keyframe times, animated joints, revision). Pose values are returned only for the joints listed.",
+				"Read a working copy. Returns a summary: duration, keyframe times, animated joints, markers, settings, revision, and a count of any content Motion Bridge keeps but does not edit. Pose values are returned only for the joints listed, and only as many as fit; when there are more, next_cursor says so, and passing it back as cursor returns the next part.",
 			inputSchema: {
 				studio_session: studioSession,
 				clip_id: clipId,
-				joints: z.array(z.string()).max(32).optional(),
-				time_from: z.number().finite().min(0).optional(),
-				time_to: z.number().finite().min(0).optional(),
+				joints: z.array(z.string()).max(32).optional().describe("Joints whose poses to return. Default: none, only the summary."),
+				time_from: z.number().finite().min(0).optional().describe("Only keyframes from this time, in seconds."),
+				time_to: z.number().finite().min(0).optional().describe("Only keyframes up to this time, in seconds."),
+				rotation_format: z.enum(["euler", "quaternion"]).optional().describe("How pose rotations are returned. Default: Euler angles in degrees, X, Y, Z order."),
+				cursor: z.string().max(64).optional().describe("next_cursor from an earlier read of the same clip with the same joints and times. Returns the poses after it, without the summary."),
+				max_bytes: z
+					.number()
+					.int()
+					.min(1024)
+					.max(MAX_READ_BYTES)
+					.optional()
+					.describe(`Most text to return, in bytes. Default ${DEFAULT_READ_BYTES}.`),
 				hash: z
 					.boolean()
 					.optional()
@@ -164,19 +315,35 @@ export function createAdapter(options: AdapterOptions): McpServer {
 			},
 			annotations: { readOnlyHint: true },
 		},
-		async ({ studio_session, ...params }, extra) => call("read_animation", studio_session, params, extra.signal),
+		async ({ studio_session, cursor, max_bytes, ...params }, extra) => {
+			try {
+				const budget = max_bytes ?? DEFAULT_READ_BYTES;
+				const from = cursor === undefined ? undefined : /^(r\d+):(\d+)$/.exec(cursor);
+				if (from === null) throw new BridgeError("INVALID_ARGUMENT", "cursor is not one that read_animation gave.", "Read again without a cursor.");
+				const offset = from ? Number(from[2]) : 0;
+				// No more poses are asked of Studio than could possibly fit.
+				const request = { ...params, offset, limit: Math.max(1, Math.floor(budget / 80)), poses_only: from !== undefined };
+				const result = (await (await broker()).request("read_animation", request, studio_session, undefined, extra.signal)) as Record<string, unknown>;
+				if (from && result.revision !== from[1]) {
+					throw new BridgeError("INVALID_ARGUMENT", "The clip has changed since this cursor was given.", "Read again without a cursor.");
+				}
+				return ok("read_animation", params, boundRead(result, offset, budget));
+			} catch (error) {
+				return fail(error);
+			}
+		},
 	);
 
 	server.registerTool(
 		"edit_animation",
 		{
 			description:
-				"Apply a batch of operations to a working copy atomically. All operations are validated first; if any fails nothing changes. Requires the current revision. One Studio undo reverts the whole batch.",
+				"Apply a batch of operations to a working copy atomically: poses, easing, keyframes, retiming, markers and the clip's settings. The operations apply in the order given, each to the clip as the ones before it leave it. The whole batch is tried first; if any operation cannot be done, nothing changes and the error names it by its place in the list. Requires the current revision. One Studio undo reverts the whole batch. Only what an operation names is changed.",
 			inputSchema: {
 				studio_session: studioSession,
 				clip_id: clipId,
 				expected_revision: z.string().describe("Revision from the last read or edit of this clip."),
-				operations: z.array(z.discriminatedUnion("type", [setPose, restoreSource])).min(1).max(256),
+				operations: z.array(z.discriminatedUnion("type", operations)).min(1).max(256),
 			},
 		},
 		async ({ studio_session, ...params }, extra) => call("edit_animation", studio_session, params, extra.signal),

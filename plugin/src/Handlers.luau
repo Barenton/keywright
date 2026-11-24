@@ -14,6 +14,7 @@ local Edit = require("./Edit")
 local Errors = require("./Errors")
 local Pose = require("./Pose")
 local Preview = require("./Preview")
+local Reading = require("./Reading")
 local Recording = require("./Recording")
 local Rig = require("./Rig")
 local Saves = require("./Saves")
@@ -190,7 +191,32 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry)
 
 	methods.read_animation = function(params: any): any
 		local working = Clips.get(requireString(params, "clip_id"))
-		local result = Clips.read(working, params.joints, params.time_from, params.time_to)
+		local joints = params.joints
+		if joints ~= nil then
+			if type(joints) ~= "table" or #joints > Reading.MAX_JOINTS then
+				Errors.throw("LIMIT_EXCEEDED", `At most {Reading.MAX_JOINTS} joints can be read at once.`)
+			end
+			for _, name in joints do
+				if type(name) ~= "string" then
+					Errors.throw("INVALID_ARGUMENT", "joints must be a list of joint names.")
+				end
+			end
+		end
+		local function optionalNumber(value: any, field: string): number?
+			if value ~= nil and (type(value) ~= "number" or value ~= value or value < 0) then
+				Errors.throw("INVALID_ARGUMENT", `{field} must be a number that is not negative.`)
+			end
+			return value
+		end
+		local result = Clips.read(working, {
+			joints = joints,
+			timeFrom = optionalNumber(params.time_from, "time_from"),
+			timeTo = optionalNumber(params.time_to, "time_to"),
+			offset = optionalNumber(params.offset, "offset"),
+			limit = optionalNumber(params.limit, "limit"),
+			quaternion = params.rotation_format == "quaternion",
+			posesOnly = params.poses_only == true,
+		})
 		if params.hash == true then
 			-- Worked out only on request: it reads the whole clip.
 			result.content_hash = Digest.of(working.instance)

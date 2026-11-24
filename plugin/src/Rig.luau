@@ -3,6 +3,7 @@
 -- both are read through the same properties and neither is ever written here.
 
 local Errors = require("./Errors")
+local Roblox = require("./Roblox")
 
 local Rig = {}
 
@@ -60,10 +61,55 @@ function Rig.encode(cframe: CFrame): { position: { number }, rotation: { number 
 	}
 end
 
-function Rig.decode(position: { number }?, rotation: { number }?): CFrame
+-- A rotation as a quaternion (x, y, z, w) with w not negative, worked out from the
+-- rotation's nine numbers so that it is the same in Studio and in the offline tests.
+function Rig.quaternion(cframe: CFrame): { number }
+	local _, _, _, m00, m01, m02, m10, m11, m12, m20, m21, m22 = cframe:GetComponents()
+	local x, y, z, w
+	local trace = m00 + m11 + m22
+	if trace > 0 then
+		local s = math.sqrt(trace + 1) * 2
+		w, x, y, z = s / 4, (m21 - m12) / s, (m02 - m20) / s, (m10 - m01) / s
+	elseif m00 > m11 and m00 > m22 then
+		local s = math.sqrt(1 + m00 - m11 - m22) * 2
+		w, x, y, z = (m21 - m12) / s, s / 4, (m01 + m10) / s, (m02 + m20) / s
+	elseif m11 > m22 then
+		local s = math.sqrt(1 + m11 - m00 - m22) * 2
+		w, x, y, z = (m02 - m20) / s, (m01 + m10) / s, s / 4, (m12 + m21) / s
+	else
+		local s = math.sqrt(1 + m22 - m00 - m11) * 2
+		w, x, y, z = (m10 - m01) / s, (m02 + m20) / s, (m12 + m21) / s, s / 4
+	end
+	local sign = if w < 0 then -1 else 1
+	return { round(x * sign, 6), round(y * sign, 6), round(z * sign, 6), round(w * sign, 6) }
+end
+
+-- A transform from its wire form. The rotation is Euler angles in degrees, applied in
+-- X, Y, Z order, or a quaternion (x, y, z, w), which is brought to unit length.
+function Rig.decode(position: { number }?, rotation: { number }?, quaternion: { number }?): CFrame
 	local p = position or { 0, 0, 0 }
+	if quaternion then
+		local x, y, z, w = quaternion[1], quaternion[2], quaternion[3], quaternion[4]
+		local length = math.sqrt(x * x + y * y + z * z + w * w)
+		x, y, z, w = x / length, y / length, z / length, w / length
+		return Roblox.CFrame.new(
+			p[1],
+			p[2],
+			p[3],
+			1 - 2 * (y * y + z * z),
+			2 * (x * y - z * w),
+			2 * (x * z + y * w),
+			2 * (x * y + z * w),
+			1 - 2 * (x * x + z * z),
+			2 * (y * z - x * w),
+			2 * (x * z - y * w),
+			2 * (y * z + x * w),
+			1 - 2 * (x * x + y * y)
+		)
+	end
 	local r = rotation or { 0, 0, 0 }
-	return CFrame.new(p[1], p[2], p[3]) * CFrame.fromEulerAnglesXYZ(math.rad(r[1]), math.rad(r[2]), math.rad(r[3]))
+	return Roblox.CFrame.new(p[1], p[2], p[3])
+		* Roblox.CFrame.fromEulerAnglesXYZ(math.rad(r[1]), math.rad(r[2]), math.rad(r[3]))
 end
 
 local function jointParts(instance: Instance): (BasePart?, BasePart?)

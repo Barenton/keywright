@@ -7,14 +7,15 @@
 local ServerStorage = game:GetService("ServerStorage")
 
 local Errors = require("./Errors")
-local Rig = require("./Rig")
+local Operations = require("./Operations")
+local Reading = require("./Reading")
 local WorkingStore = require("./WorkingStore")
 
 local Clips = {}
 
 Clips.CONTAINER_NAME = "MotionBridge"
 Clips.WORKING_NAME = "WorkingCopies"
-Clips.TIME_TOLERANCE = 0.001
+Clips.TIME_TOLERANCE = Operations.TIME_TOLERANCE
 
 export type Working = {
 	id: string,
@@ -201,122 +202,19 @@ function Clips.mutate(working: Working, change: () -> (), finish: (ok: boolean) 
 	working.revision += 1
 end
 
-function Clips.sortedKeyframes(sequence: KeyframeSequence): { Keyframe }
-	local keyframes = {}
-	for _, child in sequence:GetChildren() do
-		if child:IsA("Keyframe") then
-			table.insert(keyframes, child)
-		end
-	end
-	table.sort(keyframes, function(a, b)
-		return a.Time < b.Time
-	end)
-	return keyframes
-end
+-- Reading a clip's keyframes and poses is the same whether or not it is a working copy.
+Clips.sortedKeyframes = Operations.keyframes
+Clips.findKeyframe = Operations.findKeyframe
+Clips.findPose = Operations.findPose
+Clips.ensurePose = Operations.ensurePose
 
-function Clips.findKeyframe(sequence: KeyframeSequence, time: number): Keyframe?
-	for _, child in sequence:GetChildren() do
-		if child:IsA("Keyframe") and math.abs(child.Time - time) < Clips.TIME_TOLERANCE then
-			return child
-		end
-	end
-	return nil
-end
-
-function Clips.findPose(keyframe: Keyframe, joint: string): Pose?
-	local found = keyframe:FindFirstChild(joint, true)
-	if found and found:IsA("Pose") then
-		return found
-	end
-	return nil
-end
-
--- Returns the pose for a joint, creating it and any missing ancestors. Poses nest in
--- rig order from the root part; ancestors created here carry no weight of their own.
-function Clips.ensurePose(keyframe: Keyframe, joint: string): (Pose, boolean)
-	local existing = Clips.findPose(keyframe, joint)
-	if existing then
-		return existing, false
-	end
-	local parent: Instance = keyframe
-	local pose: Pose? = nil
-	for _, name in Rig.chain(joint) do
-		local child = parent:FindFirstChild(name)
-		if not child or not child:IsA("Pose") then
-			local created = Instance.new("Pose")
-			created.Name = name
-			created.Weight = if name == joint then 1 else 0
-			created.Parent = parent
-			child = created
-		end
-		pose = child :: Pose
-		parent = child :: Pose
-	end
-	return pose :: Pose, true
-end
-
-function Clips.read(working: Working, joints: { string }?, timeFrom: number?, timeTo: number?): any
-	local sequence = working.instance
-	local keyframes = Clips.sortedKeyframes(sequence)
-	local times = {}
-	local animated: { [string]: boolean } = {}
-	local markers = {}
-	for _, keyframe in keyframes do
-		table.insert(times, math.round(keyframe.Time * 1000) / 1000)
-		for _, descendant in keyframe:GetDescendants() do
-			if descendant:IsA("Pose") and descendant.Weight > 0 then
-				animated[descendant.Name] = true
-			elseif descendant:IsA("KeyframeMarker") then
-				table.insert(markers, { name = descendant.Name, value = descendant.Value, time = keyframe.Time })
-			end
-		end
-	end
-	local animatedList = {}
-	for name in animated do
-		table.insert(animatedList, name)
-	end
-	table.sort(animatedList)
-
-	local result: any = {
-		clip_id = working.id,
-		name = sequence.Name,
-		rig_id = working.rigId,
-		revision = Clips.revisionOf(working),
-		loop = sequence.Loop,
-		priority = sequence.Priority.Name,
-		duration = if #keyframes > 0 then keyframes[#keyframes].Time else 0,
-		keyframe_count = #keyframes,
-		keyframe_times = times,
-		animated_joints = animatedList,
-		markers = markers,
-	}
-
-	if joints and #joints > 0 then
-		local poses = {}
-		for _, keyframe in keyframes do
-			if
-				(timeFrom and keyframe.Time < timeFrom - Clips.TIME_TOLERANCE)
-				or (timeTo and keyframe.Time > timeTo + Clips.TIME_TOLERANCE)
-			then
-				continue
-			end
-			for _, joint in joints do
-				local pose = Clips.findPose(keyframe, joint)
-				if pose and pose.Weight > 0 then
-					local encoded = Rig.encode(pose.CFrame)
-					table.insert(poses, {
-						joint = joint,
-						time = math.round(keyframe.Time * 1000) / 1000,
-						position = encoded.position,
-						rotation = encoded.rotation,
-						easing_style = pose.EasingStyle.Name,
-						easing_direction = pose.EasingDirection.Name,
-					})
-				end
-			end
-		end
-		result.poses = poses
-	end
+-- A read of a working copy: what Reading returns for its clip, with the ids and the
+-- revision that make it a working copy.
+function Clips.read(working: Working, options: Reading.Options?): any
+	local result = Reading.read(working.instance, options or {})
+	result.clip_id = working.id
+	result.rig_id = working.rigId
+	result.revision = Clips.revisionOf(working)
 	return result
 end
 
