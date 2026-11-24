@@ -204,6 +204,8 @@ export type Description = {
 	supported: boolean,
 	reasons: { string },
 	joint_count: number,
+	-- The joints an edit can name, parents before children.
+	joint_names: { string },
 	joint_classes: { [string]: number },
 	non_kinematic_joints: { string },
 	extra_joints: { string },
@@ -220,11 +222,11 @@ function Rig.describe(model: Model, detail: boolean?): (Description, Scan)
 		table.insert(reasons, "The model has no Humanoid.")
 	else
 		rigType = humanoid.RigType.Name
-		if humanoid.RigType ~= Enum.HumanoidRigType.R15 then
+		if humanoid.RigType ~= Roblox.Enum.HumanoidRigType.R15 then
 			table.insert(reasons, `Rig type is {rigType}; only R15 is supported.`)
 		end
 	end
-	if not model:IsDescendantOf(workspace) then
+	if not model:IsDescendantOf(Roblox.Workspace) then
 		table.insert(reasons, "The model is not under Workspace.")
 	end
 
@@ -242,6 +244,7 @@ function Rig.describe(model: Model, detail: boolean?): (Description, Scan)
 
 	local classes: { [string]: number } = {}
 	local nonKinematic: { string } = {}
+	local names: { string } = {}
 	local count = 0
 	for _, name in Rig.R15_ORDER do
 		local joint = scan.joints[name]
@@ -250,6 +253,7 @@ function Rig.describe(model: Model, detail: boolean?): (Description, Scan)
 			continue
 		end
 		count += 1
+		table.insert(names, name)
 		classes[joint.class] = (classes[joint.class] or 0) + 1
 		if not Rig.isKinematic(joint) then
 			table.insert(nonKinematic, name)
@@ -262,6 +266,7 @@ function Rig.describe(model: Model, detail: boolean?): (Description, Scan)
 		supported = #reasons == 0,
 		reasons = reasons,
 		joint_count = count,
+		joint_names = names,
 		joint_classes = classes,
 		non_kinematic_joints = nonKinematic,
 		extra_joints = scan.extras,
@@ -281,7 +286,7 @@ function Rig.describe(model: Model, detail: boolean?): (Description, Scan)
 					kinematic = Rig.isKinematic(joint),
 					c0 = Rig.encode(c0),
 					c1 = Rig.encode(c1),
-					size = { size.X, size.Y, size.Z },
+					size = { round(size.X, 4), round(size.Y, 4), round(size.Z, 4) },
 				})
 			end
 		end

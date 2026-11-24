@@ -36,7 +36,7 @@ Viewport screenshots through Studio's `StudioCaptureService` exist in the code b
 ## Security model
 
 - The broker listens on `127.0.0.1` only and rejects requests that carry a web `Origin` or a non-loopback `Host`.
-- Every connection runs a mutual challenge–response handshake before any request is sent or accepted. Adapters use a per-user secret file. The plugin pairs once with a one-time code and then uses a derived credential.
+- Every connection runs a mutual challenge–response handshake before any request is sent or accepted. Adapters use a per-user secret file. The plugin pairs once with a one-time code and then uses a derived credential. `motion-bridge rotate` replaces the secret, after which every Studio window must pair again.
 - A program that occupies the broker port without passing the handshake is reported as `BROKER_PORT_CONFLICT`. It receives one hello message and nothing else.
 - No tool runs arbitrary Luau or touches the filesystem.
 

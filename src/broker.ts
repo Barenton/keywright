@@ -50,6 +50,8 @@ export interface BrokerOptions {
 	idleExitMs?: number;
 	/** Called once when no adapter has been connected for `idleExitMs`. */
 	onIdle?: () => void;
+	/** Called when an adapter asks the broker to stop. Default: the broker stops itself. */
+	onShutdown?: () => void;
 }
 
 interface Peer {
@@ -384,6 +386,11 @@ export class Broker {
 			// Only one code is pending at a time, so the hello message never has to identify it.
 			this.pairing = { key: pairingKey(code), expiresAt: Date.now() + PAIRING_TTL_MS, failures: 0 };
 			return { expiresInMs: PAIRING_TTL_MS };
+		}
+		if (method === "broker.shutdown") {
+			// After the answer has gone out, so that the adapter that asked hears it.
+			setTimeout(() => (this.options.onShutdown ? this.options.onShutdown() : void this.stop()), 50);
+			return { stopping: true };
 		}
 		throw new BridgeError("INVALID_ARGUMENT", `Unknown broker method "${method}".`);
 	}

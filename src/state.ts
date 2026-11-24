@@ -57,6 +57,17 @@ export function loadOrCreateSecret(dir: string): Buffer {
 	throw new Error(`Secret file ${file} is malformed. Delete it to generate a new one.`);
 }
 
+/**
+ * Replaces the per-user secret with a new one and drops every credential issued under
+ * the old one. Every Studio window must then pair again. The broker must not be running:
+ * it holds the old secret in memory.
+ */
+export function rotateSecret(dir: string): Buffer {
+	rmSync(join(dir, "credentials.json"), { force: true });
+	rmSync(join(dir, "secret"), { force: true });
+	return loadOrCreateSecret(dir);
+}
+
 export function readBrokerState(dir: string): BrokerState | undefined {
 	try {
 		const parsed = JSON.parse(readFileSync(join(dir, "broker.json"), "utf8")) as Partial<BrokerState>;

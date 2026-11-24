@@ -1,16 +1,17 @@
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer as createHttpServer } from "node:http";
 import { createServer as createTcpServer, type Server } from "node:net";
 import { join } from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
 import { WebSocketServer } from "ws";
+import { DeniedError } from "../src/client.js";
 import { ensureBroker } from "../src/launcher.js";
 import { BridgeError } from "../src/protocol.js";
 import { readBrokerState } from "../src/state.js";
-import { CLI_PATH, freePort, isAlive, tempHome, waitFor } from "./helpers.js";
+import { CLI_PATH, FakePlugin, freePort, isAlive, tempHome, waitFor } from "./helpers.js";
 
 const run = promisify(execFile);
 
@@ -183,6 +184,47 @@ test("the broker exits when no adapter has been connected for the idle period", 
 		client.close();
 		await waitFor(() => !isAlive(pid), 5_000);
 		assert.equal(existsSync(join(temp.home, "broker.json")), false);
+	} finally {
+		await stopBroker(temp.home);
+		temp.cleanup();
+	}
+});
+
+test("rotate stops the broker, replaces the secret, and leaves old credentials refused", async () => {
+	const temp = tempHome();
+	const port = await freePort();
+	try {
+		// A broker started the usual way, with one plugin paired to it.
+		const status = JSON.parse((await run(process.execPath, [CLI_PATH, "status"], { env: cliEnv(temp.home, port) })).stdout) as { pid: number };
+		await run(process.execPath, [CLI_PATH, "pair", "ROTATECLI23"], { env: cliEnv(temp.home, port) });
+		const plugin = await FakePlugin.pair(port, "ROTATECLI23", "f".repeat(16));
+		assert.ok(plugin.credential);
+		plugin.close();
+		const before = readFileSync(join(temp.home, "secret"), "utf8");
+
+		const rotated = await run(process.execPath, [CLI_PATH, "rotate"], { env: cliEnv(temp.home, port) });
+		assert.match(rotated.stdout, /must pair again/);
+		await waitFor(() => !isAlive(status.pid), 5_000);
+		const after = readFileSync(join(temp.home, "secret"), "utf8");
+		assert.match(after.trim(), /^[0-9a-f]{64}$/);
+		assert.notEqual(after, before);
+		assert.equal(existsSync(join(temp.home, "credentials.json")), false);
+
+		// The next adapter starts a broker with the new secret; the old credential is refused.
+		const client = await ensureBroker({ home: temp.home, port, env: cliEnv(temp.home, port) });
+		const restarted = (await client.request("broker.status")) as { pid: number };
+		assert.notEqual(restarted.pid, status.pid);
+		await assert.rejects(FakePlugin.connect(port, plugin.credential, "f".repeat(16)), (error) => {
+			assert.ok(error instanceof DeniedError);
+			assert.equal(error.code, "unknown_credential");
+			return true;
+		});
+		client.close();
+
+		// With no broker running there is nothing to stop, and the secret is still replaced.
+		await stopBroker(temp.home);
+		await run(process.execPath, [CLI_PATH, "rotate"], { env: cliEnv(temp.home, port) });
+		assert.notEqual(readFileSync(join(temp.home, "secret"), "utf8"), after);
 	} finally {
 		await stopBroker(temp.home);
 		temp.cleanup();
