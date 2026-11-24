@@ -10,6 +10,7 @@ local ServerStorage = game:GetService("ServerStorage")
 local Capture = require("./Capture")
 local Clips = require("./Clips")
 local Codec = require("./Codec")
+local Digest = require("./Digest")
 local Edit = require("./Edit")
 local Errors = require("./Errors")
 local Pose = require("./Pose")
@@ -145,8 +146,32 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry)
 				Errors.throw("INVALID_ARGUMENT", `The selection is a {selected.ClassName}, not a KeyframeSequence.`)
 			end
 			source = selected :: KeyframeSequence
+		elseif type(params.source) == "string" and string.sub(params.source, 1, 6) == "saved:" then
+			-- One of the rig's saved clips, as the Animation Editor lists them.
+			local wanted = string.sub(params.source, 7)
+			local container = Saves.container(model, ServerStorage)
+			local found = container and container:FindFirstChild(wanted)
+			if not found then
+				Errors.throw(
+					"NOT_FOUND",
+					`This rig has no saved clip named "{wanted}".`,
+					"Call get_workspace to list each rig's saved clips."
+				)
+			elseif found:IsA("CurveAnimation") then
+				Errors.throw(
+					"UNSUPPORTED_CLIP_FORMAT",
+					"CurveAnimation clips are not supported.",
+					"Only KeyframeSequence clips can be opened."
+				)
+			elseif not found:IsA("KeyframeSequence") then
+				Errors.throw("INVALID_ARGUMENT", `"{wanted}" is a {found.ClassName}, not a KeyframeSequence.`)
+			end
+			source = found :: KeyframeSequence
 		elseif params.source ~= nil then
-			Errors.throw("INVALID_ARGUMENT", 'source must be omitted or "selection".')
+			Errors.throw(
+				"INVALID_ARGUMENT",
+				'source must be omitted, "selection", or "saved:" followed by a clip name.'
+			)
 		end
 
 		local name = if type(params.name) == "string" and params.name ~= ""
@@ -175,7 +200,12 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry)
 
 	methods.read_animation = function(params: any): any
 		local working = Clips.get(requireString(params, "clip_id"))
-		return Clips.read(working, params.joints, params.time_from, params.time_to)
+		local result = Clips.read(working, params.joints, params.time_from, params.time_to)
+		if params.hash == true then
+			-- Worked out only on request: it reads the whole clip.
+			result.content_hash = Digest.of(working.instance)
+		end
+		return result
 	end
 
 	methods.edit_animation = function(params: any): any

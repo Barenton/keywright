@@ -127,8 +127,11 @@ export function createAdapter(options: AdapterOptions): McpServer {
 				name: z.string().min(1).max(100).optional(),
 				source: z
 					.string()
+					.max(110)
 					.optional()
-					.describe('Omit for a blank clip. "selection" copies the KeyframeSequence selected in the Explorer.'),
+					.describe(
+						'Omit for a blank clip. "selection" copies the KeyframeSequence selected in the Explorer. "saved:" followed by a name copies that saved clip of the rig, as listed by get_workspace.',
+					),
 			},
 		},
 		async ({ session_id, ...params }, extra) => call("open_animation", session_id, params, extra.signal),
@@ -145,6 +148,10 @@ export function createAdapter(options: AdapterOptions): McpServer {
 				joints: z.array(z.string()).max(32).optional(),
 				time_from: z.number().finite().min(0).optional(),
 				time_to: z.number().finite().min(0).optional(),
+				hash: z
+					.boolean()
+					.optional()
+					.describe("Include content_hash, a fingerprint of everything that affects how the clip plays. Two clips with the same fingerprint are the same apart from their names."),
 			},
 			annotations: { readOnlyHint: true },
 		},
