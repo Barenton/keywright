@@ -117,6 +117,78 @@ function Pose.turns(scan: Rig.Scan, identity: CFrame): { [string]: { string } }
 	return turns
 end
 
+export type Tracked = {
+	-- The middle of the part: x toward the rig's right, y up, z toward its back, in studs
+	-- from the root part.
+	position: { number },
+	-- The height of the part's lowest point: what touches the ground first.
+	lowest: number,
+}
+
+local function thousandths(value: number): number
+	return math.round(value * 1000) / 1000
+end
+
+-- Where the named parts are for a set of joint transforms, relative to the root part.
+function Pose.track(
+	scan: Rig.Scan,
+	transforms: { [string]: CFrame },
+	identity: CFrame,
+	names: { string }
+): { [string]: Tracked }
+	local placed = Pose.place(scan, transforms, identity)
+	local tracked: { [string]: Tracked } = {}
+	for _, name in names do
+		local cframe = placed[name]
+		local joint = scan.joints[name]
+		if not cframe or not joint then
+			continue
+		end
+		local size = joint.part1.Size
+		-- How far the box reaches below its middle, whichever way it is turned.
+		local drop = (
+			math.abs(cframe.RightVector.Y) * size.X
+			+ math.abs(cframe.UpVector.Y) * size.Y
+			+ math.abs(cframe.LookVector.Y) * size.Z
+		) / 2
+		local position = cframe.Position
+		tracked[name] = {
+			position = { thousandths(position.X), thousandths(position.Y), thousandths(position.Z) },
+			lowest = thousandths(position.Y - drop),
+		}
+	end
+	return tracked
+end
+
+-- Over several moments, how far each tracked part ranges: the least and greatest of each
+-- coordinate of its middle and of its lowest point, and the difference between them.
+function Pose.ranges(moments: { { [string]: Tracked } }): { [string]: any }
+	local ranges: { [string]: any } = {}
+	for _, moment in moments do
+		for name, tracked in moment do
+			local values = { tracked.position[1], tracked.position[2], tracked.position[3], tracked.lowest }
+			local range = ranges[name]
+			if not range then
+				range = { low = table.clone(values), high = table.clone(values) }
+				ranges[name] = range
+			end
+			for index, value in values do
+				range.low[index] = math.min(range.low[index], value)
+				range.high[index] = math.max(range.high[index], value)
+			end
+		end
+	end
+	local summary: { [string]: any } = {}
+	for name, range in ranges do
+		local function span(index: number): { number }
+			return { range.low[index], range.high[index], thousandths(range.high[index] - range.low[index]) }
+		end
+		-- Each is the least, the greatest, and the distance between them.
+		summary[name] = { x = span(1), y = span(2), z = span(3), lowest = span(4) }
+	end
+	return summary
+end
+
 export type Difference = {
 	-- How many parts were compared.
 	parts: number,

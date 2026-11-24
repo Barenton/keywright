@@ -300,6 +300,38 @@ case("which way each joint turns is worked out from the rest pose", function()
 	check("the note says how to read it", string.find(Pose.TURNS_NOTE, "X, then Y, then Z") ~= nil)
 end)
 
+case("parts are tracked as numbers, with the height of their lowest point", function()
+	local scan = Rig.scan(buildRig())
+	local at = Pose.track(scan, rest(), CFrame.new(), { "LeftFoot", "Head", "NoSuchPart" })
+	local placed = Pose.place(scan, rest(), CFrame.new())
+	check("only parts the rig has", at.LeftFoot ~= nil and at.Head ~= nil and at.NoSuchPart == nil)
+	check("the middle of the part", near(at.LeftFoot.position[2], placed.LeftFoot.Position.Y))
+	-- A foot 0.3 studs tall, lying flat: its sole is 0.15 below its middle.
+	check("its lowest point", near(at.LeftFoot.lowest, placed.LeftFoot.Position.Y - 0.15), at.LeftFoot.lowest)
+
+	-- Thigh swung forward a quarter turn: the foot is carried forward and up.
+	local transforms = rest()
+	transforms.LeftUpperLeg = CFrame.Angles(math.rad(90), 0, 0)
+	local swung = Pose.track(scan, transforms, CFrame.new(), { "LeftFoot" })
+	check("forward is negative z", swung.LeftFoot.position[3] < at.LeftFoot.position[3] - 1, swung.LeftFoot.position[3])
+	check("and the foot is higher", swung.LeftFoot.lowest > at.LeftFoot.lowest + 1)
+	-- The foot now stands on end: its lowest point is half its length below its middle.
+	check(
+		"a turned part reaches lower for its size",
+		near(swung.LeftFoot.lowest, swung.LeftFoot.position[2] - 0.5),
+		swung.LeftFoot.lowest
+	)
+
+	local ranges = Pose.ranges({ at, swung })
+	check(
+		"the range of each coordinate",
+		near(ranges.LeftFoot.lowest[1], at.LeftFoot.lowest) and near(ranges.LeftFoot.lowest[2], swung.LeftFoot.lowest)
+	)
+	check("with the distance between", near(ranges.LeftFoot.lowest[3], swung.LeftFoot.lowest - at.LeftFoot.lowest))
+	check("a part that did not move ranges over nothing", ranges.LeftFoot.x[3] == 0)
+	check("a part seen in one moment only is still listed", ranges.Head ~= nil and ranges.Head.y[3] == 0)
+end)
+
 print(`{count - failures}/{count} pose checks passed`)
 if failures > 0 then
 	process.exit(1)

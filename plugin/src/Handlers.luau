@@ -458,13 +458,30 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 		end
 		-- The original rig is only read here. Preview samples a disposable clone of it.
 		local scan = Rig.require(model)
+		-- Parts whose place in the rig is wanted as numbers, not only as a picture.
+		local track: { string } = {}
+		if params.track ~= nil then
+			if type(params.track) ~= "table" or #params.track > 15 then
+				Errors.throw("INVALID_ARGUMENT", "track must list at most 15 part names.")
+			end
+			for _, name in params.track do
+				if type(name) ~= "string" or not scan.joints[name] then
+					Errors.throw(
+						"INVALID_ARGUMENT",
+						`track: the rig has no joint "{tostring(name)}".`,
+						"Call inspect_rig for the joint names."
+					)
+				end
+				table.insert(track, name)
+			end
+		end
 		-- A picture of the pose is drawn by the relay from where the parts are, which takes
 		-- the transform of every joint, not only the ones asked about.
 		local render = params.render == true
 		-- Checking where Studio put the parts also takes every joint.
 		local checkPlacement = params.check_placement == true
 		local sampledJoints = joints
-		if render or checkPlacement then
+		if render or checkPlacement or #track > 0 then
 			sampledJoints = {}
 			for _, name in Rig.R15_ORDER do
 				if scan.joints[name] then
@@ -501,7 +518,7 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 		end
 
 		if times then
-			local frames, poses = {}, {}
+			local frames, poses, moments = {}, {}, {}
 			for _, at in times do
 				if Clips.revisionOf(working) ~= revision then
 					Errors.throw(
@@ -518,10 +535,15 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 					parent = workspace,
 				})
 				local shown = math.min(at, duration)
+				local tracked = if #track > 0 then Pose.track(scan, sample.transforms, CFrame.new(), track) else nil
+				if tracked then
+					table.insert(moments, tracked)
+				end
 				table.insert(frames, {
 					time = shown,
 					requested_time = if shown ~= at then at else nil,
 					joints = if #joints > 0 then encoded(sample.transforms) else nil,
+					parts = tracked,
 				})
 				if render then
 					table.insert(poses, Pose.parts(scan, sample.transforms, CFrame.new()))
@@ -531,6 +553,8 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 				clip_id = working.id,
 				revision = revision,
 				frames = frames,
+				-- Over all the frames: how far each tracked part ranges.
+				ranges = if #moments > 0 then Pose.ranges(moments) else nil,
 				pose = if render then { frames = poses, rest = restPose() } else nil,
 			}
 		end
@@ -563,6 +587,7 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 			requested_time = if sampledTime ~= time then time else nil,
 			camera = "current",
 			joints = sampled,
+			parts = if #track > 0 then Pose.track(scan, preview.transforms, CFrame.new(), track) else nil,
 		}
 		if render then
 			-- Positions relative to the rig's root part: nothing about the place is in them.
