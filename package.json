@@ -1,0 +1,33 @@
+{
+  "name": "motion-bridge",
+  "version": "0.0.0",
+  "description": "MCP relay for the Motion Bridge Roblox Studio animation plugin",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "motion-bridge": "dist/src/cli.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test --test-concurrency=1 \"dist/test/**/*.test.js\"",
+    "test:luau": "lune run plugin/test/run.luau && lune run plugin/test/preview.luau && lune run plugin/test/capture.luau && lune run plugin/test/approval.luau",
+    "build:plugin": "rojo build plugin/default.project.json -o build/MotionBridge.rbxm",
+    "probe:wsl": "npm run build && node scripts/wsl-loopback-check.mjs",
+    "format:check": "stylua --check plugin",
+    "prepare:fixture": "node scripts/prepare-studio-fixture.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.20.0",
+    "ws": "^8.18.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/ws": "^8.5.13",
+    "typescript": "^5.7.0"
+  }
+}

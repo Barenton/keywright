@@ -1,0 +1,12 @@
+{
+  "name": "MotionBridge",
+  "tree": {
+    "$className": "Folder",
+    "Main": {
+      "$path": "Main.server.luau"
+    },
+    "src": {
+      "$path": "src"
+    }
+  }
+}
