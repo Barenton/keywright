@@ -99,7 +99,7 @@ function Reading.summary(sequence: Instance, options: Options): { [string]: any 
 		name = clip.Name,
 		loop = clip.Loop,
 		priority = clip.Priority.Name,
-		duration = if #keyframes > 0 then keyframes[#keyframes].Time else 0,
+		duration = if #keyframes > 0 then milliseconds(keyframes[#keyframes].Time) else 0,
 		keyframe_count = #keyframes,
 		keyframe_times = times,
 		animated_joints = animatedList,

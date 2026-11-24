@@ -140,6 +140,11 @@ function ok(method: string, params: unknown, result: unknown): CallToolResult {
 	if (method === IMAGE_METHOD && shaped !== null && typeof shaped === "object" && Array.isArray(shaped.joints) && shaped.joints.length === 0) {
 		shaped.joints = {};
 	}
+	// The same for the counts of a validation that found nothing.
+	const counted = drawn.payload as { counts?: unknown } | null;
+	if (method === "validate_animation" && counted !== null && typeof counted === "object" && Array.isArray(counted.counts) && counted.counts.length === 0) {
+		counted.counts = {};
+	}
 	const content: CallToolResult["content"] = [{ type: "text", text: JSON.stringify(drawn.payload) }];
 	for (const image of [drawn.image, screened.image]) {
 		if (image !== undefined) content.push({ type: "image", data: image, mimeType: "image/png" });
@@ -350,10 +355,34 @@ export function createAdapter(options: AdapterOptions): McpServer {
 	);
 
 	server.registerTool(
+		"validate_animation",
+		{
+			description:
+				"Check a working copy. Errors mean the clip is not structurally sound and cannot be saved: a pose for a joint the rig lacks, two keyframes at one time, two poses for one joint in a keyframe, numbers that are not finite or out of range. Warnings are measurements to look at and never stop a save: a looping clip whose last keyframe does not match its first, a joint moving faster than a limit between two keyframes, a joint driven through forces, content that is kept but not understood. Each finding has a code, the joints and times, the measured value and the limit. At most 50 are listed, with counts of all of them. These are measurements, not a judgement of how the motion looks.",
+			inputSchema: {
+				studio_session: studioSession,
+				clip_id: clipId,
+				thresholds: z
+					.object({
+						loop_rotation_degrees: z.number().positive().optional().describe("How far a looping clip's last keyframe may be from its first, per joint. Default 2."),
+						loop_position_studs: z.number().positive().optional().describe("The same for position. Default 0.02."),
+						speed_degrees_per_second: z.number().positive().optional().describe("How fast a joint may turn between two keyframes. Default 2000."),
+						speed_studs_per_second: z.number().positive().optional().describe("How fast a joint may move between two keyframes. Default 40."),
+					})
+					.strict()
+					.optional()
+					.describe("Limits to use in place of the defaults."),
+			},
+			annotations: { readOnlyHint: true },
+		},
+		async ({ studio_session, ...params }, extra) => call("validate_animation", studio_session, params, extra.signal),
+	);
+
+	server.registerTool(
 		"save_animation",
 		{
 			description:
-				"Save a copy of a working copy as a new clip for its rig, where Roblox's Animation Editor keeps that rig's clips, so that it can be loaded in the editor. The working copy stays open and unchanged. Nothing already saved is replaced: a name that is taken is refused. One Studio undo removes the saved clip.",
+				"Save a copy of a working copy as a new clip for its rig, where Roblox's Animation Editor keeps that rig's clips, so that it can be loaded in the editor. The working copy stays open and unchanged. Nothing already saved is replaced: a name that is taken is refused. A clip with structural errors (see validate_animation) is refused; warnings never stop a save. One Studio undo removes the saved clip.",
 			inputSchema: {
 				studio_session: studioSession,
 				clip_id: clipId,

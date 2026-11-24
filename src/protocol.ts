@@ -15,6 +15,7 @@ export type Role = "adapter" | "plugin";
 export const ERROR_CODES = [
 	"REVISION_CONFLICT",
 	"SOURCE_CHANGED",
+	"VALIDATION_FAILED",
 	"UNSUPPORTED_RIG",
 	"UNSUPPORTED_CLIP_FORMAT",
 	"SESSION_NOT_FOUND",

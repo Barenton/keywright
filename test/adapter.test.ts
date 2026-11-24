@@ -65,6 +65,10 @@ describe("MCP adapter over stdio", () => {
 				const summary = input.poses_only === true ? {} : { name: "Big", keyframe_times: [0, 1], markers: [] };
 				return { ...summary, clip_id: "clip_big", revision: `r${bigRevision}`, poses, poses_total: 900 };
 			}
+			if (method === "validate_animation") {
+				// Studio writes an empty set of counts as an empty list.
+				return { valid: true, errors: 0, warnings: 0, counts: [], issues: [], thresholds: input.thresholds ?? null };
+			}
 			if (method === "preview_animation") {
 				// This plugin always sends an image, asked or not, so the relay's checks are what is tested.
 				// "clip_slow" takes long enough for the caller to give up on it.
@@ -120,7 +124,7 @@ describe("MCP adapter over stdio", () => {
 		const { tools } = await mcp.listTools();
 		assert.deepEqual(
 			tools.map((tool) => tool.name).sort(),
-			["discard_animation", "edit_animation", "get_workspace", "inspect_rig", "open_animation", "preview_animation", "read_animation", "save_animation"],
+			["discard_animation", "edit_animation", "get_workspace", "inspect_rig", "open_animation", "preview_animation", "read_animation", "save_animation", "validate_animation"],
 		);
 		// A picture and a save are both asked for through documented inputs.
 		const properties = (name: string) => Object.keys((tools.find((tool) => tool.name === name)?.inputSchema.properties ?? {}) as object);
@@ -309,6 +313,18 @@ describe("MCP adapter over stdio", () => {
 		const invented = await read({ cursor: "page 2" });
 		assert.equal(invented.isError, true);
 		assert.equal(invented.json.error.code, "INVALID_ARGUMENT");
+	});
+
+	test("validate_animation passes limits on and gives counts as an object", async () => {
+		const result = await callTool("validate_animation", { studio_session: SESSION, clip_id: "clip_1", thresholds: { loop_rotation_degrees: 5 } });
+		assert.equal(result.isError, false);
+		assert.deepEqual(result.json.counts, {});
+		assert.deepEqual(result.json.thresholds, { loop_rotation_degrees: 5 });
+		// A limit that does not exist is refused before Studio hears of it.
+		const before = plugin.received.length;
+		const refused = await mcp.callTool({ name: "validate_animation", arguments: { studio_session: SESSION, clip_id: "clip_1", thresholds: { speed: 1 } } });
+		assert.equal(refused.isError, true);
+		assert.equal(plugin.received.length, before);
 	});
 
 	test("an image carried in an error message never reaches the client", async () => {

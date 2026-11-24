@@ -18,6 +18,7 @@ local Reading = require("./Reading")
 local Recording = require("./Recording")
 local Rig = require("./Rig")
 local Saves = require("./Saves")
+local Validate = require("./Validate")
 
 local Handlers = {}
 
@@ -234,6 +235,36 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry)
 		return Edit.apply(working, scan.joints, params.expected_revision, params.operations)
 	end
 
+	-- What the checks need to know about a rig: its joints, and which of them are driven
+	-- through forces.
+	local function validationContext(model: Model): Validate.Context
+		local scan = Rig.require(model)
+		local nonKinematic: { [string]: boolean } = {}
+		for name, joint in scan.joints do
+			if not Rig.isKinematic(joint) then
+				nonKinematic[name] = true
+			end
+		end
+		return { joints = scan.joints, nonKinematic = nonKinematic }
+	end
+
+	-- Runs the checks on a working copy. Changes nothing.
+	methods.validate_animation = function(params: any): any
+		local working = Clips.get(requireString(params, "clip_id"))
+		local model = registry.models[working.rigId]
+		if not model or model.Parent == nil then
+			Errors.throw("NOT_FOUND", "The rig this clip was opened for no longer exists.")
+		end
+		local thresholds, problem = Validate.thresholds(params.thresholds)
+		if not thresholds then
+			Errors.throw("INVALID_ARGUMENT", problem :: string)
+		end
+		local result = Validate.run(working.instance, validationContext(model), thresholds :: { [string]: number })
+		result.clip_id = working.id
+		result.revision = Clips.revisionOf(working)
+		return result
+	end
+
 	-- Saves a copy of a working copy as a new clip where the Animation Editor keeps the
 	-- rig's clips. Nothing saved is ever replaced, and one undo removes the new clip.
 	methods.save_animation = function(params: any): any
@@ -252,6 +283,15 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry)
 			)
 		end
 		local name = if type(params.name) == "string" and params.name ~= "" then params.name else working.instance.Name
+		-- A clip with structural errors is not saved. Warnings never stop a save.
+		local checked = Validate.run(working.instance, validationContext(model), table.clone(Validate.DEFAULTS))
+		if not checked.valid then
+			Errors.throw(
+				"VALIDATION_FAILED",
+				`The clip has {checked.errors} structural {if checked.errors == 1 then "error" else "errors"}, so it was not saved.`,
+				"Call validate_animation to see them, correct them, and save again."
+			)
+		end
 
 		local recording = Recording.begin("MotionBridgeSave", "Motion Bridge save animation")
 		local ok, result = pcall(Saves.save, working.instance, model, ServerStorage, name, function(className: string)

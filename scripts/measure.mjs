@@ -672,6 +672,14 @@ async function main() {
 				);
 				step("an unknown operation is refused by the plugin", unknown?.code === "INVALID_ARGUMENT");
 
+				// The checks: this clip loops, and its head ends 15 degrees from where it starts.
+				// With the speed limit lowered far enough, its ordinary turns count as abrupt.
+				const checked = await call("validate_animation", { clip_id: clipId });
+				const mismatch = checked.issues?.find((issue) => issue.code === "LOOP_ROTATION_MISMATCH" && issue.joints?.[0] === "Head");
+				step("validation measures a loop that does not close", checked.valid === true && checked.errors === 0 && mismatch && Math.abs(mismatch.measured - 15) < 0.01 && mismatch.threshold === 2);
+				const strict = await call("validate_animation", { clip_id: clipId, thresholds: { speed_degrees_per_second: 20, loop_rotation_degrees: 90 } });
+				step("validation uses the limits it is given", strict.counts?.LOOP_ROTATION_MISMATCH === undefined && strict.counts?.ABRUPT_ROTATION >= 1 && strict.thresholds?.speed_degrees_per_second === 20);
+
 				// The edited clip still plays: the engine gives the head's pose at a keyframe.
 				const sampled = await call("preview_animation", { clip_id: clipId, time: 0.5, joints: ["Head"] }, 60000);
 				step("the edited clip samples", angleBetween(sampled.joints.Head.rotation[1], 25) < 0.01);
@@ -681,7 +689,7 @@ async function main() {
 				outdated = /unknown operation type/.test(message);
 				failed.push(`stopped: ${message}`);
 			}
-			const question = "Every kind of edit does what it says, read back from Studio: poses, offsets, easing, keyframes, retiming, settings, markers, quaternions, paged reads, and a refused batch";
+			const question = "Every kind of edit does what it says, read back from Studio: poses, offsets, easing, keyframes, retiming, settings, markers, quaternions, paged reads, validation, and a refused batch";
 			results.push(outdated ? skipped("Edits", question, "The plugin in Studio predates these operations. Reinstall it and run again.") : judge("Edits", question, failed.length, 0, "failed steps", failed.join("; ")));
 		}
 
