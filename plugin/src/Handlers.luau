@@ -5,6 +5,7 @@
 local ChangeHistoryService = game:GetService("ChangeHistoryService")
 local RunService = game:GetService("RunService")
 local Selection = game:GetService("Selection")
+local ServerStorage = game:GetService("ServerStorage")
 
 local Capture = require("./Capture")
 local Clips = require("./Clips")
@@ -14,6 +15,7 @@ local Errors = require("./Errors")
 local Pose = require("./Pose")
 local Preview = require("./Preview")
 local Rig = require("./Rig")
+local Saves = require("./Saves")
 
 local Handlers = {}
 
@@ -76,6 +78,8 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry)
 					name = child.Name,
 					supported = description.supported,
 					joint_classes = description.joint_classes,
+					-- Clips saved for this rig, as the Animation Editor lists them.
+					saved_clips = Saves.names(child, ServerStorage),
 				})
 			end
 		end
@@ -141,7 +145,7 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry)
 			Errors.throw(
 				"STUDIO_NOT_IN_EDIT_MODE",
 				"Studio could not start an undo recording.",
-				"Stop any playtest and retry."
+				"Close the Animation Editor if it is open, stop any playtest, and retry."
 			)
 		end
 		local ok, result = pcall(Clips.open, rigId, name, source)
@@ -168,6 +172,50 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry)
 		end
 		local scan = Rig.require(model)
 		return Edit.apply(working, scan.joints, params.expected_revision, params.operations)
+	end
+
+	-- Saves a copy of a working copy as a new clip where the Animation Editor keeps the
+	-- rig's clips. Nothing saved is ever replaced, and one undo removes the new clip.
+	methods.save_animation = function(params: any): any
+		requireEdit()
+		local working = Clips.get(requireString(params, "clip_id"))
+		local model = registry.models[working.rigId]
+		if not model or model.Parent == nil then
+			Errors.throw("NOT_FOUND", "The rig this clip was opened for no longer exists.")
+		end
+		local current = Clips.revisionOf(working)
+		if params.expected_revision ~= current then
+			Errors.throw(
+				"REVISION_CONFLICT",
+				`Expected revision {tostring(params.expected_revision)}, but the clip is at {current}.`,
+				"Read the clip again, then save the revision you have seen."
+			)
+		end
+		local name = if type(params.name) == "string" and params.name ~= "" then params.name else working.instance.Name
+
+		local recording = ChangeHistoryService:TryBeginRecording("MotionBridgeSave", "Motion Bridge save animation")
+		if not recording then
+			Errors.throw(
+				"STUDIO_NOT_IN_EDIT_MODE",
+				"Studio could not start an undo recording.",
+				"Close the Animation Editor if it is open, stop any playtest, and retry."
+			)
+		end
+		local ok, result = pcall(Saves.save, working.instance, model, ServerStorage, name, function(className: string)
+			return Instance.new(className)
+		end)
+		ChangeHistoryService:FinishRecording(
+			recording :: string,
+			if ok then Enum.FinishRecordingOperation.Commit else Enum.FinishRecordingOperation.Cancel
+		)
+		if not ok then
+			error(result, 0)
+		end
+		return {
+			clip_id = working.id,
+			revision = current,
+			saved = { name = name, rig = model.Name, saved_clips = Saves.names(model, ServerStorage) },
+		}
 	end
 
 	methods.preview_animation = function(params: any): any

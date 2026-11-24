@@ -97,12 +97,16 @@ describe("MCP adapter over stdio", () => {
 		return { isError: result.isError === true, content, json: JSON.parse(content[0]?.text ?? "null") as Record<string, any> };
 	};
 
-	test("lists the Phase 0 tools with input schemas", async () => {
+	test("lists the tools with input schemas", async () => {
 		const { tools } = await mcp.listTools();
 		assert.deepEqual(
 			tools.map((tool) => tool.name).sort(),
-			["edit_animation", "get_workspace", "inspect_rig", "open_animation", "preview_animation", "read_animation"],
+			["edit_animation", "get_workspace", "inspect_rig", "open_animation", "preview_animation", "read_animation", "save_animation"],
 		);
+		// A picture and a save are both asked for through documented inputs.
+		const properties = (name: string) => Object.keys((tools.find((tool) => tool.name === name)?.inputSchema.properties ?? {}) as object);
+		assert.ok(["render", "views", "render_size"].every((key) => properties("preview_animation").includes(key)));
+		assert.deepEqual(properties("save_animation").sort(), ["clip_id", "expected_revision", "name", "session_id"]);
 		for (const tool of tools) assert.equal(tool.inputSchema.type, "object");
 	});
 

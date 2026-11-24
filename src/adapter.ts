@@ -167,6 +167,21 @@ export function createAdapter(options: AdapterOptions): McpServer {
 	);
 
 	server.registerTool(
+		"save_animation",
+		{
+			description:
+				"Save a copy of a working copy as a new clip for its rig, where Roblox's Animation Editor keeps that rig's clips, so that it can be loaded in the editor. The working copy stays open and unchanged. Nothing already saved is replaced: a name that is taken is refused. One Studio undo removes the saved clip.",
+			inputSchema: {
+				session_id: sessionId,
+				clip_id: clipId,
+				expected_revision: z.string().describe("Revision from the last read or edit of this clip."),
+				name: z.string().min(1).max(100).optional().describe("Name for the saved clip. Default: the working copy's name."),
+			},
+		},
+		async ({ session_id, ...params }, extra) => call("save_animation", session_id, params, extra.signal),
+	);
+
+	server.registerTool(
 		"preview_animation",
 		{
 			description:

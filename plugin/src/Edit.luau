@@ -148,7 +148,7 @@ function Edit.apply(
 		Errors.throw(
 			"STUDIO_NOT_IN_EDIT_MODE",
 			"Studio could not start an undo recording.",
-			"Stop any playtest and retry."
+			"Close the Animation Editor if it is open, stop any playtest, and retry."
 		)
 	end
 
