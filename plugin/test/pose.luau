@@ -330,6 +330,24 @@ case("parts are tracked as numbers, with the height of their lowest point", func
 	check("with the distance between", near(ranges.LeftFoot.lowest[3], swung.LeftFoot.lowest - at.LeftFoot.lowest))
 	check("a part that did not move ranges over nothing", ranges.LeftFoot.x[3] == 0)
 	check("a part seen in one moment only is still listed", ranges.Head ~= nil and ranges.Head.y[3] == 0)
+
+	-- Speeds between moments: the foot moved from `at` to `swung` in a quarter of a second.
+	local first = Pose.track(scan, rest(), CFrame.new(), { "LeftFoot" })
+	local second = Pose.track(scan, transforms, CFrame.new(), { "LeftFoot" })
+	local third = Pose.track(scan, transforms, CFrame.new(), { "LeftFoot" })
+	Pose.speeds({ first, second, third }, { 0, 0.25, 0.5 })
+	check("the first moment has nothing before it", (first.LeftFoot :: any).velocity == nil)
+	local moved = second.LeftFoot :: any
+	check(
+		"velocity is distance over time, along each direction",
+		near(moved.velocity[3], (second.LeftFoot.position[3] - first.LeftFoot.position[3]) / 0.25)
+			and moved.velocity[1] == 0
+	)
+	check("speed is its size", moved.speed > math.abs(moved.velocity[3]) - 0.01 and moved.speed > 0)
+	check("a part that stayed put has no speed", (third.LeftFoot :: any).speed == 0)
+	local same = Pose.track(scan, rest(), CFrame.new(), { "LeftFoot" })
+	Pose.speeds({ first, same }, { 1, 1 })
+	check("two moments at one time give no speed", (same.LeftFoot :: any).speed == nil)
 end)
 
 print(`{count - failures}/{count} pose checks passed`)

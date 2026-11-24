@@ -9,6 +9,7 @@ local HttpService = game:GetService("HttpService")
 
 local Auth = require("./Auth")
 local Codec = require("./Codec")
+local Deadline = require("./Deadline")
 local Errors = require("./Errors")
 
 export type Credential = { id: string, keyHex: string }
@@ -28,6 +29,10 @@ export type Config = {
 }
 
 local Connection = {}
+
+-- Longest one request may take before Studio stops waiting for it and answers the next.
+-- Above the longest wait a relay allows, so that an ordinary slow request is never cut off here.
+Connection.REQUEST_LIMIT = 90
 
 local HANDSHAKE_TIMEOUT = 5
 local BACKOFF = { 0.5, 1, 2, 4, 5 }
@@ -96,7 +101,21 @@ function Connection.start(config: Config)
 		while running and generation == expected and #queue > 0 do
 			local request = table.remove(queue, 1) :: { id: string, method: string, params: any }
 			runningId = request.id
-			local ok, result = pcall(config.onRequest, request.method, request.params)
+			local finished, ok, result = Deadline.run(Connection.REQUEST_LIMIT, function()
+				return config.onRequest(request.method, request.params)
+			end)
+			if not finished then
+				-- Nobody waits for it any longer. Work that can be told to stop is told.
+				if config.onCancel then
+					pcall(config.onCancel, "the request exceeded its time limit")
+				end
+				ok = false
+				result = Errors.new(
+					"TIMEOUT",
+					`Studio did not finish "{request.method}" within {Connection.REQUEST_LIMIT} seconds and has stopped waiting for it.`,
+					"Read the clip's revision to see whether a change was applied. Reload the plugin if requests keep timing out."
+				)
+			end
 			runningId = nil
 			local dropped = abandoned[request.id]
 			abandoned[request.id] = nil

@@ -554,6 +554,7 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 				otherName = (other :: KeyframeSequence).Name
 			end
 			local frames, poses, moments = {}, {}, {}
+			local shownTimes: { number } = {}
 			local otherPoses, differences = {}, {}
 			for _, at in times do
 				if Clips.revisionOf(working) ~= revision then
@@ -574,6 +575,7 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 				local tracked = if #track > 0 then Pose.track(scan, sample.transforms, CFrame.new(), track) else nil
 				if tracked then
 					table.insert(moments, tracked)
+					table.insert(shownTimes, shown)
 				end
 				table.insert(frames, {
 					time = shown,
@@ -608,6 +610,8 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 					end
 				end
 			end
+			-- How fast each tracked part moved from one frame to the next.
+			Pose.speeds(moments, shownTimes)
 			return {
 				clip_id = working.id,
 				revision = revision,

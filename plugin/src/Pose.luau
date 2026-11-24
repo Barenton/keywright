@@ -160,6 +160,32 @@ function Pose.track(
 	return tracked
 end
 
+-- Adds to each moment after the first how fast each tracked part moved since the moment
+-- before: `velocity`, in studs per second along x, y and z, and `speed`, its size.
+-- `times` gives the time of each moment.
+function Pose.speeds(moments: { { [string]: any } }, times: { number })
+	for index = 2, #moments do
+		local seconds = times[index] - times[index - 1]
+		if seconds <= 0 then
+			continue
+		end
+		for name, tracked in moments[index] do
+			local before = moments[index - 1][name]
+			if before then
+				local velocity = {}
+				local squares = 0
+				for axis = 1, 3 do
+					local rate = (tracked.position[axis] - before.position[axis]) / seconds
+					velocity[axis] = math.round(rate * 100) / 100
+					squares += rate * rate
+				end
+				tracked.velocity = velocity
+				tracked.speed = math.round(math.sqrt(squares) * 100) / 100
+			end
+		end
+	end
+end
+
 -- Over several moments, how far each tracked part ranges: the least and greatest of each
 -- coordinate of its middle and of its lowest point, and the difference between them.
 function Pose.ranges(moments: { { [string]: Tracked } }): { [string]: any }
