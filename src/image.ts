@@ -1,7 +1,10 @@
 // The relay's own check on screenshots. The plugin already limits what it sends; this
 // repeats the limits on the other side of the connection, so that nothing the plugin
 // (or anything speaking for it) returns can reach a model as an image unless it was
-// asked for and is one complete PNG of the reported size.
+// asked for and is one complete, decodable, still PNG of the reported size. Nothing
+// image-like is passed on as text either.
+
+import { inflateSync } from "node:zlib";
 
 export const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 export const MAX_IMAGE_EDGE = 1536;
@@ -9,9 +12,21 @@ export const MIN_IMAGE_EDGE = 64;
 export const DEFAULT_IMAGE_EDGE = 768;
 /** The only method that may return an image, and only when its `capture` argument is true. */
 export const IMAGE_METHOD = "preview_animation";
+/** What takes the place of anything image-like found where no image belongs. */
+export const REMOVED = "[removed by the relay]";
 
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/;
+/** Chunks a plain still image may contain. Anything else, animation and text included, is refused. */
+const ALLOWED_CHUNKS = new Set(["IHDR", "PLTE", "IDAT", "IEND", "tRNS", "gAMA", "cHRM", "sRGB", "iCCP", "sBIT", "bKGD", "pHYs"]);
+/** Samples per pixel for each colour type, and the bit depths each allows. */
+const COLOUR_TYPES: Record<number, { samples: number; depths: number[] }> = {
+	0: { samples: 1, depths: [1, 2, 4, 8, 16] },
+	2: { samples: 3, depths: [8, 16] },
+	3: { samples: 1, depths: [1, 2, 4, 8] },
+	4: { samples: 2, depths: [8, 16] },
+	6: { samples: 4, depths: [8, 16] },
+};
 
 const CRC_TABLE = (() => {
 	const table = new Uint32Array(256);
@@ -30,15 +45,18 @@ function crc32(data: Buffer, start: number, end: number): number {
 }
 
 /**
- * Reads the size of a PNG after checking that it is complete: the signature, a header
- * chunk first, every chunk inside the data with a correct checksum, image data present,
- * and the end chunk exactly at the end. Throws with the reason otherwise.
+ * Reads the size of a PNG after checking that it is one complete still image that
+ * decodes: the signature, a well-formed header first, only chunk types a plain image
+ * has, every chunk inside the data with a correct checksum, the end chunk exactly at
+ * the end, and image data that decompresses to exactly the rows of pixels the header
+ * describes. Throws with the reason otherwise.
  */
 export function inspectPng(data: Buffer): { width: number; height: number } {
 	if (data.length < 8 || !data.subarray(0, 8).equals(PNG_SIGNATURE)) throw new Error("it is not a PNG");
 	let offset = 8;
-	let size: { width: number; height: number } | undefined;
-	let hasImageData = false;
+	let header: { width: number; height: number; rowBytes: number } | undefined;
+	const imageData: Buffer[] = [];
+	let imageDataEnded = false;
 	for (;;) {
 		if (offset + 12 > data.length) throw new Error("it is cut short");
 		const length = data.readUInt32BE(offset);
@@ -49,28 +67,53 @@ export function inspectPng(data: Buffer): { width: number; height: number } {
 		if (crc32(data, offset + 4, offset + 8 + length) !== data.readUInt32BE(offset + 8 + length)) {
 			throw new Error("a chunk fails its checksum");
 		}
-		if (size === undefined) {
+		if (!ALLOWED_CHUNKS.has(type)) throw new Error(`it contains a ${type} chunk, which a plain still image does not have`);
+		if (header === undefined) {
 			if (type !== "IHDR" || length !== 13) throw new Error("it does not start with a header");
-			size = { width: data.readUInt32BE(offset + 8), height: data.readUInt32BE(offset + 12) };
+			const width = data.readUInt32BE(offset + 8);
+			const height = data.readUInt32BE(offset + 12);
 			const bitDepth = data[offset + 16] as number;
-			const colourType = data[offset + 17] as number;
-			if (![1, 2, 4, 8, 16].includes(bitDepth) || ![0, 2, 3, 4, 6].includes(colourType)) {
+			const colour = COLOUR_TYPES[data[offset + 17] as number];
+			if (!colour?.depths.includes(bitDepth) || data[offset + 18] !== 0 || data[offset + 19] !== 0) {
 				throw new Error("its header is malformed");
 			}
-			if (data[offset + 18] !== 0 || data[offset + 19] !== 0 || (data[offset + 20] as number) > 1) {
-				throw new Error("its header is malformed");
+			if (data[offset + 20] !== 0) throw new Error("it is interlaced, which is not accepted");
+			if (width < 1 || height < 1 || width > MAX_IMAGE_EDGE || height > MAX_IMAGE_EDGE) {
+				throw new Error(`it declares ${width} by ${height} pixels, outside the limits`);
 			}
+			header = { width, height, rowBytes: 1 + Math.ceil((width * colour.samples * bitDepth) / 8) };
 		} else if (type === "IHDR") {
 			throw new Error("it has two headers");
 		} else if (type === "IDAT") {
-			hasImageData = true;
+			if (imageDataEnded) throw new Error("its image data is split apart");
+			if (length === 0) throw new Error("it has an empty image data chunk");
+			imageData.push(data.subarray(offset + 8, offset + 8 + length));
 		} else if (type === "IEND") {
 			if (length !== 0) throw new Error("its end chunk is malformed");
 			if (end !== data.length) throw new Error("it has data after its end");
-			if (!hasImageData) throw new Error("it has no image data");
-			return size;
+			if (imageData.length === 0) throw new Error("it has no image data");
+			checkPixels(Buffer.concat(imageData), header);
+			return { width: header.width, height: header.height };
+		} else if (imageData.length > 0) {
+			imageDataEnded = true;
 		}
 		offset = end;
+	}
+}
+
+/** Decompresses the image data and checks that it is exactly the rows the header describes. */
+function checkPixels(compressed: Buffer, header: { height: number; rowBytes: number }): void {
+	const expected = header.height * header.rowBytes;
+	let pixels: Buffer;
+	try {
+		// One byte over, so that data longer than the image is seen and not cut off silently.
+		pixels = inflateSync(compressed, { maxOutputLength: expected + 1 });
+	} catch {
+		throw new Error("its image data does not decompress");
+	}
+	if (pixels.length !== expected) throw new Error("its image data is not the size its header describes");
+	for (let row = 0; row < header.height; row += 1) {
+		if ((pixels[row * header.rowBytes] as number) > 4) throw new Error("its image data is malformed");
 	}
 }
 
@@ -80,6 +123,43 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isCount(value: unknown): value is number {
 	return typeof value === "number" && Number.isInteger(value) && value > 0;
+}
+
+/** True for text that is, or carries, an encoded image. */
+function looksLikeImage(text: string): boolean {
+	// "iVBORw0KGgo" is how every base64 PNG begins.
+	return text.includes("iVBORw0KGgo") || /data:image\//i.test(text);
+}
+
+/**
+ * Removes anything image-like from a value that is about to be passed on as text: every
+ * `images` and `png_base64` field at any depth, and any string that is an encoded image.
+ * Returns the cleaned value and whether anything was removed.
+ */
+export function scrub(value: unknown, depth = 0): { value: unknown; removed: boolean } {
+	if (typeof value === "string") return looksLikeImage(value) ? { value: REMOVED, removed: true } : { value, removed: false };
+	if (value === null || typeof value !== "object") return { value, removed: false };
+	if (depth > 32) return { value: REMOVED, removed: true };
+	let removed = false;
+	if (Array.isArray(value)) {
+		const items = value.map((item) => {
+			const cleaned = scrub(item, depth + 1);
+			removed ||= cleaned.removed;
+			return cleaned.value;
+		});
+		return { value: items, removed };
+	}
+	const result: Record<string, unknown> = {};
+	for (const [key, item] of Object.entries(value)) {
+		if (key === "images" || key === "png_base64") {
+			removed = true;
+			continue;
+		}
+		const cleaned = scrub(item, depth + 1);
+		removed ||= cleaned.removed;
+		result[key] = cleaned.value;
+	}
+	return { value: result, removed };
 }
 
 /** The longest edge the caller asked for, as the tool's input schema defines it. */
@@ -115,36 +195,36 @@ function checkImage(capture: Record<string, unknown>, images: unknown, maxEdge: 
  * Separates a plugin result into the structured payload and, at most, one image.
  * An image passes only for a preview that asked for a screenshot and reports success,
  * and only if it is a single complete PNG matching its reported size and the limits.
- * Anything else is removed, and a preview is told why its screenshot is unavailable.
+ * Everything image-like is removed from the payload whatever the method, and a preview
+ * is told why its screenshot is unavailable.
  */
 export function screenResult(method: string, params: unknown, result: unknown): { payload: unknown; image?: string } {
-	if (!isRecord(result)) return { payload: result };
-	const { images, ...payload } = result;
 	const input = isRecord(params) ? params : {};
-	const capture = payload.capture;
-	const claimsImage = images !== undefined || (isRecord(capture) && capture.status === "ok");
+	const images = isRecord(result) ? result.images : undefined;
+	const original = isRecord(result) ? result.capture : undefined;
+	const cleaned = scrub(result);
+	if (!isRecord(cleaned.value)) return { payload: cleaned.value };
+	const payload = cleaned.value;
+	const refuse = (reason: string) => {
+		payload.capture = { status: "unavailable", reason };
+		return { payload };
+	};
+	const claimsSuccess = isRecord(original) && original.status === "ok";
 
 	if (method !== IMAGE_METHOD) {
-		// No other method returns images; whatever came is not passed on.
+		// No other method returns images. A claim of one is not passed on either.
+		if (claimsSuccess) return refuse("the relay dropped a screenshot from a method that does not take them");
 		return { payload };
 	}
 	if (input.capture !== true) {
-		if (claimsImage) payload.capture = { status: "unavailable", reason: "the relay dropped a screenshot that was not asked for" };
+		if (cleaned.removed || claimsSuccess) return refuse("the relay dropped a screenshot that was not asked for");
 		return { payload };
 	}
-	if (!isRecord(capture) || capture.status !== "ok") {
-		if (!isRecord(capture) || typeof capture.status !== "string") {
-			payload.capture = { status: "unavailable", reason: "no screenshot result was returned" };
-		}
-		return { payload };
-	}
+	if (!isRecord(original) || typeof original.status !== "string") return refuse("no screenshot result was returned");
+	if (original.status !== "ok") return { payload };
 	try {
-		return { payload, image: checkImage(capture, images, requestedEdge(input)) };
+		return { payload, image: checkImage(original, images, requestedEdge(input)) };
 	} catch (error) {
-		payload.capture = {
-			status: "unavailable",
-			reason: `the relay rejected the screenshot: ${error instanceof Error ? error.message : String(error)}`,
-		};
-		return { payload };
+		return refuse(`the relay rejected the screenshot: ${error instanceof Error ? error.message : String(error)}`);
 	}
 }

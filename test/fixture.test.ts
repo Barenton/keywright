@@ -21,7 +21,7 @@ interface Plan {
 interface FixtureModule {
 	MARKER_NAME: string;
 	MARKER_PREFIX: string;
-	ARM_ATTRIBUTE: string;
+	MODE_ATTRIBUTE: string;
 	FIXTURE_FILES: string[];
 	newFixtureId(): string;
 	markerValue(id: string): string;
@@ -74,20 +74,31 @@ test("the place definition holds the marker, a baseplate and no scripts", () => 
 	assert.doesNotMatch(text, /port|code|secret|credential/i);
 });
 
-test("a fixture is prepared unarmed, and only a person can arm it for screenshots", () => {
+test("a fixture is prepared in neither mode, and nothing in a place can approve a screenshot", () => {
 	const read = (...parts: string[]) => readFileSync(join(ROOT, ...parts), "utf8");
 	const guard = read("plugin", "probe", "FixtureGuard.luau");
-	assert.ok(guard.includes(`FixtureGuard.ARM_ATTRIBUTE = "${fixture.ARM_ATTRIBUTE}"`));
-	// The place definition sets no attributes at all, so it cannot arrive armed or in screenshot mode.
+	assert.ok(guard.includes(`FixtureGuard.MODE_ATTRIBUTE = "${fixture.MODE_ATTRIBUTE}"`));
+	// The place definition sets no attributes at all, so it cannot arrive in screenshot mode.
 	const text = JSON.stringify(fixture.placeProject(fixture.markerValue(fixture.newFixtureId())));
-	assert.doesNotMatch(text, /\$attributes|Armed/);
+	assert.doesNotMatch(text, /\$attributes|Armed|ScreenshotMode/);
 	// The installed plugin never opens the capture gate; only the probe entry point does.
 	const sources = readdirSync(join(ROOT, "plugin", "src")).map((file) => [file, read("plugin", "src", file)] as const);
 	assert.doesNotMatch(read("plugin", "Main.server.luau"), /setCaptureGate|setGate|FixtureGuard|Approval|E2Scene/);
 	for (const [file, source] of sources) {
 		assert.doesNotMatch(source, /setCaptureGate\(function|setGate\(function|FixtureGuard|Approval|E2Scene/, file);
 	}
-	assert.match(read("plugin", "probe", "Probe.server.luau"), /Preview\.setCaptureGate\(function/);
+	const entry = read("plugin", "probe", "Probe.server.luau").replace(/--[^\n]*/g, "");
+	assert.match(entry, /Preview\.setCaptureGate\(function/);
+	// Approval is given in exactly one place: the panel button's handler, with what was typed there.
+	assert.equal(entry.split("Approval.arm(").length - 1, 1);
+	assert.match(entry, /approve\.MouseButton1Click:Connect\(function\(\)[\s\S]{0,200}Approval\.arm\(state, look\(\), typed\)/);
+	// The only attributes read from the place are the connection details and the mode; none reaches approval.
+	const attributes = [...entry.matchAll(/GetAttribute\(([^)]*)\)/g)].map((match) => match[1]);
+	assert.deepEqual(attributes.sort(), ['"PairingCode"', '"Port"', "FixtureGuard.MODE_ATTRIBUTE"].sort());
+	assert.doesNotMatch(entry, /GetAttributeChangedSignal|AttributeChanged/);
+	// The rig is always the probe's own: built here, never adopted from the place.
+	assert.match(entry, /if workspace:FindFirstChild\(E2Scene\.RIG_NAME\) then[\s\S]{0,200}else\s+local built = SyntheticRig\.build\(/);
+	assert.match(entry, /Approval\.new\(marker, detail, rig\)/);
 });
 
 test("nothing on the screenshot path writes to a camera or drives the undo history", () => {
@@ -197,5 +208,5 @@ test("a real fixture is built in the project and passes the headless place check
 	assert.equal(manifest.marker_value, plan.marker);
 	// Lune parses the place file and applies the same guard the probe uses.
 	const output = execFileSync("lune", ["run", "plugin/test/fixture.luau"], { cwd: ROOT, encoding: "utf8" });
-	assert.match(output, /10\/10 fixture checks passed/);
+	assert.match(output, /11\/11 fixture checks passed/);
 });

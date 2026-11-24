@@ -64,13 +64,15 @@ local PART_NAMES = {
 	"RightFoot",
 }
 
--- A place shaped like the prepared fixture in screenshot mode: a camera, the baseplate
--- and the invisible synthetic rig.
+-- A place shaped like the prepared fixture in screenshot mode: a camera, default
+-- lighting, the baseplate and the invisible synthetic rig the probe built.
 local function buildPlace()
 	local root = Instance.new("Folder")
 	root.Name = "Workspace"
 	local camera = Instance.new("Camera")
 	camera.Parent = root
+	local lighting = Instance.new("Folder")
+	lighting.Name = "Lighting"
 	local baseplate = Instance.new("Part")
 	baseplate.Name = E2Scene.BASEPLATE_NAME
 	baseplate.Size = Vector3.new(64, 1, 64)
@@ -85,7 +87,7 @@ local function buildPlace()
 		part.Name = name
 		part.Size = Vector3.new(1, 1.2, 1)
 		part.Transparency = 1
-		part.CFrame = CFrame.new((index % 3) - 1, 0.5 + (index % 6), 0)
+		part.CFrame = CFrame.new((index % 3) - 1, 1 + (index % 6), 0)
 		part.Parent = rig
 		parts[name] = part
 	end
@@ -102,7 +104,30 @@ local function buildPlace()
 	local animator = Instance.new("Animator")
 	animator.Parent = humanoid
 	rig.Parent = root
-	return { root = root, camera = camera, baseplate = baseplate, rig = rig, parts = parts }
+	return { root = root, camera = camera, lighting = lighting, baseplate = baseplate, rig = rig, parts = parts }
+end
+
+-- The preview's copy of the rig as Preview shows it: the same shape, visible apart from
+-- its root part, standing in the place.
+local function buildClone(place: any): any
+	local clone = place.rig:Clone()
+	clone.Name = "MotionBridgePreview"
+	for _, descendant in clone:GetDescendants() do
+		if descendant:IsA("BasePart") then
+			descendant.Transparency = if descendant.Name == "HumanoidRootPart" then 1 else 0
+		end
+	end
+	clone.Parent = place.root
+	return clone
+end
+
+local function inspect(place: any, clone: any?, overrides: { [string]: any }?): (any, string?)
+	local request: { [string]: any } =
+		{ root = place.root, camera = place.camera, lighting = place.lighting, rig = place.rig, clone = clone }
+	for key, value in overrides or {} do
+		request[key] = if value == "<nil>" then nil else value
+	end
+	return E2Scene.inspect(request :: any)
 end
 
 -- A view that looks straight at the subject from in front, upright, with room to spare.
@@ -250,40 +275,151 @@ case("two observations are the same view only if nothing about the camera change
 	)
 end)
 
+for label, change in
+	{
+		["the camera is upside down"] = function(view: any)
+			view.cframe = view.cframe * CFrame.Angles(0, 0, math.pi)
+			return view, SUBJECT, "upside down"
+		end,
+		["the subject touches the camera's near limit"] = function(view: any)
+			-- A small sphere in the middle of the picture, closer than Studio draws.
+			local near = { centre = view.cframe.Position + view.cframe.LookVector * 0.6, radius = 0.1 }
+			return view, near, "too close"
+		end,
+	} :: { [string]: (view: any) -> (any, any, string) }
+do
+	case(`framing is refused when {label}`, function()
+		local view, subject, expected = change(viewOf(SUBJECT))
+		local reason = Stage.framed(view, subject)
+		check("it is refused", reason ~= nil)
+		check("the reason says why", reason ~= nil and string.find(reason, expected, 1, true) ~= nil, reason)
+	end)
+end
+
+case("several spheres are held only if every one is whole in the picture", function()
+	local view = viewOf(SUBJECT)
+	local inside = {
+		{ centre = SUBJECT.centre + Vector3.new(1, 0, 0), radius = 1 },
+		{ centre = SUBJECT.centre + Vector3.new(-1, 2, 0), radius = 0.5 },
+	}
+	check("all inside", Stage.holds(view, inside) == nil, Stage.holds(view, inside))
+	local stray = table.clone(inside)
+	table.insert(stray, { centre = SUBJECT.centre + Vector3.new(60, 0, 0), radius = 0.5 })
+	check("one far to the side", Stage.holds(view, stray) ~= nil)
+	local behind = table.clone(inside)
+	table.insert(behind, { centre = view.cframe.Position - view.cframe.LookVector * 5, radius = 0.5 })
+	check("one behind the camera", Stage.holds(view, behind) ~= nil)
+	local edge = table.clone(inside)
+	table.insert(edge, { centre = SUBJECT.centre + Vector3.new(0, 7.2, 0), radius = 1 })
+	check("one crossing the top edge", Stage.holds(view, edge) ~= nil)
+	check("nothing to show proves nothing", Stage.holds(view, {}) ~= nil)
+	local tilted = viewOf(SUBJECT)
+	tilted.cframe = tilted.cframe * CFrame.Angles(0, 0, math.pi)
+	check("an unusable view holds nothing", Stage.holds(tilted, inside) ~= nil)
+end)
+
 -- ---------------------------------------------------------------------------------------
 -- E2Scene: the scene rules
 -- ---------------------------------------------------------------------------------------
 
 case("the fixture scene is accepted and described", function()
 	local place = buildPlace()
-	local scene, reason = E2Scene.inspect(place.root, place.camera, nil)
+	local scene, reason = inspect(place)
 	check("accepted", scene ~= nil, reason)
 	if scene then
-		check("the rig is identified", scene.rig == place.rig)
+		check("the rig is the probe's", scene.rig == place.rig)
 		check("the subject has a size", scene.subject.radius > 3 and scene.subject.radius < 30, scene.subject.radius)
-		local again = E2Scene.inspect(place.root, place.camera, nil) :: any
-		check("the description is stable", again.fingerprint == scene.fingerprint)
+		check("the floor is the top of the baseplate", scene.floor == 0, scene.floor)
+		check("no posed copy without a preview", scene.posed == nil)
+		check("the description is stable", (inspect(place) :: any).fingerprint == scene.fingerprint)
 	end
 end)
 
-case("the preview's own clone, and only that exact instance, may stand in the scene", function()
+case("only the rig the probe built is accepted", function()
 	local place = buildPlace()
-	local base = E2Scene.inspect(place.root, place.camera, nil) :: any
-	local clone = Instance.new("Model")
-	clone.Name = "MotionBridgePreview"
-	local limb = Instance.new("Part")
-	limb.Parent = clone
-	clone.Parent = place.root
-	local withClone, reason = E2Scene.inspect(place.root, place.camera, clone)
-	check("accepted with the clone named", withClone ~= nil, reason)
-	check(
-		"the clone does not alter the scene's description",
-		withClone ~= nil and withClone.fingerprint == base.fingerprint
-	)
-	check("refused when the clone is not named", E2Scene.inspect(place.root, place.camera, nil) == nil)
-	local impostor = Instance.new("Model")
-	impostor.Name = "MotionBridgePreview"
-	check("refused when a different instance is named", E2Scene.inspect(place.root, place.camera, impostor) == nil)
+	check("no rig of its own", inspect(place, nil, { rig = "<nil>" }) == nil)
+	-- An identical rig that the probe did not build, in place of its own.
+	local twin = place.rig:Clone()
+	place.rig.Parent = nil
+	twin.Parent = place.root
+	local scene, reason = inspect(place)
+	check("a lookalike is refused", scene == nil, reason)
+	-- The probe's own rig, with a lookalike beside it.
+	place.rig.Parent = place.root
+	check("a lookalike beside it is refused", inspect(place) == nil)
+	twin.Parent = nil
+	check("accepted again once it is gone", inspect(place) ~= nil)
+	check("a rig that is not in the place is refused", inspect(place, nil, { rig = twin }) == nil)
+end)
+
+case("the preview's copy is accepted only as the rig's shape, shown, and nothing more", function()
+	local place = buildPlace()
+	local base = inspect(place) :: any
+	local clone = buildClone(place)
+	local scene, reason = inspect(place, clone)
+	check("accepted with the copy named", scene ~= nil, reason)
+	if scene then
+		check("the copy does not alter the scene's description", scene.fingerprint == base.fingerprint)
+		check(
+			"each shown part of the copy is measured",
+			scene.posed ~= nil and #scene.posed == 15,
+			scene.posed and #scene.posed
+		)
+	end
+	check("refused when the copy is not named", inspect(place) == nil)
+	check("refused when a different instance is named", inspect(place, Instance.new("Model")) == nil)
+
+	local function refusedAfter(label: string, alter: (copy: any) -> (), expected: string)
+		local fresh = buildPlace()
+		local copy = buildClone(fresh)
+		alter(copy)
+		local accepted, why = inspect(fresh, copy)
+		check(label, accepted == nil and type(why) == "string" and string.find(why, expected, 1, true) ~= nil, why)
+	end
+	refusedAfter("something visible is added beneath it", function(copy)
+		local sign = Instance.new("Part")
+		sign.Name = "Sign"
+		sign.Parent = copy
+	end, "parts")
+	refusedAfter("a picture is put on it", function(copy)
+		Instance.new("Decal").Parent = copy.Head
+	end, "Decal")
+	refusedAfter("a mesh is put in it", function(copy)
+		Instance.new("MeshPart").Parent = copy
+	end, "MeshPart")
+	refusedAfter("a script is put in it", function(copy)
+		Instance.new("Script").Parent = copy
+	end, "Script")
+	refusedAfter("part of it is hidden", function(copy)
+		copy.Head.Transparency = 1
+	end, "not fully shown")
+	refusedAfter("its root part is shown", function(copy)
+		copy.HumanoidRootPart.Transparency = 0
+	end, "visible")
+	refusedAfter("a part of it is resized", function(copy)
+		copy.Head.Size = Vector3.new(3, 3, 3)
+	end, "not the size")
+	refusedAfter("a part of it is missing", function(copy)
+		copy.LeftFoot.Parent = nil
+	end, "parts")
+	refusedAfter("a limb is sunk into the baseplate", function(copy)
+		copy.LeftFoot.CFrame = CFrame.new(0, 0.2, 0)
+	end, "below the baseplate")
+	refusedAfter("a limb is under the baseplate", function(copy)
+		copy.RightHand.CFrame = CFrame.new(0, -10, 0)
+	end, "below the baseplate")
+end)
+
+case("the copy is measured where its pose puts it", function()
+	local place = buildPlace()
+	local clone = buildClone(place)
+	clone.Head.CFrame = CFrame.new(40, 9, 0)
+	local scene = inspect(place, clone) :: any
+	local found = false
+	for _, sphere in scene.posed do
+		found = found or (sphere.centre.X == 40 and sphere.centre.Y == 9)
+	end
+	check("a moved part is measured at its new position", found)
 end)
 
 for label, alter in
@@ -301,21 +437,39 @@ for label, alter in
 			return "Avatar"
 		end,
 		["a script is in the place"] = function(place: any)
-			local script = Instance.new("Script")
-			script.Parent = place.root
+			Instance.new("Script").Parent = place.root
 			return "Script"
-		end,
-		["there are two synthetic rigs"] = function(place: any)
-			place.rig:Clone().Parent = place.root
-			return E2Scene.RIG_NAME
 		end,
 		["a second camera is in the place"] = function(place: any)
 			Instance.new("Camera").Parent = place.root
 			return "Camera"
 		end,
+		["something is attached to the camera"] = function(place: any)
+			local part = Instance.new("Part")
+			part.Parent = place.camera
+			return "camera has something attached"
+		end,
+		["the camera is not the place's own"] = function(place: any)
+			place.camera = Instance.new("Camera")
+			return "Camera"
+		end,
+		["the place has a sky"] = function(place: any)
+			local sky = Instance.new("Sky")
+			sky.Parent = place.lighting
+			return "Sky"
+		end,
+		["the lighting has an effect in it"] = function(place: any)
+			local effect = Instance.new("BloomEffect")
+			effect.Parent = place.lighting
+			return "lighting contains"
+		end,
+		["the lighting cannot be read"] = function(place: any)
+			place.lighting = nil
+			return "lighting could not be read"
+		end,
 		["the rig is missing"] = function(place: any)
 			place.rig.Parent = nil
-			return "no synthetic rig"
+			return "not in the place"
 		end,
 		["the baseplate is missing"] = function(place: any)
 			place.baseplate.Parent = nil
@@ -327,6 +481,10 @@ for label, alter in
 		end,
 		["the baseplate was moved"] = function(place: any)
 			place.baseplate.CFrame = CFrame.new(0, 5, 0)
+			return "baseplate"
+		end,
+		["the baseplate is see-through"] = function(place: any)
+			place.baseplate.Transparency = 0.5
 			return "baseplate"
 		end,
 		["something sits on the baseplate"] = function(place: any)
@@ -393,21 +551,24 @@ do
 	case(`the scene is refused when {label}`, function()
 		local place = buildPlace()
 		local expected = alter(place)
-		local scene, reason = E2Scene.inspect(place.root, place.camera, nil)
+		local scene, reason = inspect(place)
 		check("it is refused", scene == nil)
 		check("the reason says why", type(reason) == "string" and string.find(reason, expected, 1, true) ~= nil, reason)
 	end)
 end
 
-case("the scene's description changes when anything in it moves", function()
+case("the scene's description changes when anything in it changes", function()
 	local place = buildPlace()
-	local before = (E2Scene.inspect(place.root, place.camera, nil) :: any).fingerprint
+	local before = (inspect(place) :: any).fingerprint
 	place.parts.Head.CFrame = place.parts.Head.CFrame + Vector3.new(0, 0.5, 0)
-	local moved = (E2Scene.inspect(place.root, place.camera, nil) :: any).fingerprint
+	local moved = (inspect(place) :: any).fingerprint
 	check("a moved part changes it", moved ~= before)
 	place.parts.Head:FindFirstChildOfClass("Motor6D").Transform = CFrame.new(0, 0.1, 0)
-	local posed = (E2Scene.inspect(place.root, place.camera, nil) :: any).fingerprint
+	local posed = (inspect(place) :: any).fingerprint
 	check("a posed joint changes it", posed ~= moved)
+	place.baseplate.Reflectance = 0.5
+	local shiny = (inspect(place) :: any).fingerprint
+	check("the baseplate's look changes it", shiny ~= posed)
 end)
 
 -- ---------------------------------------------------------------------------------------
@@ -423,29 +584,36 @@ local function newSession()
 	local session = {
 		place = place,
 		marker = marker,
-		state = Approval.new(marker, FIXTURE_ID),
+		state = Approval.new(marker, FIXTURE_ID, place.rig),
+		-- What the person types into the panel.
+		typed = FIXTURE_ID :: any,
 		-- What Studio would report; cases change these.
-		armValue = FIXTURE_ID :: any,
 		placeId = 0,
 		gameId = 0,
 		isEdit = true,
 		viewportActive = true :: boolean?,
 		selectionEmpty = true :: boolean?,
 		terrainCells = 0 :: number?,
+		watching = true :: boolean?,
 		camera = place.camera :: any,
 		view = nil :: any,
 		subject = nil :: any,
 		foundMarker = marker :: any,
 	}
-	local scene = E2Scene.inspect(place.root, place.camera, nil) :: any
-	session.view = viewOf(scene.subject)
+	session.view = viewOf((inspect(place) :: any).subject)
 	return session
 end
 
 local function observe(session: any): any
 	local found = session.foundMarker
-	local scene, sceneProblem =
-		E2Scene.inspect(session.place.root, session.camera, if session.subject then session.subject.clone else nil)
+	local place = session.place
+	local scene, sceneProblem = E2Scene.inspect({
+		root = place.root,
+		camera = session.camera,
+		lighting = place.lighting,
+		rig = session.state.rig,
+		clone = if session.subject then session.subject.clone else nil,
+	} :: any)
 	return {
 		guard = {
 			markerClass = if found then found.ClassName else nil,
@@ -455,33 +623,41 @@ local function observe(session: any): any
 			isEdit = session.isEdit,
 		},
 		marker = found,
-		armValue = session.armValue,
 		camera = session.camera,
 		view = session.view,
 		viewportActive = session.viewportActive,
 		selectionEmpty = session.selectionEmpty,
 		terrainCells = session.terrainCells,
+		watching = session.watching,
 		scene = scene,
 		sceneProblem = sceneProblem,
 		subject = session.subject,
 	}
 end
 
--- Starts a preview of the approved rig, as Preview would report it.
+-- Starts a preview of the probe's rig, as Preview would report it once its copy is shown.
 local function startPreview(session: any)
-	local clone = Instance.new("Model")
-	clone.Name = "MotionBridgePreview"
-	clone.Parent = session.place.root
-	session.subject = { model = session.place.rig, clone = clone }
+	session.subject = { model = session.place.rig, clone = buildClone(session.place) }
+end
+
+local function endPreview(session: any)
+	if session.subject and session.subject.clone then
+		session.subject.clone.Parent = nil
+	end
+	session.subject = nil
+end
+
+local function arm(session: any): (boolean, string)
+	return Approval.arm(session.state, observe(session), session.typed)
 end
 
 local function approved(session: any): any
-	local ok, why = Approval.arm(session.state, observe(session))
+	local ok, why = arm(session)
 	check("approval is given", ok, why)
 	return session
 end
 
-case("nothing is approved until a person arms the fixture", function()
+case("nothing is approved until a person approves in the panel", function()
 	local session = newSession()
 	local reason = Approval.refusal(session.state, observe(session), false)
 	check("refused", reason ~= nil and string.find(reason, Approval.NEVER_GIVEN, 1, true) ~= nil, reason)
@@ -489,13 +665,30 @@ case("nothing is approved until a person arms the fixture", function()
 	check("refused for a capture too", Approval.refusal(session.state, observe(session), true) ~= nil)
 end)
 
-case("an approved scene and camera allow a screenshot of the approved rig", function()
+case("an approved scene and camera allow a screenshot of the probe's rig", function()
 	local session = approved(newSession())
 	check("screenshots are possible", Approval.refusal(session.state, observe(session), false) == nil)
+	-- Before the copy exists, Preview asks whether this rig may be shown at all.
+	session.subject = { model = session.place.rig, clone = nil }
+	check("the rig may be shown", Approval.refusal(session.state, observe(session), true) == nil)
 	startPreview(session)
 	local reason = Approval.refusal(session.state, observe(session), true)
-	check("a screenshot of the rig's preview is allowed", reason == nil, reason)
+	check("a screenshot of its copy is allowed", reason == nil, reason)
 	check("and again, while nothing changes", Approval.refusal(session.state, observe(session), true) == nil)
+end)
+
+case("another rig may not even be shown", function()
+	local session = approved(newSession())
+	local other = Instance.new("Model")
+	session.subject = { model = other, clone = nil }
+	local reason = Approval.refusal(session.state, observe(session), true)
+	check(
+		"refused before any copy exists",
+		reason ~= nil and string.find(reason, "not of the probe's synthetic rig") ~= nil,
+		reason
+	)
+	session.subject = nil
+	check("and the approval is withdrawn", Approval.refusal(session.state, observe(session), false) ~= nil)
 end)
 
 for label, value in
@@ -508,12 +701,13 @@ for label, value in
 		["the whole marker value"] = FixtureGuard.MARKER_PREFIX .. FIXTURE_ID,
 		["a number"] = 1,
 		["nothing"] = "<nil>",
+		["an empty box"] = "",
 	} :: { [string]: any }
 do
-	case(`arming with {label} gives no approval`, function()
+	case(`typing {label} gives no approval`, function()
 		local session = newSession()
-		session.armValue = if value == "<nil>" then nil else value
-		local ok, why = Approval.arm(session.state, observe(session))
+		session.typed = if value == "<nil>" then nil else value
+		local ok, why = arm(session)
 		check("no approval", ok == false, why)
 		check("a reason is given", type(why) == "string" and why ~= "")
 		startPreview(session)
@@ -521,17 +715,26 @@ do
 	end)
 end
 
-case("approval is pinned to the fixture the probe was started in", function()
-	-- A different, perfectly well-formed marker, armed with its own id.
-	local session = newSession()
+case("the place cannot approve itself", function()
+	-- A different, perfectly well-formed fixture: the probe started in it, so its marker
+	-- and id are the pinned ones. The person types the id of the fixture they prepared.
+	local copied = newSession()
+	copied.marker.Value = FixtureGuard.MARKER_PREFIX .. OTHER_ID
+	copied.state = Approval.new(copied.marker, OTHER_ID, copied.place.rig)
+	local ok, why = arm(copied)
+	check("a copied fixture is refused when the person types their own id", ok == false, why)
+	check("the reason is the id", string.find(why, "not this fixture's") ~= nil, why)
+
+	-- The marker is swapped after the probe started.
+	local swapped = newSession()
 	local other = Instance.new("StringValue")
 	other.Name = FixtureGuard.MARKER_NAME
 	other.Value = FixtureGuard.MARKER_PREFIX .. OTHER_ID
-	session.foundMarker = other
-	session.armValue = OTHER_ID
-	local ok, why = Approval.arm(session.state, observe(session))
-	check("another fixture's marker is refused", ok == false, why)
-	check("the reason names the fixture", string.find(why, "not the one the probe was started in") ~= nil, why)
+	swapped.foundMarker = other
+	swapped.typed = OTHER_ID
+	local again, reason = arm(swapped)
+	check("a swapped marker is refused", again == false, reason)
+	check("the reason names the fixture", string.find(reason, "not the one the probe was started in") ~= nil, reason)
 
 	-- The same id on a new marker instance: the value is right, the marker is not the one.
 	local replaced = newSession()
@@ -539,9 +742,26 @@ case("approval is pinned to the fixture the probe was started in", function()
 	copy.Name = FixtureGuard.MARKER_NAME
 	copy.Value = replaced.marker.Value
 	replaced.foundMarker = copy
-	local again, reason = Approval.arm(replaced.state, observe(replaced))
-	check("a replaced marker is refused", again == false, reason)
-	check("the reason names the marker", string.find(reason, "not the one the probe was started with") ~= nil, reason)
+	local third, last = arm(replaced)
+	check("a replaced marker is refused", third == false, last)
+	check("the reason names the marker", string.find(last, "not the one the probe was started with") ~= nil, last)
+
+	-- Nothing an observation carries can stand in for what the person typed.
+	local silent = newSession()
+	silent.typed = nil
+	local observation = observe(silent)
+	observation.armValue = FIXTURE_ID
+	observation.selected = FIXTURE_ID
+	observation.guard.armed = FIXTURE_ID
+	check("values offered by the place are ignored", (Approval.arm(silent.state, observation, nil)) == false)
+
+	-- A scene read around some other rig is not the probe's scene, whatever it looks like.
+	local foreign = newSession()
+	local reading = observe(foreign)
+	reading.scene.rig = foreign.place.rig:Clone()
+	local fourth, final = Approval.arm(foreign.state, reading, FIXTURE_ID)
+	check("a scene built around another rig is refused", fourth == false, final)
+	check("the reason names the rig", string.find(final, "not the one the probe built") ~= nil, final)
 end)
 
 for label, alter in
@@ -554,6 +774,15 @@ for label, alter in
 		end,
 		["the marker is gone"] = function(session: any)
 			session.foundMarker = nil
+		end,
+		["the probe has no rig of its own"] = function(session: any)
+			session.state = Approval.new(session.marker, FIXTURE_ID, nil)
+		end,
+		["camera and tab switches are not being watched"] = function(session: any)
+			session.watching = false
+		end,
+		["whether switches are watched is unknown"] = function(session: any)
+			session.watching = nil
 		end,
 		["a script tab is active"] = function(session: any)
 			session.viewportActive = false
@@ -585,6 +814,15 @@ for label, alter in
 		["the camera is tilted"] = function(session: any)
 			session.view.cframe = session.view.cframe * CFrame.Angles(0, 0, math.rad(8))
 		end,
+		["the camera is upside down"] = function(session: any)
+			session.view.cframe = session.view.cframe * CFrame.Angles(0, 0, math.pi)
+		end,
+		["the camera looks up from under the baseplate"] = function(session: any)
+			local subject = (inspect(session.place) :: any).subject
+			-- Straight below the rig, far enough to frame it, looking up through the baseplate.
+			local below = subject.centre + Vector3.new(0, -subject.radius * 2.6, 0)
+			session.view.cframe = CFrame.new(below) * CFrame.Angles(math.rad(90), 0, 0)
+		end,
 		["the field of view is extreme"] = function(session: any)
 			session.view.fieldOfView = 110
 		end,
@@ -596,6 +834,9 @@ for label, alter in
 			part.Name = "Private"
 			part.Parent = session.place.root
 		end,
+		["the place has a sky of its own"] = function(session: any)
+			Instance.new("Sky").Parent = session.place.lighting
+		end,
 		["the rig is a visible one"] = function(session: any)
 			session.place.parts.Head.Transparency = 0
 		end,
@@ -604,15 +845,34 @@ for label, alter in
 		end,
 	} :: { [string]: (session: any) -> () }
 do
-	case(`arming gives no approval when {label}`, function()
+	case(`no approval is given when {label}`, function()
 		local session = newSession()
 		alter(session)
-		local ok, why = Approval.arm(session.state, observe(session))
+		local ok, why = arm(session)
 		check("no approval", ok == false, why)
 		check("a reason is given", type(why) == "string" and why ~= "")
 		check("screenshots stay off", Approval.refusal(session.state, observe(session), false) ~= nil)
 	end)
 end
+
+case("a camera under the baseplate is refused for being there", function()
+	local session = newSession()
+	local subject = (inspect(session.place) :: any).subject
+	-- In front of the rig and below the ground, the right way up, looking up at it.
+	local distance = subject.radius * 2.6
+	local slant = math.rad(45)
+	local below = subject.centre + Vector3.new(0, -distance * math.sin(slant), -distance * math.cos(slant))
+	session.view.cframe = CFrame.new(below) * CFrame.Angles(0, math.pi, 0) * CFrame.Angles(slant, 0, 0)
+	check("the camera is under the ground", session.view.cframe.Position.Y < 0, session.view.cframe.Position.Y)
+	check(
+		"the view itself frames the rig",
+		Stage.framed(session.view, subject) == nil,
+		Stage.framed(session.view, subject)
+	)
+	local ok, why = arm(session)
+	check("no approval", ok == false)
+	check("the reason is the baseplate", string.find(why, "at or below the baseplate") ~= nil, why)
+end)
 
 -- Each of these happens after approval, while a screenshot is pending. The screenshot
 -- must be refused, and the approval must stay withdrawn even if the change is undone.
@@ -677,22 +937,16 @@ for label, change in
 				session.viewportActive = true
 			end
 		end,
+		["switches stop being watched"] = function(session: any)
+			session.watching = false
+			return function()
+				session.watching = true
+			end
+		end,
 		["something is selected"] = function(session: any)
 			session.selectionEmpty = false
 			return function()
 				session.selectionEmpty = true
-			end
-		end,
-		["the fixture is unarmed"] = function(session: any)
-			session.armValue = nil
-			return function()
-				session.armValue = FIXTURE_ID
-			end
-		end,
-		["the arm attribute is changed to something else"] = function(session: any)
-			session.armValue = OTHER_ID
-			return function()
-				session.armValue = FIXTURE_ID
 			end
 		end,
 		["the marker is replaced"] = function(session: any)
@@ -703,6 +957,13 @@ for label, change in
 			session.foundMarker = copy
 			return function()
 				session.foundMarker = original
+			end
+		end,
+		["the marker's id is rewritten"] = function(session: any)
+			local original = session.marker.Value
+			session.marker.Value = FixtureGuard.MARKER_PREFIX .. OTHER_ID
+			return function()
+				session.marker.Value = original
 			end
 		end,
 		["the place is published"] = function(session: any)
@@ -725,12 +986,32 @@ for label, change in
 				part.Parent = nil
 			end
 		end,
+		["a sky is added"] = function(session: any)
+			local sky = Instance.new("Sky")
+			sky.Parent = session.place.lighting
+			return function()
+				sky.Parent = nil
+			end
+		end,
+		["something is attached to the camera"] = function(session: any)
+			local part = Instance.new("Part")
+			part.Parent = session.camera
+			return function()
+				part.Parent = nil
+			end
+		end,
 		["a rig part is moved"] = function(session: any)
 			local head = session.place.parts.Head
 			local original = head.CFrame
 			head.CFrame = original + Vector3.new(0, 0.25, 0)
 			return function()
 				head.CFrame = original
+			end
+		end,
+		["the baseplate's look changes"] = function(session: any)
+			session.place.baseplate.Reflectance = 0.4
+			return function()
+				session.place.baseplate.Reflectance = 0
 			end
 		end,
 		["the rig is made visible"] = function(session: any)
@@ -764,15 +1045,6 @@ for label, change in
 				session.subject.model = original
 			end
 		end,
-		["the preview has no clone"] = function(session: any)
-			local clone = session.subject.clone
-			session.subject = { model = session.subject.model, clone = nil }
-			clone.Parent = nil
-			return function()
-				clone.Parent = session.place.root
-				session.subject = { model = session.place.rig, clone = clone }
-			end
-		end,
 		["there is no preview at all"] = function(session: any)
 			local subject = session.subject
 			subject.clone.Parent = nil
@@ -780,6 +1052,45 @@ for label, change in
 			return function()
 				subject.clone.Parent = session.place.root
 				session.subject = subject
+			end
+		end,
+		["the pose throws a limb out of the picture"] = function(session: any)
+			local hand = session.subject.clone.RightHand
+			local original = hand.CFrame
+			hand.CFrame = original + Vector3.new(300, 0, 0)
+			return function()
+				hand.CFrame = original
+			end
+		end,
+		["the pose puts a limb across the edge of the picture"] = function(session: any)
+			local head = session.subject.clone.Head
+			local original = head.CFrame
+			local subject = (inspect(session.place, session.subject.clone) :: any).subject
+			head.CFrame = CFrame.new(subject.centre + Vector3.new(0, subject.radius * 1.55, 0))
+			return function()
+				head.CFrame = original
+			end
+		end,
+		["the pose sinks a limb into the baseplate"] = function(session: any)
+			local foot = session.subject.clone.LeftFoot
+			local original = foot.CFrame
+			foot.CFrame = CFrame.new(0, 0.1, 0)
+			return function()
+				foot.CFrame = original
+			end
+		end,
+		["something is added beneath the preview's copy"] = function(session: any)
+			local sign = Instance.new("Part")
+			sign.Name = "Sign"
+			sign.Parent = session.subject.clone
+			return function()
+				sign.Parent = nil
+			end
+		end,
+		["the preview's copy is hidden again"] = function(session: any)
+			session.subject.clone.Head.Transparency = 1
+			return function()
+				session.subject.clone.Head.Transparency = 0
 			end
 		end,
 	} :: { [string]: (session: any) -> () -> () }
@@ -801,7 +1112,7 @@ do
 		check("still refused after the change is undone", after ~= nil)
 		check(
 			"the refusal says how to re-approve",
-			after ~= nil and string.find(after, "set it again", 1, true) ~= nil,
+			after ~= nil and string.find(after, "approve again", 1, true) ~= nil,
 			after
 		)
 		check("screenshots are reported as off", Approval.refusal(session.state, observe(session), false) ~= nil)
@@ -818,7 +1129,7 @@ case("asking whether screenshots are possible does not by itself withdraw approv
 	check("and a screenshot is still allowed", Approval.refusal(session.state, observe(session), true) == nil)
 end)
 
-case("a withdrawn approval comes back only when a person arms again", function()
+case("a withdrawn approval comes back only when a person approves again", function()
 	local session = approved(newSession())
 	Approval.disarm(session.state, "the preview was cancelled")
 	local reason = Approval.refusal(session.state, observe(session), false)
@@ -827,27 +1138,36 @@ case("a withdrawn approval comes back only when a person arms again", function()
 		reason ~= nil and string.find(reason, "the preview was cancelled", 1, true) ~= nil,
 		reason
 	)
+	check("what was typed is forgotten", session.state.selected == nil)
 	startPreview(session)
 	check("refused for a capture", Approval.refusal(session.state, observe(session), true) ~= nil)
-	check("arming during the preview is refused", (Approval.arm(session.state, observe(session))) == false)
-	session.subject.clone.Parent = nil
-	session.subject = nil
-	check("arming again gives approval", (Approval.arm(session.state, observe(session))) == true)
+	check("approving during the preview is refused", (arm(session)) == false)
+	endPreview(session)
+	session.typed = nil
+	check("approving without typing the id again is refused", (arm(session)) == false)
+	session.typed = FIXTURE_ID
+	check("typing the id and approving again works", (arm(session)) == true)
 	check("screenshots are possible again", Approval.refusal(session.state, observe(session), false) == nil)
 end)
 
-case("re-arming records the camera as it is then, not as it was", function()
+case("a failed attempt to approve cancels an approval that stood", function()
 	local session = approved(newSession())
-	local moved = viewOf((E2Scene.inspect(session.place.root, session.camera, nil) :: any).subject, 1.6)
-	session.view = moved
+	session.typed = OTHER_ID
+	check("the wrong id is refused", (arm(session)) == false)
+	session.typed = FIXTURE_ID
+	check("and the earlier approval no longer stands", Approval.refusal(session.state, observe(session), false) ~= nil)
+end)
+
+case("approving again records the camera as it is then, not as it was", function()
+	local session = approved(newSession())
+	session.view = viewOf((inspect(session.place) :: any).subject, 1.6)
 	startPreview(session)
 	check(
 		"the moved camera is refused under the old approval",
 		Approval.refusal(session.state, observe(session), true) ~= nil
 	)
-	session.subject.clone.Parent = nil
-	session.subject = nil
-	check("a person approves the new framing", (Approval.arm(session.state, observe(session))) == true)
+	endPreview(session)
+	check("a person approves the new framing", (arm(session)) == true)
 	startPreview(session)
 	check("the new framing is now the approved one", Approval.refusal(session.state, observe(session), true) == nil)
 end)

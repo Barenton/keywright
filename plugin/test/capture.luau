@@ -37,14 +37,16 @@ local function case(name: string, run: () -> ())
 	Capture.setGate(nil)
 end
 
-local PNG_END = { 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130 }
-
--- Data shaped like a PNG that declares the given size: signature and header at the
--- start, the closing chunk at the end, `length` bytes in all.
-local function png(width: number, height: number, length: number?): buffer
-	local size = math.max(length or 64, 45)
+-- Builds data shaped like a PNG from a list of chunks, each { type, length } with an
+-- optional width and height for the header. Checksums are left empty except on the end
+-- chunk: the plugin does not verify them, the relay does.
+local function build(chunks: { { any } }): buffer
+	local size = 8
+	for _, chunk in chunks do
+		size += 12 + chunk[2]
+	end
 	local data = buffer.create(size)
-	for index, byte in { 137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82 } do
+	for index, byte in { 137, 80, 78, 71, 13, 10, 26, 10 } do
 		buffer.writeu8(data, index - 1, byte)
 	end
 	local function big(offset: number, value: number)
@@ -53,12 +55,29 @@ local function png(width: number, height: number, length: number?): buffer
 		buffer.writeu8(data, offset + 2, bit32.band(bit32.rshift(value, 8), 255))
 		buffer.writeu8(data, offset + 3, bit32.band(value, 255))
 	end
-	big(16, width)
-	big(20, height)
-	for index, byte in PNG_END do
-		buffer.writeu8(data, size - #PNG_END + index - 1, byte)
+	local offset = 8
+	for _, chunk in chunks do
+		local kind, length = chunk[1], chunk[2]
+		big(offset, length)
+		buffer.writestring(data, offset + 4, kind)
+		if kind == "IHDR" then
+			big(offset + 8, chunk[3])
+			big(offset + 12, chunk[4])
+		elseif kind == "IEND" then
+			for index, byte in { 174, 66, 96, 130 } do
+				buffer.writeu8(data, offset + 8 + length + index - 1, byte)
+			end
+		end
+		offset += 12 + length
 	end
 	return data
+end
+
+-- A PNG-shaped buffer that declares the given size: header, one chunk of image data and
+-- the closing chunk, `length` bytes in all.
+local function png(width: number, height: number, length: number?): buffer
+	local size = math.max(length or 64, 58)
+	return build({ { "IHDR", 13, width, height }, { "IDAT", size - 57 }, { "IEND", 0 } })
 end
 
 local function newStudio()
@@ -80,6 +99,11 @@ local function newStudio()
 		data = nil :: any,
 		starts = {} :: { any },
 		workers = {} :: { thread },
+		cancelled = {} :: { thread },
+		-- Whether cancelling a worker really stops it.
+		cancelWorks = true,
+		-- Seconds Studio takes inside the permission call before it first waits.
+		permissionDelay = 0,
 		permissionRequests = 0,
 		reads = 0,
 		onStart = nil :: (() -> ())?,
@@ -98,6 +122,7 @@ local function newStudio()
 	local service = {}
 	function service:RequestScreenshotPermissionAsync()
 		studio.permissionRequests += 1
+		studio.now += studio.permissionDelay
 		if studio.permission == "never" then
 			-- The prompt stays open until the case answers it by resuming this worker.
 			coroutine.yield()
@@ -167,6 +192,12 @@ local function newStudio()
 			coroutine.resume(thread)
 			return thread
 		end,
+		cancel = function(thread: thread)
+			table.insert(studio.cancelled, thread)
+			if studio.cancelWorks and coroutine.status(thread) == "suspended" then
+				coroutine.close(thread)
+			end
+		end,
 	} :: any)
 	return studio
 end
@@ -194,24 +225,46 @@ case("the size a PNG declares is read from its header", function()
 	check("sizes above 65535 are read whole", large == 70000 and tall == 3, large)
 end)
 
-case("data that is not a complete PNG is recognised", function()
-	check("too short", Capture.inspectPng(buffer.create(10)) == nil)
-	check("not a buffer", Capture.inspectPng("PNG") == nil)
-	check("nothing", Capture.inspectPng(nil) == nil)
+case("data that is not one complete still PNG is recognised", function()
+	local function refused(data: any, expected: string)
+		local size, reason = Capture.inspectPng(data)
+		check(
+			expected,
+			size == nil and type(reason) == "string" and string.find(reason, expected, 1, true) ~= nil,
+			reason
+		)
+	end
+	refused(buffer.create(10), "too short")
+	refused("PNG", "no image data")
+	refused(nil, "no image data")
 	local wrong = png(4, 4)
 	buffer.writeu8(wrong, 1, 0)
-	check("wrong signature", Capture.inspectPng(wrong) == nil)
+	refused(wrong, "not a PNG")
 	local headless = png(4, 4)
 	buffer.writeu8(headless, 12, 0)
-	check("no header chunk", Capture.inspectPng(headless) == nil)
+	refused(headless, "without a header")
 	local cut = png(4, 4)
 	buffer.writeu8(cut, buffer.len(cut) - 1, 0)
-	local size, reason = Capture.inspectPng(cut)
-	check("cut short", size == nil and string.find(reason, "cut short") ~= nil, reason)
+	refused(cut, "cut short")
 	-- A header with nothing after it is exactly what a cut-off transfer looks like.
 	local stub = buffer.create(33)
 	buffer.copy(stub, 0, png(4, 4), 0, 33)
-	check("header only", Capture.inspectPng(stub) == nil)
+	refused(stub, "too short")
+
+	local header = { "IHDR", 13, 4, 4 }
+	refused(build({ header, { "gAMA", 20 }, { "IEND", 0 } }), "no image data")
+	refused(build({ header, { "IDAT", 0 }, { "gAMA", 1 }, { "IEND", 0 } }), "empty image data")
+	refused(build({ header, { "acTL", 8 }, { "IDAT", 20 }, { "IEND", 0 } }), "animated")
+	refused(build({ header, { "IDAT", 20 }, { "fdAT", 20 }, { "IEND", 0 } }), "animated")
+	refused(build({ header, header, { "IDAT", 20 }, { "IEND", 0 } }), "two headers")
+	refused(build({ header, { "IDAT", 20 }, { "IEND", 0 }, { "IDAT", 8 }, { "IEND", 0 } }), "after its end")
+	local overrun = build({ header, { "IDAT", 20 }, { "IEND", 0 } })
+	buffer.writeu8(overrun, 35, 200)
+	refused(overrun, "cut short")
+
+	local several = build({ header, { "gAMA", 4 }, { "IDAT", 10 }, { "IDAT", 10 }, { "IEND", 0 } })
+	local width, height = Capture.inspectPng(several)
+	check("ordinary extra chunks and split image data are fine", width == 4 and height == 4, height)
 end)
 
 case("a screenshot is scaled to the requested edge and returned as a checked PNG", function()
@@ -302,7 +355,7 @@ do
 	end)
 end
 
-case("an unanswered permission prompt is given up on, and only one is ever outstanding", function()
+case("an unanswered permission prompt is given up on and leaves no worker behind", function()
 	local studio = newStudio()
 	studio.permission = "never"
 	studio.data = png(768, 432)
@@ -310,24 +363,38 @@ case("an unanswered permission prompt is given up on, and only one is ever outst
 	check("it waited no longer than the limit", studio.now <= Capture.PERMISSION_TIMEOUT + 1, studio.now)
 	check("it did wait for the limit", studio.now >= Capture.PERMISSION_TIMEOUT, studio.now)
 	check("no screenshot was requested", #studio.starts == 0)
+	check("the waiting worker was cancelled", #studio.cancelled == 1 and studio.cancelled[1] == studio.workers[1])
+	check(
+		"the worker is no longer running",
+		coroutine.status(studio.workers[1]) == "dead",
+		coroutine.status(studio.workers[1])
+	)
 
-	-- The prompt is still open. Another screenshot must not open a second one.
+	-- The prompt may still be on screen, so Studio is not asked again in this session.
 	local before = studio.now
-	refused(Capture.capture(768, nil, allow), "still unanswered")
+	refused(Capture.capture(768, nil, allow), "abandoned")
 	check("Studio was not asked again", studio.permissionRequests == 1, studio.permissionRequests)
 	check("no second worker was started", #studio.workers == 1, #studio.workers)
 	check("the second request did not wait", studio.now == before, studio.now - before)
+	local granted, reason = Capture.requestPermission()
+	check("asking directly is refused too", granted == false and reason == Capture.PERMISSION_ABANDONED, reason)
 	check("no screenshot was requested", #studio.starts == 0)
+end)
 
-	-- The person finally answers "allow". That late answer authorises nothing by itself.
+case("a worker that cannot be cancelled still counts for nothing when it answers", function()
+	local studio = newStudio()
+	studio.permission = "never"
+	studio.cancelWorks = false
+	studio.data = png(768, 432)
+	refused(Capture.capture(768, nil, allow), "not answered in time")
+	check("cancelling was attempted", #studio.cancelled == 1)
+	check("the worker survived", coroutine.status(studio.workers[1]) == "suspended")
+	-- The person answers "allow" long afterwards.
 	studio.permission = "grant"
 	coroutine.resume(studio.workers[1])
 	check("the late answer requested no screenshot", #studio.starts == 0, #studio.starts)
-
-	-- The next screenshot asks Studio again, and only then goes ahead.
-	local result = Capture.capture(768, nil, allow)
-	check("the next screenshot asks again", studio.permissionRequests == 2, studio.permissionRequests)
-	check("and then succeeds", result.status == "ok", result.reason)
+	refused(Capture.capture(768, nil, allow), "abandoned")
+	check("Studio was not asked again", studio.permissionRequests == 1, studio.permissionRequests)
 end)
 
 case("a permission answer that comes after the deadline is not accepted", function()
@@ -344,6 +411,53 @@ case("a permission answer that comes after the deadline is not accepted", functi
 	studio.waitStep = Capture.PERMISSION_TIMEOUT + 1
 	refused(Capture.capture(768, nil, allow), "not answered in time")
 	check("no screenshot was requested", #studio.starts == 0, #studio.starts)
+	check("nothing was left waiting to cancel", #studio.cancelled == 0, #studio.cancelled)
+
+	-- Studio did answer, so nothing is abandoned: the next screenshot simply asks again.
+	studio.onWait = nil
+	studio.waitStep = 1 / 60
+	local result = Capture.capture(768, nil, allow)
+	check("the next screenshot asks again", studio.permissionRequests == 2, studio.permissionRequests)
+	check("and then succeeds", result.status == "ok", result.reason)
+end)
+
+case("time Studio takes before it first waits counts against the permission deadline", function()
+	local studio = newStudio()
+	studio.data = png(768, 432)
+	-- The call returns "allow" without ever waiting, but only after too long.
+	studio.permissionDelay = Capture.PERMISSION_TIMEOUT + 1
+	refused(Capture.capture(768, nil, allow), "not answered in time")
+	check("no screenshot was requested", #studio.starts == 0, #studio.starts)
+end)
+
+case("a screenshot given up on from outside leaves no permission worker running", function()
+	local studio = newStudio()
+	studio.permission = "never"
+	studio.data = png(768, 432)
+	local abandoned = false
+	studio.onWait = function()
+		-- As a preview does when it is cancelled or runs out of time.
+		if not abandoned then
+			abandoned = true
+			Capture.abandon()
+		end
+	end
+	refused(Capture.capture(768, nil, allow), "not answered in time")
+	check("the worker was cancelled as soon as it was given up on", #studio.cancelled == 1)
+	check("the worker is no longer running", coroutine.status(studio.workers[1]) == "dead")
+	studio.onWait = nil
+	refused(Capture.capture(768, nil, allow), "abandoned")
+	check("giving up again does nothing", pcall(Capture.abandon) and #studio.cancelled == 1, #studio.cancelled)
+	check("Studio was asked only once", studio.permissionRequests == 1, studio.permissionRequests)
+end)
+
+case("giving up when nothing is waiting changes nothing", function()
+	local studio = newStudio()
+	studio.data = png(768, 432)
+	Capture.abandon()
+	local result = Capture.capture(768, nil, allow)
+	check("a screenshot still works", result.status == "ok", result.reason)
+	check("nothing was cancelled", #studio.cancelled == 0)
 end)
 
 case("the guard is asked before the screenshot is requested", function()
@@ -404,6 +518,24 @@ case("an image that is ready only after the deadline is not taken", function()
 	check("the late image was not read", studio.reads == 0, studio.reads)
 end)
 
+case("a deadline that passes during the last checks still means no image", function()
+	local studio = newStudio()
+	studio.data = png(768, 432)
+	local asked = 0
+	refused(
+		Capture.capture(768, nil, function()
+			asked += 1
+			if asked == 2 then
+				-- The image is in hand and valid; the final check itself runs out the clock.
+				studio.now += Capture.BUFFER_TIMEOUT + 1
+			end
+			return nil
+		end),
+		"did not finish in time"
+	)
+	check("the image had been read", studio.reads == 1, studio.reads)
+end)
+
 for label, configure in
 	{
 		["requesting the screenshot fails"] = function(studio: any)
@@ -432,6 +564,14 @@ for label, configure in
 			buffer.copy(cut, 0, whole, 0, 4000)
 			studio.data = cut
 			return "cut short"
+		end,
+		["the PNG has no image data"] = function(studio: any)
+			studio.data = build({ { "IHDR", 13, 768, 432 }, { "gAMA", 64 }, { "IEND", 0 } })
+			return "no image data"
+		end,
+		["the PNG is an animation"] = function(studio: any)
+			studio.data = build({ { "IHDR", 13, 768, 432 }, { "acTL", 8 }, { "IDAT", 64 }, { "IEND", 0 } })
+			return "animated"
 		end,
 		["the PNG is wider than was asked for"] = function(studio: any)
 			studio.data = png(1920, 432)

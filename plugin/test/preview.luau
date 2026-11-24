@@ -18,6 +18,7 @@ local process = require("@lune/process")
 local roblox = require("@lune/roblox") :: any
 local task = require("@lune/task")
 
+local Capture = require("../src/Capture")
 local Preview = require("../src/Preview")
 local Sampler = require("../src/Sampler")
 
@@ -810,6 +811,11 @@ case("a capture that never returns is abandoned, and its late result is refused"
 	check("the capture budget elapsed", world.now >= Preview.CAPTURE_BUDGET, world.now)
 	check("the abandoned capture never continued", not resumed)
 	check("the abandoned capture may no longer take an image", lateGuard() == "the preview has ended", lateGuard())
+	check(
+		"the approval it ran under was withdrawn",
+		table.find(world.revoked, "the capture exceeded its time budget") ~= nil,
+		table.concat(world.revoked, "; ")
+	)
 	checkUntouched(world, rig, before)
 
 	-- A later preview has its own clone; the old capture still may not shoot.
@@ -820,6 +826,98 @@ case("a capture that never returns is abandoned, and its late result is refused"
 	end))
 	check("the old capture is refused during a later preview", duringNext == "the preview has ended", duringNext)
 	check("the later preview gets its own image", nextResult.capture.status == "ok")
+	checkUntouched(world, rig, before)
+end)
+
+case("a capture that runs out of time leaves no permission request waiting", function()
+	local world = newWorld()
+	local rig = buildRig(world)
+	local abandons = 0
+	local original = Capture.abandon
+	Capture.abandon = function()
+		abandons += 1
+	end
+	local ok, problem = pcall(function()
+		Preview.run(shot(world, rig, function()
+			coroutine.yield()
+			return { status = "ok" }
+		end))
+		check("the waiting permission request was given up on", abandons == 1, abandons)
+		Preview.run(shot(world, rig, function()
+			return { status = "ok", width = 2, height = 2 }
+		end))
+		check("a capture that finishes gives up on nothing", abandons == 1, abandons)
+	end)
+	Capture.abandon = original
+	check("the case ran", ok, problem)
+end)
+
+case("a rig the gate has not approved is never shown, even for a moment", function()
+	local world = newWorld()
+	local rig = buildRig(world)
+	local before = snapshot(rig.model)
+	local asked: { any } = {}
+	-- Screenshots are possible in general, but not of this rig.
+	Preview.setCaptureGate(function(capturing: boolean): string?
+		local subject = Preview.subject()
+		table.insert(
+			asked,
+			{ capturing = capturing, model = subject and subject.model, clone = subject and subject.clone }
+		)
+		return if capturing then "screenshots are off: the preview is not of the probe's synthetic rig" else nil
+	end)
+	local shown, called = false, false
+	world.onStep = function(model: any)
+		for _, descendant in model:GetDescendants() do
+			shown = shown or (descendant:IsA("BasePart") and descendant.Transparency == 0)
+		end
+	end
+	local result = Preview.run(request(rig, {
+		capture = function()
+			called = true
+			return { status = "ok", png = "image" }
+		end,
+	}))
+	check(
+		"the gate was asked before any clone existed",
+		asked[1] ~= nil and asked[1].capturing == true and asked[1].clone == nil
+	)
+	check("the gate was told which rig", asked[1] ~= nil and asked[1].model == rig.model)
+	check("the clone was never shown", not shown)
+	check("the capture function was not called", not called)
+	check("the capture is reported unavailable", result.capture.status == "unavailable")
+	check(
+		"the reason is the gate's",
+		string.find(result.capture.reason, "not of the probe's synthetic rig") ~= nil,
+		result.capture.reason
+	)
+	check("the sample is still returned", result.transforms.Head.X == 0.5)
+	checkUntouched(world, rig, before)
+end)
+
+case("an image is not handed on if approval is lost while the preview cleans up", function()
+	local world = newWorld()
+	local rig = buildRig(world)
+	local before = snapshot(rig.model)
+	local taken = false
+	world.onStep = function()
+		-- The sampler's last step happens during cleanup, after the image is in hand.
+		if taken then
+			world.gateRefusal = "screenshots are off: the active tab changed"
+		end
+	end
+	local result = Preview.run(shot(world, rig, function()
+		taken = true
+		return { status = "ok", width = 4, height = 3, png = "image" }
+	end))
+	check("the capture is reported unavailable", result.capture.status == "unavailable", result.capture.status)
+	check("no image is passed on", result.capture.png == nil)
+	check(
+		"the reason is the lost approval",
+		string.find(result.capture.reason, "the active tab changed") ~= nil,
+		result.capture.reason
+	)
+	check("the sample is still returned", result.transforms.Head.X == 0.5)
 	checkUntouched(world, rig, before)
 end)
 

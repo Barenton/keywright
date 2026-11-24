@@ -21,6 +21,8 @@ export type Config = {
 	credential: Credential?,
 	pairingCode: string?,
 	onRequest: (method: string, params: any) -> any,
+	-- Told when the request being answered has no one waiting for it any more.
+	onCancel: ((reason: string) -> ())?,
 	onState: (state: State, detail: string?) -> (),
 	onCredential: (credential: Credential?) -> (),
 }
@@ -40,6 +42,19 @@ function Connection.start(config: Config)
 	local signals: { RBXScriptConnection } = {}
 	local queue: { { id: string, method: string, params: any } } = {}
 	local working = false
+	-- The request being answered now, and whether its caller has given up on it.
+	local runningId: string? = nil
+	local abandoned: { [string]: boolean } = {}
+
+	-- Tells whoever is answering the current request that nobody is waiting for it.
+	local function giveUp(reason: string)
+		if runningId and not abandoned[runningId] then
+			abandoned[runningId] = true
+			if config.onCancel then
+				pcall(config.onCancel, reason)
+			end
+		end
+	end
 	local stats = { opened = 0, closed = 0, errors = 0, lastError = "" }
 
 	local connect: () -> ()
@@ -80,9 +95,17 @@ function Connection.start(config: Config)
 		working = true
 		while running and generation == expected and #queue > 0 do
 			local request = table.remove(queue, 1) :: { id: string, method: string, params: any }
+			runningId = request.id
 			local ok, result = pcall(config.onRequest, request.method, request.params)
+			runningId = nil
+			local dropped = abandoned[request.id]
+			abandoned[request.id] = nil
 			if generation ~= expected then
 				break
+			end
+			if dropped then
+				-- Its caller gave up; an answer now would go to no one.
+				continue
 			end
 			if ok then
 				send({ t = "res", id = request.id, ok = true, result = result })
@@ -94,6 +117,8 @@ function Connection.start(config: Config)
 	end
 
 	connect = function()
+		-- Work under way for the old connection has no one left to answer.
+		giveUp("the connection to the broker was replaced")
 		drop()
 		generation += 1
 		local expected = generation
@@ -235,6 +260,18 @@ function Connection.start(config: Config)
 				elseif message.t == "req" and type(message.id) == "string" and type(message.method) == "string" then
 					table.insert(queue, { id = message.id, method = message.method, params = message.params })
 					task.spawn(drain, expected)
+				elseif message.t == "cancel" and type(message.id) == "string" then
+					-- The caller timed out or went away. A request still waiting is dropped;
+					-- one being answered is told to stop.
+					for index, waiting in queue do
+						if waiting.id == message.id then
+							table.remove(queue, index)
+							break
+						end
+					end
+					if runningId == message.id then
+						giveUp("the request was abandoned by its caller")
+					end
 				end
 			end)
 		)
@@ -244,6 +281,7 @@ function Connection.start(config: Config)
 				return
 			end
 			attempts += 1
+			giveUp("the connection to the broker was lost")
 			fail("disconnected", detail, BACKOFF[math.min(attempts, #BACKOFF)])
 		end
 		table.insert(
@@ -276,6 +314,7 @@ function Connection.start(config: Config)
 		end,
 		stop = function()
 			running = false
+			giveUp("agent access was turned off")
 			generation += 1
 			drop()
 			config.onState("stopped")

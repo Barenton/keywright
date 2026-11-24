@@ -139,6 +139,9 @@ local function start()
 		credential = credential,
 		pairingCode = code,
 		onRequest = Handlers.dispatcher(methods),
+		onCancel = function(reason: string)
+			Preview.cancel(reason)
+		end,
 		onState = function(state, detail)
 			local text = if state == "ready"
 				then "Connected to the broker."

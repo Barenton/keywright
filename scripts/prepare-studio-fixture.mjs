@@ -18,8 +18,9 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 export const MARKER_NAME = "MotionBridgeFixture";
 export const MARKER_PREFIX = "motion-bridge-fixture/1/";
-// Attribute a person sets on the marker to allow preview screenshots. Never set here.
-export const ARM_ATTRIBUTE = "ScreenshotsArmed";
+// Attribute a person sets on the marker to start the probe in screenshot mode. It selects
+// a mode and approves nothing. Never set here.
+export const MODE_ATTRIBUTE = "ScreenshotMode";
 export const FIXTURE_FILES = ["fixture.project.json", "fixture.rbxl", "manifest.json", "INSTRUCTIONS.md"];
 
 const PROJECT_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -119,27 +120,33 @@ of E10, and the network path of E9 under NAT.
 
 Screenshots are off everywhere by default, and the plugin people install can never turn
 them on. They are possible only in the probe build, only in this fixture, and only after
-a person has approved one scene through one camera. Nothing moves or changes the camera
-for you: the picture is whatever you have framed by hand.
+a person has approved one scene through one camera in the probe's own panel. Nothing in
+this place can give that approval, and nothing moves or changes the camera for you: the
+picture is whatever you have framed by hand.
 
-1. Before loading the probe, add a string attribute named \`${ARM_ATTRIBUTE}\` to
-   \`ServerStorage.${MARKER_NAME}\` and leave it empty. With that attribute present the
-   probe starts in screenshot mode: it builds one invisible synthetic rig on the
-   baseplate, and it does not load the experiment probes that drive undo and redo.
-2. Frame the camera by hand so that the whole rig is in the picture (select the rig and
-   press F), then clear the selection and stay on the 3D viewport tab.
-3. Approve by typing this fixture's id, \`${plan.id}\`, into the attribute. The probe
-   prints whether the scene and camera were approved, and why not if they were not.
+1. Before loading the probe, add a boolean attribute named \`${MODE_ATTRIBUTE}\`, set to
+   true, to \`ServerStorage.${MARKER_NAME}\`. This only selects screenshot mode: the probe
+   then builds one invisible synthetic rig on the baseplate, shows a panel, and does not
+   load the experiment probes that drive undo and redo.
+2. Frame the camera by hand so that the whole rig is in the picture, from above the
+   baseplate (select the rig and press F), then clear the selection and stay on the 3D
+   viewport tab.
+3. In the probe's panel, type this fixture's id, \`${plan.id}\`, and press the approve
+   button. The panel says whether the scene and camera were approved, and why not.
 
 Approval covers exactly that scene and that camera position, field of view and viewport
 size, and only this fixture's id is accepted. It is withdrawn if a screenshot is
-cancelled, the camera or tab is switched, the attribute is changed, the probe unloads, or
-anything in the scene or camera differs while an image is being taken. To approve again,
-clear the attribute and type the id once more.
+cancelled or runs out of time, the camera or tab is switched, you withdraw it in the
+panel, the probe unloads, or anything in the scene or camera differs while an image is
+being taken. To approve again, type the id and press the button once more.
 
 A preview that asks for a screenshot then shows its own disposable copy of the rig where
 the invisible rig stands and asks Studio for a PNG through StudioCaptureService (Studio
-shows its own permission prompt). None of this has been run in Studio yet.
+shows its own permission prompt). The copy, as posed, must be wholly in the picture and
+above the baseplate, or no image is taken. None of this has been run in Studio yet.
+
+If a rig named MotionBridgeE2Rig is already in the place when the probe loads, remove it
+and reload: the probe only ever uses a rig it built itself in that session.
 
 ## Handling
 

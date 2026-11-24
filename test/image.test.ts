@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { deflateSync } from "node:zlib";
-import { IMAGE_METHOD, inspectPng, MAX_IMAGE_BYTES, screenResult } from "../src/image.js";
+import { IMAGE_METHOD, inspectPng, MAX_IMAGE_BYTES, REMOVED, screenResult, scrub } from "../src/image.js";
 
 function crc32(data: Buffer): number {
 	let crc = 0xffffffff;
@@ -31,7 +31,7 @@ function png(width: number, height: number, padding = 0): Buffer {
 	header[8] = 8;
 	const rows = Buffer.alloc((width + 1) * height);
 	const parts = [SIGNATURE, chunk("IHDR", header)];
-	if (padding > 0) parts.push(chunk("tEXt", Buffer.alloc(padding, 0x41)));
+	if (padding > 0) parts.push(chunk("iCCP", Buffer.alloc(padding, 0x41)));
 	parts.push(chunk("IDAT", deflateSync(rows)), chunk("IEND", Buffer.alloc(0)));
 	return Buffer.concat(parts);
 }
@@ -83,6 +83,82 @@ test("the size of a PNG is read only from a complete, well-formed file", () => {
 	assert.throws(() => inspectPng(empty), /no image data/);
 	const headless = Buffer.concat([SIGNATURE, chunk("IDAT", deflateSync(Buffer.alloc(4))), chunk("IEND", Buffer.alloc(0))]);
 	assert.throws(() => inspectPng(headless), /header/);
+});
+
+test("a PNG passes only if its image data decodes to exactly the pixels its header describes", () => {
+	const header = (width: number, height: number, depth = 8, colour = 0, interlace = 0) => {
+		const body = Buffer.alloc(13);
+		body.writeUInt32BE(width, 0);
+		body.writeUInt32BE(height, 4);
+		body[8] = depth;
+		body[9] = colour;
+		body[12] = interlace;
+		return chunk("IHDR", body);
+	};
+	const end = chunk("IEND", Buffer.alloc(0));
+	const build = (...parts: Buffer[]) => Buffer.concat([SIGNATURE, ...parts, end]);
+	const rows = (width: number, height: number, bytesPerPixel = 1) => Buffer.alloc((width * bytesPerPixel + 1) * height);
+
+	assert.deepEqual(inspectPng(build(header(4, 3), chunk("IDAT", deflateSync(rows(4, 3))))), { width: 4, height: 3 });
+	assert.deepEqual(inspectPng(build(header(4, 3, 8, 6), chunk("IDAT", deflateSync(rows(4, 3, 4))))), { width: 4, height: 3 });
+	// Image data may be split across consecutive chunks.
+	const packed = deflateSync(rows(4, 3));
+	assert.deepEqual(inspectPng(build(header(4, 3), chunk("IDAT", packed.subarray(0, 5)), chunk("IDAT", packed.subarray(5)))), { width: 4, height: 3 });
+
+	assert.throws(() => inspectPng(build(header(4, 3), chunk("IDAT", Buffer.alloc(0)))), /empty image data/);
+	assert.throws(() => inspectPng(build(header(4, 3), chunk("IDAT", Buffer.from("not compressed data")))), /does not decompress/);
+	assert.throws(() => inspectPng(build(header(4, 3), chunk("IDAT", packed.subarray(0, packed.length - 4)))), /does not decompress/);
+	assert.throws(() => inspectPng(build(header(4, 3), chunk("IDAT", deflateSync(rows(4, 2))))), /not the size its header describes/);
+	assert.throws(() => inspectPng(build(header(4, 3), chunk("IDAT", deflateSync(rows(4, 4))))), /does not decompress|not the size/);
+	assert.throws(() => inspectPng(build(header(4, 3), chunk("IDAT", deflateSync(Buffer.alloc(15, 9))))), /malformed/);
+	assert.throws(() => inspectPng(build(header(4, 3, 8, 6), chunk("IDAT", deflateSync(rows(4, 3))))), /not the size its header describes/);
+	// Not one still image, or carrying something a screenshot has no need of.
+	const still = chunk("IDAT", deflateSync(rows(4, 3)));
+	assert.throws(() => inspectPng(build(header(4, 3), chunk("acTL", Buffer.alloc(8)), still)), /acTL/);
+	assert.throws(() => inspectPng(build(header(4, 3), still, chunk("fdAT", Buffer.alloc(8)))), /fdAT/);
+	assert.throws(() => inspectPng(build(header(4, 3), chunk("tEXt", Buffer.from("Comment\0hello")), still)), /tEXt/);
+	assert.throws(() => inspectPng(build(header(4, 3), chunk("prIV", Buffer.alloc(64)), still)), /prIV/);
+	assert.throws(() => inspectPng(build(header(4, 3), chunk("IDAT", packed.subarray(0, 5)), chunk("gAMA", Buffer.alloc(4)), chunk("IDAT", packed.subarray(5)))), /split apart/);
+	assert.throws(() => inspectPng(build(header(4, 3, 8, 0, 1), still)), /interlaced/);
+	assert.throws(() => inspectPng(build(header(4, 3, 3, 0), still)), /header is malformed/);
+	assert.throws(() => inspectPng(build(header(4, 3, 8, 5), still)), /header is malformed/);
+	assert.throws(() => inspectPng(build(header(0, 3), still)), /outside the limits/);
+	assert.throws(() => inspectPng(build(header(4000, 3), chunk("IDAT", deflateSync(rows(4000, 3))))), /outside the limits/);
+});
+
+test("nothing image-like is passed on as text, at any depth and from any method", () => {
+	const text = png(16, 16).toString("base64");
+	const nested = {
+		rigs: [{ rig_id: "rig_1", thumbnail: { images: [{ png_base64: text }] } }],
+		note: text,
+		deep: { list: [1, "two", { png_base64: text, keep: true }], uri: `data:image/png;base64,${text}` },
+		plain: "RightUpperArm",
+	};
+	for (const method of ["get_workspace", "read_animation", IMAGE_METHOD]) {
+		const outcome = screenResult(method, {}, nested);
+		assert.equal(outcome.image, undefined, method);
+		const sent = JSON.stringify(outcome.payload);
+		assert.doesNotMatch(sent, /iVBORw0KGgo|png_base64|"images"|data:image/, method);
+		const payload = outcome.payload as typeof nested & { deep: { list: unknown[] } };
+		assert.equal(payload.plain, "RightUpperArm");
+		assert.equal(payload.note, REMOVED);
+		assert.deepEqual(payload.deep.list, [1, "two", { keep: true }]);
+		assert.deepEqual(payload.rigs, [{ rig_id: "rig_1", thumbnail: {} }]);
+	}
+	// A preview that did not ask for a screenshot is told that one was dropped.
+	const preview = screenResult(IMAGE_METHOD, { time: 0 }, nested).payload as { capture: { status: string; reason: string } };
+	assert.equal(preview.capture.status, "unavailable");
+	assert.match(preview.capture.reason, /not asked for/);
+	// A claim of success from another method is not passed on either.
+	const claim = screenResult("read_animation", { capture: true }, { capture: { status: "ok", width: 4 } }).payload as { capture: { status: string } };
+	assert.equal(claim.capture.status, "unavailable");
+
+	assert.deepEqual(scrub({ a: [1, { b: "c" }], d: null }), { value: { a: [1, { b: "c" }], d: null }, removed: false });
+	assert.deepEqual(scrub("plain text"), { value: "plain text", removed: false });
+	assert.equal(scrub(text).removed, true);
+	let chain: unknown = text;
+	for (let level = 0; level < 60; level += 1) chain = { next: chain };
+	assert.doesNotMatch(JSON.stringify(scrub(chain).value), /iVBORw0KGgo/);
 });
 
 test("an image is dropped when the preview did not ask for one", () => {

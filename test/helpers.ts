@@ -60,6 +60,9 @@ export class PluginError extends Error {
 /** Stands in for the Studio plugin: same handshake, same wire messages. */
 export class FakePlugin {
 	readonly received: Array<{ method: string; params: unknown }> = [];
+	/** Ids of requests the broker said were abandoned, and the ids of all requests seen. */
+	readonly cancelled: string[] = [];
+	readonly requestIds: string[] = [];
 
 	private constructor(
 		readonly ws: WebSocket,
@@ -110,7 +113,9 @@ export class FakePlugin {
 
 	private async onMessage(text: string): Promise<void> {
 		const message = JSON.parse(text) as { t: string; id: string; method: string; params: unknown };
+		if (message.t === "cancel") this.cancelled.push(message.id);
 		if (message.t !== "req") return;
+		this.requestIds.push(message.id);
 		this.received.push({ method: message.method, params: message.params });
 		try {
 			const result = await this.handler(message.method, message.params);

@@ -46,10 +46,11 @@ describe("MCP adapter over stdio", () => {
 			}
 			if (method === "preview_animation") {
 				// This plugin always sends an image, asked or not, so the relay's checks are what is tested.
-				const bytes = Buffer.from(PNG, "base64").length;
-				const capture = { status: "ok", format: "png", width: 1, height: 1, bytes };
-				const sent = input.clip_id === "clip_cut" ? PNG.slice(0, -8) : PNG;
-				return { clip_id: input.clip_id, time: input.time, capture, images: [{ png_base64: sent }] };
+				// For "clip_cut" the image is cut off at the end, and reported with the size it then has.
+				const whole = Buffer.from(PNG, "base64");
+				const data = input.clip_id === "clip_cut" ? whole.subarray(0, whole.length - 12) : whole;
+				const capture = { status: "ok", format: "png", width: 1, height: 1, bytes: data.length };
+				return { clip_id: input.clip_id, time: input.time, capture, images: [{ png_base64: data.toString("base64") }] };
 			}
 			return { method, params };
 		});
@@ -153,7 +154,7 @@ describe("MCP adapter over stdio", () => {
 		});
 		assert.equal(content.length, 1);
 		assert.equal(json.capture.status, "unavailable");
-		assert.match(json.capture.reason, /relay rejected/);
+		assert.match(json.capture.reason, /relay rejected the screenshot: it is cut short/);
 	});
 
 	test("a screenshot is returned as an MCP image block, not as text", async () => {

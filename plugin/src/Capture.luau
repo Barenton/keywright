@@ -43,6 +43,7 @@ export type Backend = {
 	clock: () -> number,
 	wait: (seconds: number) -> (),
 	spawn: (run: () -> ()) -> any,
+	cancel: (thread: any) -> (),
 }
 
 -- Returns nil while the screenshot may still be taken and returned, or the reason not to.
@@ -65,11 +66,15 @@ Capture.GATE_CLOSED =
 	"screenshots of a preview are off: they run only in an armed disposable fixture until their behaviour in Studio has been validated"
 
 local PNG_SIGNATURE = { 137, 80, 78, 71, 13, 10, 26, 10 }
-local IHDR = { 73, 72, 68, 82 }
 -- The empty chunk every complete PNG ends with, checksum included.
 local PNG_END = { 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130 }
--- Signature, header chunk and end chunk: nothing shorter is a PNG.
-local PNG_MINIMUM = 8 + 25 + 12
+-- Signature, header chunk, one image data chunk and end chunk: nothing shorter is a PNG.
+local PNG_MINIMUM = 8 + 25 + 12 + 12
+-- Chunks that make a PNG an animation. A screenshot is one still image.
+local PNG_ANIMATION = { acTL = true, fcTL = true, fdAT = true }
+
+-- Why permission can no longer be asked for in this session, once a prompt was abandoned.
+Capture.PERMISSION_ABANDONED = "a screenshot permission prompt was abandoned; reload the plugin before asking again"
 
 local gate: Gate? = nil
 local revoked: ((reason: string) -> ())? = nil
@@ -150,14 +155,19 @@ local function robloxBackend(): Backend
 		spawn = function(run)
 			return task.spawn(run)
 		end,
+		cancel = function(thread)
+			task.cancel(thread)
+		end,
 	}
 end
 
 local current: Backend? = nil
 
--- True from the moment Studio is asked for permission until it answers. Only one such
--- request exists at a time, however long the prompt is left open.
-local permissionPending = false
+-- The one request to Studio for permission that is waiting for an answer, if any.
+local permissionRequest: { thread: any, abandoned: boolean }? = nil
+-- Set when such a request was given up on. Its worker is cancelled, and because the
+-- prompt it opened may still be on screen, permission is not asked for again.
+local permissionAbandoned = false
 
 local function backend(): Backend
 	if not current then
@@ -169,11 +179,29 @@ end
 -- Replaces the backend. For tests.
 function Capture.setBackend(replacement: Backend?)
 	current = replacement
-	permissionPending = false
+	permissionRequest = nil
+	permissionAbandoned = false
 end
 
--- Reads the size a PNG declares. Returns nil and the reason when the data is not a PNG
--- that begins with a header and ends with the closing chunk.
+-- Gives up on a permission request that is still waiting: its worker is cancelled, so
+-- nothing is left running, and no further request is made in this session. Called when
+-- a screenshot is cancelled or runs out of time. Does nothing when none is waiting.
+function Capture.abandon()
+	local request = permissionRequest
+	if not request then
+		return
+	end
+	-- Marked first, so that even if the worker cannot be cancelled its answer is ignored.
+	request.abandoned = true
+	permissionRequest = nil
+	permissionAbandoned = true
+	pcall(backend().cancel, request.thread)
+end
+
+-- Reads the size a PNG declares, after walking its chunks: a header first, at least one
+-- chunk of image data, no animation, and the closing chunk exactly at the end. Returns
+-- nil and the reason otherwise. Checksums and the pixel data itself are checked by the
+-- relay, which can decompress them.
 function Capture.inspectPng(data: any): (number?, any)
 	if type(data) ~= "buffer" then
 		return nil, "the capture returned no image data"
@@ -187,11 +215,6 @@ function Capture.inspectPng(data: any): (number?, any)
 			return nil, "the capture returned data that is not a PNG"
 		end
 	end
-	for index, byte in IHDR do
-		if buffer.readu8(data, 11 + index) ~= byte then
-			return nil, "the capture returned a PNG without a header"
-		end
-	end
 	for index, byte in PNG_END do
 		if buffer.readu8(data, length - #PNG_END + index - 1) ~= byte then
 			return nil, "the capture returned a PNG that is cut short"
@@ -203,12 +226,49 @@ function Capture.inspectPng(data: any): (number?, any)
 			+ buffer.readu8(data, offset + 2) * 256
 			+ buffer.readu8(data, offset + 3)
 	end
-	return big(16), big(20)
+
+	local offset = 8
+	local width, height = nil :: number?, nil :: number?
+	local imageData = false
+	while true do
+		if offset + 12 > length then
+			return nil, "the capture returned a PNG that is cut short"
+		end
+		local size = big(offset)
+		local kind = buffer.readstring(data, offset + 4, 4)
+		local finish = offset + 12 + size
+		if finish > length then
+			return nil, "the capture returned a PNG that is cut short"
+		end
+		if width == nil then
+			if kind ~= "IHDR" or size ~= 13 then
+				return nil, "the capture returned a PNG without a header"
+			end
+			width, height = big(offset + 8), big(offset + 12)
+		elseif kind == "IHDR" then
+			return nil, "the capture returned a PNG with two headers"
+		elseif PNG_ANIMATION[kind] then
+			return nil, "the capture returned an animated PNG"
+		elseif kind == "IDAT" then
+			if size == 0 then
+				return nil, "the capture returned a PNG with empty image data"
+			end
+			imageData = true
+		elseif kind == "IEND" then
+			if finish ~= length then
+				return nil, "the capture returned a PNG with data after its end"
+			elseif not imageData then
+				return nil, "the capture returned a PNG with no image data"
+			end
+			return width, height
+		end
+		offset = finish
+	end
 end
 
 -- Asks for permission without blocking forever on an unanswered prompt. At most one
--- request is ever outstanding, and an answer that comes after the wait has ended counts
--- for nothing: the next screenshot asks again.
+-- request is ever outstanding. If it is not answered in time its worker is cancelled, so
+-- no late answer can arrive, and permission is not asked for again in this session.
 function Capture.requestPermission(timeoutSeconds: number?): (boolean, string?)
 	-- With the gate closed, Studio is not even asked to show its prompt.
 	local closed = Capture.refusal(false)
@@ -220,18 +280,25 @@ function Capture.requestPermission(timeoutSeconds: number?): (boolean, string?)
 	if not studioCapture then
 		return false, "StudioCaptureService is not available in this Studio version"
 	end
-	if permissionPending then
+	if permissionAbandoned then
+		return false, Capture.PERMISSION_ABANDONED
+	elseif permissionRequest then
 		return false, "an earlier screenshot permission prompt is still unanswered"
 	end
 	local done, granted, problem = false, false, nil :: string?
-	local abandoned = false
-	permissionPending = true
-	engine.spawn(function()
+	-- Set before the request starts, so that time it spends before yielding counts.
+	local deadline = engine.clock() + (timeoutSeconds or Capture.PERMISSION_TIMEOUT)
+	local request = { thread = nil :: any, abandoned = false }
+	permissionRequest = request
+	request.thread = engine.spawn(function()
 		local ok, result = pcall(function()
 			return studioCapture:RequestScreenshotPermissionAsync()
 		end)
-		permissionPending = false
-		if abandoned then
+		if permissionRequest == request then
+			permissionRequest = nil
+		end
+		if request.abandoned then
+			-- Given up on; whatever the answer is, it counts for nothing.
 			return
 		end
 		if ok then
@@ -241,12 +308,13 @@ function Capture.requestPermission(timeoutSeconds: number?): (boolean, string?)
 		end
 		done = true
 	end)
-	local deadline = engine.clock() + (timeoutSeconds or Capture.PERMISSION_TIMEOUT)
 	while not done and engine.clock() < deadline do
 		engine.wait(0.1)
 	end
-	if not done or engine.clock() > deadline then
-		abandoned = true
+	if not done then
+		Capture.abandon()
+		return false, "the screenshot permission prompt was not answered in time"
+	elseif engine.clock() > deadline then
 		return false, "the screenshot permission prompt was not answered in time"
 	end
 	if problem then
@@ -385,6 +453,10 @@ function Capture.capture(maxEdge: number, format: any?, guard: Guard?): Result
 	local stale = Capture.refusal(true) or guard()
 	if stale then
 		return unavailable(stale)
+	end
+	-- Checked last, after every other check has had its turn: late is not a success.
+	if engine.clock() > deadline then
+		return unavailable("the capture did not finish in time")
 	end
 	-- Everything reported here was read from the image itself.
 	return {

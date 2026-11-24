@@ -215,9 +215,36 @@ describe("broker", () => {
 			return { late: true };
 		});
 		await expectBridgeError(adapter.request("preview_animation", {}, SESSION_A, 100), "TIMEOUT");
-		await sleep(450);
+		// The session is told at once that nobody is waiting, so it can stop the work.
+		await sleep(50);
+		assert.deepEqual(plugin.cancelled, plugin.requestIds);
+		assert.equal(plugin.cancelled.length, 1);
+		await sleep(400);
 		assert.deepEqual(await adapter.request("broker.status").then(() => "alive"), "alive");
 		plugin.close();
+	});
+
+	test("a request whose caller disconnects is cancelled in the session", async () => {
+		const plugin = await pairPlugin(SESSION_A, async () => {
+			await sleep(300);
+			return {};
+		});
+		const caller = await connectAdapter(port, secret);
+		const pending = caller.request("preview_animation", { capture: true }, SESSION_A, 5000).catch(() => "gone");
+		await sleep(50);
+		assert.equal(plugin.requestIds.length, 1);
+		assert.deepEqual(plugin.cancelled, []);
+		caller.close();
+		await sleep(50);
+		assert.deepEqual(plugin.cancelled, plugin.requestIds);
+		await pending;
+		// A request that was answered in time is never reported as abandoned.
+		const quick = await pairPlugin(SESSION_B, () => ({ ok: true }));
+		await adapter.request("read_animation", {}, SESSION_B);
+		await sleep(30);
+		assert.deepEqual(quick.cancelled, []);
+		plugin.close();
+		quick.close();
 	});
 
 	test("a session that disconnects mid-request fails the request", async () => {

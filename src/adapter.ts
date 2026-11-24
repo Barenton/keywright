@@ -161,7 +161,7 @@ export function createAdapter(options: AdapterOptions): McpServer {
 		"preview_animation",
 		{
 			description:
-				"Sample a working copy at an exact time and report the joint transforms. The clip is evaluated on a hidden, disposable copy of the rig; the rig itself and the camera are never moved. Screenshots are off by default: capture: true returns capture.status \"unavailable\" with the reason unless a person has approved screenshots for a test fixture in Studio, in which case one PNG of the viewport, as that person framed it, is returned as an image.",
+				"Sample a working copy at an exact time and report the joint transforms. The clip is evaluated on a disposable copy of the rig; the rig itself and the camera are never moved. Screenshots are off by default: capture: true returns capture.status \"unavailable\" with the reason. They are possible only in a test fixture after a person in Studio has approved the scene and camera, and then the copy is shown for the picture. Even then Studio may refuse or the image may be rejected, in which case capture.status is \"unavailable\" and no image is returned. When capture.status is \"ok\", exactly one PNG of the viewport, as that person framed it, follows as an image.",
 			inputSchema: {
 				session_id: sessionId,
 				clip_id: clipId,

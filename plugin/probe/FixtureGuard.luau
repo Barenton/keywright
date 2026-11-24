@@ -9,8 +9,9 @@ local FixtureGuard = {}
 FixtureGuard.MARKER_NAME = "MotionBridgeFixture"
 FixtureGuard.MARKER_PREFIX = "motion-bridge-fixture/1/"
 FixtureGuard.ID_LENGTH = 32
--- Attribute on the marker that a person sets to the fixture's own id to allow screenshots.
-FixtureGuard.ARM_ATTRIBUTE = "ScreenshotsArmed"
+-- Attribute a person adds to the marker, set to true, to start the probe in screenshot
+-- mode. It selects a mode and approves nothing: approval is given in the probe's panel.
+FixtureGuard.MODE_ATTRIBUTE = "ScreenshotMode"
 
 export type Observation = {
 	markerClass: string?, -- ClassName of ServerStorage.MotionBridgeFixture, or nil if absent
@@ -47,10 +48,11 @@ function FixtureGuard.check(observation: Observation): (boolean, string)
 end
 
 -- Screenshots are allowed only in the one fixture the probe was started in, and only
--- while a person has typed that fixture's own id into the marker's arm attribute. A
--- marker of the right form with any other id, or any other value in the attribute, is
--- refused. Returns true and the fixture id, or false and the reason.
-function FixtureGuard.screenshots(observation: Observation, armed: any, pinnedId: any): (boolean, string)
+-- when the id a person typed into the probe's panel is that fixture's own. `selected` is
+-- what they typed; it never comes from the place. A marker of the right form with any
+-- other id, or any other value typed, is refused. Returns true and the fixture id, or
+-- false and the reason.
+function FixtureGuard.screenshots(observation: Observation, selected: any, pinnedId: any): (boolean, string)
 	local allowed, detail = FixtureGuard.check(observation)
 	if not allowed then
 		return false, detail
@@ -58,8 +60,8 @@ function FixtureGuard.screenshots(observation: Observation, armed: any, pinnedId
 	if type(pinnedId) ~= "string" or #pinnedId ~= FixtureGuard.ID_LENGTH or detail ~= pinnedId then
 		return false, "the fixture is not the one the probe was started in"
 	end
-	if type(armed) ~= "string" or armed ~= pinnedId then
-		return false, "the fixture is not armed for screenshots"
+	if type(selected) ~= "string" or selected ~= pinnedId then
+		return false, "the fixture id typed in the panel is not this fixture's"
 	end
 	return true, detail
 end

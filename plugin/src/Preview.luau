@@ -287,10 +287,13 @@ function Preview.run(request: Request): Result
 	active = run
 
 	-- Decided once, before the clone is made: a clone is either shown for a screenshot
-	-- or hidden, never switched between the two.
+	-- or hidden, never switched between the two. The gate is asked as for a capture, with
+	-- this rig as the subject, so that nothing it has not approved is ever shown.
 	local refusal: string? = nil
 	if request.capture then
-		refusal = Preview.captureRefusal()
+		run.capturing = true
+		refusal = Capture.refusal(true)
+		run.capturing = refusal == nil
 	end
 	local wantsCapture = request.capture ~= nil and refusal == nil
 	local clone: Model? = nil
@@ -321,7 +324,6 @@ function Preview.run(request: Request): Result
 		local function without(reason: any): CaptureResult
 			return { status = "unavailable", reason = tostring(reason) }
 		end
-		run.capturing = true
 		local waited, problem = pcall(function(): string?
 			engine.waitFrames(Preview.FRAMES_BEFORE_CAPTURE)
 			return guard()
@@ -337,7 +339,12 @@ function Preview.run(request: Request): Result
 			return run.cancelled ~= nil
 		end)
 		if not finished then
-			return without(run.cancelled or "the capture exceeded its time budget")
+			-- Nothing of an abandoned capture is left behind: not the approval it ran
+			-- under, and not a request for permission that is still waiting.
+			local why = run.cancelled or "the capture exceeded its time budget"
+			Capture.revoke(why)
+			Capture.abandon()
+			return without(why)
 		elseif not succeeded then
 			return without(`the capture failed: {tostring(value)}`)
 		elseif type(value) ~= "table" or type(value.status) ~= "string" then
@@ -430,6 +437,15 @@ function Preview.run(request: Request): Result
 	end
 	if not ok then
 		error(outcome, 0)
+	end
+	-- Cleanup took time too. An image is handed on only if screenshots are still allowed
+	-- now that the clone is gone and everything is back as it was.
+	local captured = (outcome :: Result).capture
+	if captured and captured.status == "ok" then
+		local late = run.cancelled or Capture.refusal(false)
+		if late then
+			(outcome :: Result).capture = { status = "unavailable", reason = late }
+		end
 	end
 	return outcome
 end

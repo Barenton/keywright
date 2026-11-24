@@ -33,16 +33,21 @@ local marker = children[1]
 check("marker name", marker ~= nil and marker.Name == FixtureGuard.MARKER_NAME)
 check("marker name matches manifest", marker ~= nil and marker.Name == manifest.marker_name)
 check("marker value matches manifest", marker ~= nil and marker.Value == manifest.marker_value)
-local armed = if marker then marker:GetAttribute(FixtureGuard.ARM_ATTRIBUTE) else nil
-check("the fixture is prepared unarmed", armed == nil, tostring(armed))
+local mode = if marker then marker:GetAttribute(FixtureGuard.MODE_ATTRIBUTE) else nil
+check("the fixture is prepared outside screenshot mode", mode == nil, tostring(mode))
+local attributes = 0
+for _ in if marker then marker:GetAttributes() else {} do
+	attributes += 1
+end
+check("the marker carries no attributes at all", attributes == 0, tostring(attributes))
 local shoot, why = FixtureGuard.screenshots({
 	markerClass = if marker then marker.ClassName else nil,
 	markerValue = if marker then marker.Value else nil,
 	placeId = 0,
 	gameId = 0,
 	isEdit = true,
-}, armed, manifest.id)
-check("screenshots are refused in the fixture as prepared", shoot == false, why)
+}, nil, manifest.id)
+check("screenshots are refused when no one has typed the fixture id", shoot == false, why)
 
 local allowed, id = FixtureGuard.check({
 	markerClass = if marker then marker.ClassName else nil,

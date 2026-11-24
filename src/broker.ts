@@ -312,6 +312,8 @@ export class Broker {
 		const brokerId = `b${this.nextRequestId++}`;
 		const timer = setTimeout(() => {
 			this.pending.delete(brokerId);
+			// Nobody is waiting any more, so Studio is told to stop working on it.
+			this.cancel(session, brokerId);
 			fail(
 				new BridgeError(
 					"TIMEOUT",
@@ -322,6 +324,12 @@ export class Broker {
 		}, timeoutMs ?? REQUEST_TIMEOUT_MS);
 		this.pending.set(brokerId, { adapter: peer, clientId: id, sessionId: session, timer });
 		this.send(target, { t: "req", id: brokerId, method, params });
+	}
+
+	/** Tells a Studio session that a request it was sent has been abandoned. */
+	private cancel(sessionId: string, brokerId: string): void {
+		const target = this.sessions.get(sessionId);
+		if (target) this.send(target, { t: "cancel", id: brokerId });
 	}
 
 	private handleBrokerMethod(method: string, params: unknown): unknown {
@@ -412,6 +420,8 @@ export class Broker {
 				if (request.adapter !== peer) continue;
 				clearTimeout(request.timer);
 				this.pending.delete(brokerId);
+				// The caller is gone; its request must not keep running in Studio.
+				this.cancel(request.sessionId, brokerId);
 			}
 			this.armIdleTimer();
 		}
