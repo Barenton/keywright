@@ -29,7 +29,8 @@ const quaternion = z
 	.describe("Joint-local rotation as a quaternion (x, y, z, w) of length 1, in place of rotation.");
 const rangeFrom = time("Start of the time range in seconds. Keyframes at the ends are included.");
 const rangeTo = time("End of the time range in seconds.");
-// Roblox names its easing directions the other way round from most other tools.
+// As measured in Studio on a jump: Out covers most of the distance early and slows into
+// the next pose; In starts slowly and arrives fast.
 const easingStyle = z
 	.enum(["Linear", "Constant", "Elastic", "CubicV2", "Bounce"])
 	.optional()
@@ -37,7 +38,7 @@ const easingStyle = z
 const easingDirection = z
 	.enum(["In", "Out", "InOut"])
 	.optional()
-	.describe("Roblox reverses these relative to most other tools: In starts fast and ends slow, Out starts slow and ends fast.");
+	.describe("In starts slowly and ends fast; Out starts fast and ends slowly; InOut is slow at both ends. For a jump, the rise is Out and the fall is In.");
 const markerName = z.string().min(1).max(100);
 
 // Every operation of edit_animation. A batch applies them in the order given.

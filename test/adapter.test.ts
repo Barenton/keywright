@@ -147,8 +147,8 @@ describe("MCP adapter over stdio", () => {
 		const applied = [...checks.matchAll(/^\t(\w+) = function/gm)].map((match) => match[1] as string).sort();
 		assert.equal(applied.length, 14);
 		assert.deepEqual(published, applied);
-		// The reversed easing directions are spelt out where a client will read them.
-		assert.match(JSON.stringify(edit?.inputSchema), /In starts fast and ends slow/);
+		// Which way each easing direction goes is spelt out where a client will read it.
+		assert.match(JSON.stringify(edit?.inputSchema), /In starts slowly and ends fast; Out starts fast and ends slowly/);
 	});
 
 	test("edit_animation refuses an operation it does not publish, before Studio hears of it", async () => {
