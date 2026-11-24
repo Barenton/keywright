@@ -103,6 +103,20 @@ function Operations.ensurePose(keyframe: Instance, joint: string): (Pose, boolea
 	return pose :: Pose, true
 end
 
+-- Makes one clip hold what another holds: its keyframes and everything in them, and its
+-- loop and priority settings. The name is left alone. What `to` held is taken out, not
+-- destroyed, so that an undo can put it back.
+function Operations.copyContent(from: Instance, to: Instance)
+	for _, child in to:GetChildren() do
+		child.Parent = nil
+	end
+	for _, child in from:GetChildren() do
+		child:Clone().Parent = to
+	end
+	(to :: any).Loop = (from :: any).Loop;
+	(to :: any).Priority = (from :: any).Priority
+end
+
 -- ---------------------------------------------------------------------------------------
 -- Checking what was asked for
 
@@ -598,16 +612,13 @@ local appliers: { [string]: Apply } = {
 	end,
 
 	restore_source = function(_where, sequence, _operation, context, changed)
-		for _, child in sequence:GetChildren() do
-			child.Parent = nil
-		end
-		local source = context.source :: any
-		if source then
-			for _, child in source:GetChildren() do
-				child:Clone().Parent = sequence
+		if context.source then
+			Operations.copyContent(context.source, sequence)
+		else
+			-- Opened blank: back to holding nothing.
+			for _, child in sequence:GetChildren() do
+				child.Parent = nil
 			end
-			(sequence :: any).Loop = source.Loop;
-			(sequence :: any).Priority = source.Priority
 		end
 		count(changed, "restored")
 	end,

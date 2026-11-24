@@ -26,6 +26,11 @@ export type Working = {
 	suppress: number,
 	signals: { RBXScriptConnection },
 	watched: { [Instance]: RBXScriptConnection },
+	-- Whether the source has been changed by anything but this plugin since the working
+	-- copy was opened, and what watches for that.
+	sourceChanged: boolean,
+	sourceQuiet: number,
+	sourceSignals: { RBXScriptConnection },
 }
 
 local registry: { [string]: Working } = {}
@@ -85,6 +90,31 @@ local function watch(working: Working)
 	)
 end
 
+-- Notes any change to the clip a working copy was opened from: to it, to anything in it,
+-- or to what it holds. Replacing that clip is refused once it has changed.
+local function watchSource(working: Working, source: KeyframeSequence)
+	local function note()
+		if working.sourceQuiet == 0 then
+			working.sourceChanged = true
+		end
+	end
+	local function hook(instance: Instance)
+		table.insert(working.sourceSignals, instance.Changed:Connect(note))
+	end
+	hook(source)
+	for _, descendant in source:GetDescendants() do
+		hook(descendant)
+	end
+	table.insert(
+		working.sourceSignals,
+		source.DescendantAdded:Connect(function(descendant)
+			hook(descendant)
+			note()
+		end)
+	)
+	table.insert(working.sourceSignals, source.DescendantRemoving:Connect(note))
+end
+
 local function register(instance: KeyframeSequence, rigId: string, source: KeyframeSequence?): Working
 	local working: Working = {
 		id = "clip_" .. nextId,
@@ -95,12 +125,49 @@ local function register(instance: KeyframeSequence, rigId: string, source: Keyfr
 		suppress = 0,
 		signals = {},
 		watched = {},
+		sourceChanged = false,
+		sourceQuiet = 0,
+		sourceSignals = {},
 	}
 	nextId += 1
 	registry[working.id] = working
 	known[instance] = working
 	watch(working)
+	if source then
+		watchSource(working, source)
+	end
 	return working
+end
+
+-- Where the clip a working copy was opened from stands: "none" if it was opened blank or
+-- the link was lost in a plugin reload, "missing" if the clip is no longer in the place,
+-- "changed" if it has been altered since, otherwise "unchanged".
+function Clips.sourceState(working: Working): "none" | "missing" | "changed" | "unchanged"
+	local source = working.source
+	if not source then
+		return "none"
+	elseif source.Parent == nil then
+		return "missing"
+	end
+	return if working.sourceChanged then "changed" else "unchanged"
+end
+
+-- Makes the source hold what the working copy holds. Must be called inside an undo
+-- recording; `finish` receives the outcome before signals are flushed, as in `mutate`,
+-- so that the recording is closed while the changes still count as this plugin's own.
+function Clips.replaceSource(working: Working, finish: (ok: boolean) -> ())
+	local source = working.source :: KeyframeSequence
+	working.sourceQuiet += 1
+	local ok, problem = pcall(Operations.copyContent :: any, working.instance, source)
+	local finished, finishProblem = pcall(finish :: any, ok)
+	task.wait()
+	working.sourceQuiet -= 1
+	if not ok then
+		error(problem, 0)
+	end
+	if not finished then
+		error(finishProblem, 0)
+	end
 end
 
 -- Creates a working copy for the rig. Must be called inside an undo recording.
@@ -176,6 +243,9 @@ function Clips.close(working: Working)
 		signal:Disconnect()
 	end
 	for _, signal in working.watched do
+		signal:Disconnect()
+	end
+	for _, signal in working.sourceSignals do
 		signal:Disconnect()
 	end
 	registry[working.id] = nil

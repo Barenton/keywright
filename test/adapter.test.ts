@@ -129,7 +129,9 @@ describe("MCP adapter over stdio", () => {
 		// A picture and a save are both asked for through documented inputs.
 		const properties = (name: string) => Object.keys((tools.find((tool) => tool.name === name)?.inputSchema.properties ?? {}) as object);
 		assert.ok(["render", "views", "render_size", "check_placement"].every((key) => properties("preview_animation").includes(key)));
-		assert.deepEqual(properties("save_animation").sort(), ["clip_id", "expected_revision", "name", "studio_session"]);
+		assert.deepEqual(properties("save_animation").sort(), ["clip_id", "expected_revision", "name", "replace_source", "studio_session"]);
+		// No tool approves a replacement: that is for a person in Studio.
+		assert.equal(tools.some((tool) => /approve|decide|accept/.test(tool.name)), false);
 		for (const tool of tools) assert.equal(tool.inputSchema.type, "object");
 	});
 

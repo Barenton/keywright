@@ -14,6 +14,7 @@ local Edit = require("./Edit")
 local Errors = require("./Errors")
 local Pose = require("./Pose")
 local Preview = require("./Preview")
+local Proposals = require("./Proposals")
 local Reading = require("./Reading")
 local Recording = require("./Recording")
 local Rig = require("./Rig")
@@ -58,7 +59,17 @@ local function requireEdit()
 	end
 end
 
-function Handlers.create(): ({ [string]: (params: any) -> any }, Registry)
+-- The reason recorded when a person turns a proposal down.
+Handlers.REJECTED_IN_STUDIO = "A person rejected it in Studio."
+
+-- What the panel may do that no request can: settle a proposed replacement.
+export type Panel = {
+	-- Approves or rejects the proposal waiting for a working copy. Returns nil, or what
+	-- stopped an approval that can be tried again.
+	decide: (clipId: string, approve: boolean) -> string?,
+}
+
+function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel)
 	local registry = newRegistry()
 	local methods: { [string]: (params: any) -> any } = {}
 
@@ -110,11 +121,19 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry)
 		end
 		local captureAvailable, captureReason = Capture.available()
 		local unassigned = restore()
+		-- A working copy says so when a replacement of its source has been proposed.
+		local copies = Clips.list()
+		for _, copy in copies do
+			local proposal = Proposals.get(copy.clip_id)
+			if proposal then
+				copy.replacement = { status = proposal.status, revision = proposal.revision }
+			end
+		end
 		return {
 			edit_mode = RunService:IsEdit(),
 			rigs = rigs,
 			selection = selection,
-			working_copies = Clips.list(),
+			working_copies = copies,
 			-- Working copies in the place whose rig can no longer be told.
 			unassigned_working_copies = if unassigned > 0 then unassigned else nil,
 			capture = { available = captureAvailable, reason = captureReason },
@@ -293,6 +312,45 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry)
 			)
 		end
 
+		if params.replace_source == true then
+			-- Not a save: a proposal that a person settles in the panel.
+			local existing = Proposals.get(working.id)
+			local proposal = if existing and existing.revision == current then existing else nil
+			if not proposal then
+				local state = Clips.sourceState(working)
+				if state == "none" then
+					Errors.throw(
+						"INVALID_ARGUMENT",
+						"This working copy has no clip to replace: it was opened blank, or the plugin was reloaded since it was opened.",
+						"Save it as a new clip instead."
+					)
+				elseif state ~= "unchanged" then
+					Errors.throw(
+						"SOURCE_CHANGED",
+						if state == "missing"
+							then "The clip this working copy was opened from is no longer in the place."
+							else "The clip this working copy was opened from has been changed since.",
+						"Save this working copy as a new clip, or open a new working copy from the clip as it is now."
+					)
+				end
+				proposal = Proposals.propose(working.id, current, working.instance.Name, (working.source :: any).Name)
+			end
+			local found = proposal :: Proposals.Proposal
+			return {
+				clip_id = working.id,
+				revision = current,
+				replacement = {
+					status = found.status,
+					source = found.source,
+					reason = found.reason,
+					hint = if found.status == "pending"
+						then "A person must approve or reject this in the Motion Bridge panel in Studio. Call again to see the outcome."
+						elseif found.status == "rejected" then "It will not be proposed again for this revision."
+						else nil,
+				},
+			}
+		end
+
 		local recording = Recording.begin("MotionBridgeSave", "Motion Bridge save animation")
 		local ok, result = pcall(Saves.save, working.instance, model, ServerStorage, name, function(className: string)
 			return Instance.new(className)
@@ -332,6 +390,7 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry)
 			error(problem, 0)
 		end
 		Clips.close(working)
+		Proposals.forget(working.id)
 		return { discarded = { clip_id = working.id, name = name } }
 	end
 
@@ -449,7 +508,64 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry)
 	end
 
 	pcall(restore)
-	return methods, registry
+	-- Settling a proposal is the panel's alone: it is not among the methods a request can
+	-- reach. An approval checks everything again, because time has passed since the
+	-- proposal was made.
+	local panel: Panel = {
+		decide = function(clipId: string, approve: boolean): string?
+			local proposal = Proposals.get(clipId)
+			if not proposal or proposal.status ~= "pending" then
+				return nil
+			end
+			if not approve then
+				Proposals.settle(clipId, false, Handlers.REJECTED_IN_STUDIO)
+				return nil
+			end
+			local ok, problem = pcall(function()
+				requireEdit()
+				local working = Clips.get(clipId)
+				if Clips.revisionOf(working) ~= proposal.revision then
+					Errors.throw(
+						"REVISION_CONFLICT",
+						"The working copy was changed after the replacement was proposed."
+					)
+				end
+				local state = Clips.sourceState(working)
+				if state ~= "unchanged" then
+					Errors.throw(
+						"SOURCE_CHANGED",
+						"The clip to be replaced was changed or removed after the replacement was proposed."
+					)
+				end
+				local model = registry.models[working.rigId]
+				if not model or model.Parent == nil then
+					Errors.throw("NOT_FOUND", "The rig this clip was opened for no longer exists.")
+				end
+				if
+					not Validate.run(working.instance, validationContext(model), table.clone(Validate.DEFAULTS)).valid
+				then
+					Errors.throw("VALIDATION_FAILED", "The working copy has structural errors.")
+				end
+				local recording = Recording.begin("MotionBridgeReplace", "Motion Bridge replace clip")
+				Clips.replaceSource(working, function(done: boolean)
+					Recording.finish(recording, done)
+				end)
+			end)
+			if ok then
+				Proposals.settle(clipId, true)
+				return nil
+			end
+			local failure = Errors.from(problem)
+			if failure.code == "STUDIO_NOT_IN_EDIT_MODE" then
+				-- Nothing is wrong with the proposal; Studio cannot record a change just now.
+				return `{failure.message} {failure.hint or ""}`
+			end
+			Proposals.settle(clipId, false, failure.message)
+			return nil
+		end,
+	}
+
+	return methods, registry, panel
 end
 
 -- Wraps a method table as the connection's request handler.

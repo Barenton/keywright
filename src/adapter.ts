@@ -382,12 +382,18 @@ export function createAdapter(options: AdapterOptions): McpServer {
 		"save_animation",
 		{
 			description:
-				"Save a copy of a working copy as a new clip for its rig, where Roblox's Animation Editor keeps that rig's clips, so that it can be loaded in the editor. The working copy stays open and unchanged. Nothing already saved is replaced: a name that is taken is refused. A clip with structural errors (see validate_animation) is refused; warnings never stop a save. One Studio undo removes the saved clip.",
+				"Save a copy of a working copy as a new clip for its rig, where Roblox's Animation Editor keeps that rig's clips, so that it can be loaded in the editor. The working copy stays open and unchanged. Nothing already saved is replaced: a name that is taken is refused. A clip with structural errors (see validate_animation) is refused; warnings never stop a save. One Studio undo removes the saved clip. With replace_source, nothing is saved: instead a person in Studio is asked whether the clip the working copy was opened from may be replaced by it, and the result says pending, approved or rejected. Call again with the same revision to see the outcome.",
 			inputSchema: {
 				studio_session: studioSession,
 				clip_id: clipId,
 				expected_revision: z.string().describe("Revision from the last read or edit of this clip."),
 				name: z.string().min(1).max(100).optional().describe("Name for the saved clip. Default: the working copy's name."),
+				replace_source: z
+					.boolean()
+					.optional()
+					.describe(
+						"Propose replacing the clip this working copy was opened from, in place of saving a new one. Only a person can approve it, in the Motion Bridge panel. Refused with SOURCE_CHANGED if that clip has changed since the working copy was opened. A rejection stands for that revision.",
+					),
 			},
 		},
 		async ({ studio_session, ...params }, extra) => call("save_animation", studio_session, params, extra.signal),

@@ -9,6 +9,7 @@ local Connection = require("./src/Connection")
 local Edit = require("./src/Edit")
 local Handlers = require("./src/Handlers")
 local Preview = require("./src/Preview")
+local Proposals = require("./src/Proposals")
 local Recording = require("./src/Recording")
 
 local PLUGIN_VERSION = "0.0.0"
@@ -81,24 +82,48 @@ button.Click:Connect(function()
 end)
 
 local theme = settings().Studio.Theme
-local frame = Instance.new("Frame")
+-- The panel scrolls, so that nothing in it can end up out of reach when it is small.
+local frame = Instance.new("ScrollingFrame")
 frame.Size = UDim2.fromScale(1, 1)
+frame.CanvasSize = UDim2.new(0, 0, 0, 0)
+frame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+frame.ScrollingDirection = Enum.ScrollingDirection.Y
+frame.ScrollBarThickness = 6
 frame.BackgroundColor3 = theme:GetColor(Enum.StudioStyleGuideColor.MainBackground)
 frame.BorderSizePixel = 0
 frame.Parent = widget
 
+-- Items appear in the order given here, not in the order of their names: a list sorted
+-- by name puts every button above every label, which once left the buttons for a
+-- proposal on screen and the text explaining them out of sight.
 local layout = Instance.new("UIListLayout")
+layout.SortOrder = Enum.SortOrder.LayoutOrder
 layout.Padding = UDim.new(0, 8)
 layout.Parent = frame
 local padding = Instance.new("UIPadding")
 padding.PaddingTop = UDim.new(0, 10)
+padding.PaddingBottom = UDim.new(0, 10)
 padding.PaddingLeft = UDim.new(0, 10)
-padding.PaddingRight = UDim.new(0, 10)
+padding.PaddingRight = UDim.new(0, 16)
 padding.Parent = frame
 
-local function label(text: string): TextLabel
+-- Each item takes the next place down, unless it is given one.
+local nextPlace = 0
+local function place(item: GuiObject, order: number?)
+	if order then
+		item.LayoutOrder = order
+	else
+		nextPlace += 1
+		item.LayoutOrder = nextPlace
+	end
+	item.Parent = frame
+end
+
+local function label(text: string, order: number?): TextLabel
 	local item = Instance.new("TextLabel")
-	item.Size = UDim2.new(1, 0, 0, 36)
+	-- As tall as its text needs, and no taller: an empty label takes no room.
+	item.Size = UDim2.new(1, 0, 0, 0)
+	item.AutomaticSize = Enum.AutomaticSize.Y
 	item.BackgroundTransparency = 1
 	item.TextColor3 = theme:GetColor(Enum.StudioStyleGuideColor.MainText)
 	item.Font = Enum.Font.SourceSans
@@ -107,7 +132,7 @@ local function label(text: string): TextLabel
 	item.TextXAlignment = Enum.TextXAlignment.Left
 	item.TextYAlignment = Enum.TextYAlignment.Top
 	item.Text = text
-	item.Parent = frame
+	place(item, order)
 	return item
 end
 
@@ -118,7 +143,7 @@ toggle.TextColor3 = theme:GetColor(Enum.StudioStyleGuideColor.ButtonText)
 toggle.Font = Enum.Font.SourceSans
 toggle.TextSize = 15
 toggle.Text = "Turn on agent access"
-toggle.Parent = frame
+place(toggle)
 
 local status = label("Agent access is off.")
 local pairing = label("")
@@ -135,7 +160,7 @@ if fault and fault:IsA("ModuleScript") then
 end
 
 local sessionId = string.lower((string.gsub(HttpService:GenerateGUID(false), "[^%x]", "")))
-local methods = Handlers.create()
+local methods, _, panel = Handlers.create()
 local connection: any = nil
 
 local function start()
@@ -183,6 +208,77 @@ local function start()
 		end,
 	})
 end
+
+-- A proposed replacement of a clip: shown here, and settled only here. The oldest one
+-- waiting is shown; the rest wait their turn. It sits at the top of the panel, the text
+-- saying what is asked directly above the two buttons that answer it, and below them a
+-- line that stays to say what was last decided.
+local proposalText = label("", -40)
+proposalText.Visible = false
+local function choice(text: string, order: number): TextButton
+	local item = Instance.new("TextButton")
+	item.Size = UDim2.new(1, 0, 0, 26)
+	item.BackgroundColor3 = theme:GetColor(Enum.StudioStyleGuideColor.Button)
+	item.TextColor3 = theme:GetColor(Enum.StudioStyleGuideColor.ButtonText)
+	item.Font = Enum.Font.SourceSans
+	item.TextSize = 15
+	item.Text = text
+	item.Visible = false
+	place(item, order)
+	return item
+end
+local approve = choice("Replace the clip", -30)
+local reject = choice("Keep the clip as it is", -20)
+local outcome = label("", -10)
+local shown: string? = nil
+local stopped: string? = nil
+
+local function showProposals()
+	local waiting = Proposals.pending()
+	local first = waiting[1]
+	shown = if first then first.clipId else nil
+	proposalText.Visible = first ~= nil
+	approve.Visible = first ~= nil
+	reject.Visible = first ~= nil
+	if first then
+		local more = if #waiting > 1 then ` ({#waiting - 1} more waiting)` else ""
+		local note = if stopped then `\n{stopped}` else ""
+		proposalText.Text =
+			`An agent is asking to replace the clip "{first.source}" with its working copy "{first.name}". Nothing is replaced unless you choose it.{more}{note}`
+		-- A person has to see it to settle it.
+		widget.Enabled = true
+	end
+end
+local stopProposals = Proposals.subscribe(function()
+	stopped = nil
+	showProposals()
+end)
+-- What became of the proposal just decided, in words that stay on the panel.
+local function report(clipId: string)
+	local settled = Proposals.get(clipId)
+	if not settled or settled.status == "pending" then
+		return
+	end
+	outcome.Text = if settled.status == "approved"
+		then `Replaced the clip "{settled.source}" with "{settled.name}". Undo (Ctrl+Z) puts it back.`
+		elseif settled.reason == Handlers.REJECTED_IN_STUDIO then `Kept the clip "{settled.source}" as it is.`
+		else `The clip "{settled.source}" was not replaced: {settled.reason or "the proposal no longer applied."}`
+end
+approve.MouseButton1Click:Connect(function()
+	local deciding = shown
+	if deciding then
+		stopped = panel.decide(deciding, true)
+		report(deciding)
+		showProposals()
+	end
+end)
+reject.MouseButton1Click:Connect(function()
+	local deciding = shown
+	if deciding then
+		panel.decide(deciding, false)
+		report(deciding)
+	end
+end)
 
 -- Whether access is on is remembered for this place, so that reloading the plugin or
 -- reopening the place does not turn it off. A place that has never been saved to Roblox
@@ -242,6 +338,7 @@ if Access.remembered(rememberedPlaces(), game.PlaceId) then
 end
 
 plugin.Unloading:Connect(function()
+	stopProposals()
 	-- An undo recording still open now would never be finished, and Studio would refuse
 	-- every later one.
 	pcall(Recording.abandon)
