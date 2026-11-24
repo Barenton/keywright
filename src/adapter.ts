@@ -437,6 +437,15 @@ export function createAdapter(options: AdapterOptions): McpServer {
 					.describe(
 						"Several times to sample in one call, in place of time. With render, the picture is a filmstrip: one column for each time in the order given, one row for each view (at most two), all framed alike so that what moves can be seen. The result lists the frames in the same order.",
 					),
+				samples: z
+					.number()
+					.int()
+					.min(9)
+					.max(48)
+					.optional()
+					.describe(
+						"In place of time or times: follow parts over the whole clip, at this many moments evenly spread. The parts are those in track, or the hands, feet, head and hips. The result has motion: for each part, how far it travels (path) and ends from where it began (net); its top speed and when; when it starts and stops moving; holds, the stretches in between where it stands still; the largest change of speed from one moment to the next and when; and bow, how far its path strays from a straight line. Parts that all start and stop together move as one block; a large speed jump is a corner in the motion; no bow is a straight line. With render, the picture shows each part's path over the rig, a dot at every sample, beside a chart of each part's speed across the clip.",
+					),
 				render: z.boolean().optional().describe("Include a schematic picture of the pose, drawn from the sampled joint positions."),
 				views: z
 					.array(z.enum(VIEWS))

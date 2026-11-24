@@ -55,6 +55,10 @@ end
 
 -- Most moments of a clip that one preview samples for a filmstrip.
 local MAX_FRAMES = 8
+-- For following parts over a whole clip: how many moments, and how many parts.
+local MIN_SAMPLES = 9
+local MAX_SAMPLES = 48
+local MAX_TRACKS = 8
 
 local function requireEdit()
 	if not RunService:IsEdit() then
@@ -440,7 +444,27 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 			end
 			times = params.times
 		end
-		local time = if times then times[1] else params.time
+		-- A number of samples asks for the motion over the whole clip: that many moments,
+		-- evenly spread, with the parts tracked at each.
+		local samples: number? = nil
+		if params.samples ~= nil then
+			if
+				type(params.samples) ~= "number"
+				or params.samples ~= math.floor(params.samples)
+				or params.samples < MIN_SAMPLES
+				or params.samples > MAX_SAMPLES
+			then
+				Errors.throw("INVALID_ARGUMENT", `samples must be a whole number from {MIN_SAMPLES} to {MAX_SAMPLES}.`)
+			end
+			if times or params.capture == true or params.check_placement == true then
+				Errors.throw(
+					"INVALID_ARGUMENT",
+					"samples cannot be combined with times, a screenshot or a placement check."
+				)
+			end
+			samples = params.samples
+		end
+		local time = if times then times[1] elseif samples then 0 else params.time
 		if not usableTime(time) then
 			Errors.throw("INVALID_ARGUMENT", `time must be from 0 to {Edit.MAX_TIME} seconds.`)
 		end
@@ -515,6 +539,73 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 				end
 			end
 			return sampled
+		end
+
+		if samples then
+			if duration <= 0 then
+				Errors.throw("INVALID_ARGUMENT", "The clip has no length, so there is no motion to sample.")
+			end
+			-- The parts to follow: the ones asked for, or the ends of the limbs, the head
+			-- and the hips.
+			local followed = track
+			if #followed == 0 then
+				followed = {}
+				for _, name in { "Head", "LeftFoot", "LeftHand", "LowerTorso", "RightFoot", "RightHand" } do
+					if scan.joints[name] then
+						table.insert(followed, name)
+					end
+				end
+			end
+			if #followed > MAX_TRACKS then
+				Errors.throw("INVALID_ARGUMENT", `At most {MAX_TRACKS} parts can be followed over a clip.`)
+			end
+			local everyJoint = {}
+			for _, name in Rig.R15_ORDER do
+				if scan.joints[name] then
+					table.insert(everyJoint, name)
+				end
+			end
+			local sampleTimes: { number } = {}
+			local paths: { [string]: { { number } } } = {}
+			for _, name in followed do
+				paths[name] = {}
+			end
+			local firstPose: { any }? = nil
+			for index = 0, samples - 1 do
+				if Clips.revisionOf(working) ~= revision then
+					Errors.throw(
+						"PREVIEW_UNAVAILABLE",
+						"The clip changed while it was being sampled.",
+						"Preview it again."
+					)
+				end
+				local at = duration * index / (samples - 1)
+				local sample = Preview.run({
+					model = model,
+					sequence = working.instance,
+					time = at,
+					joints = everyJoint,
+					parent = workspace,
+				})
+				table.insert(sampleTimes, math.round(at * 10000) / 10000)
+				for name, tracked in Pose.track(scan, sample.transforms, CFrame.new(), followed) do
+					table.insert(paths[name], tracked.position)
+				end
+				if index == 0 and render then
+					firstPose = Pose.parts(scan, sample.transforms, CFrame.new())
+				end
+			end
+			local keyframes = {}
+			for _, keyframe in Clips.sortedKeyframes(working.instance) do
+				table.insert(keyframes, math.round(keyframe.Time * 1000) / 1000)
+			end
+			return {
+				clip_id = working.id,
+				revision = revision,
+				duration = duration,
+				motion = { times = sampleTimes, keyframes = keyframes, parts = paths },
+				pose = if firstPose then { parts = firstPose, rest = restPose() } else nil,
+			}
 		end
 
 		if times then
