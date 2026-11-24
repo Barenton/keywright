@@ -275,3 +275,50 @@ test("a picture that cannot be drawn is reported, and the rest of the result sti
 	assert.deepEqual(renderResult({ render: true }, "text"), { payload: "text" });
 	assert.deepEqual(renderResult({ render: true }, null), { payload: null });
 });
+
+test("with the rest pose given, pictures of different poses are framed alike", () => {
+	const torso = box("UpperTorso", [0, 0, 0], [2, 2, 1]);
+	const rest = [torso, box("RightHand", [-1.5, -1, 0]), box("LeftHand", [1.5, -1, 0])];
+	const raised = [torso, box("RightHand", [-1.5, 2, 0]), box("LeftHand", [1.5, -1, 0])];
+	const bounds = (parts: PosePart[], frame?: PosePart[]) => {
+		const image = decode(renderPose(parts, ["front"], 128, frame).png);
+		// Where the grey torso is in the picture: its first and last columns and rows.
+		let [left, right, top, bottom] = [128, -1, 128, -1];
+		for (let y = 0; y < 128; y += 1) {
+			for (let x = 0; x < 128; x += 1) {
+				const pixel = image.at(x, y);
+				if (!isBackground(pixel) && !isOrange(pixel) && !isBlue(pixel)) {
+					[left, right, top, bottom] = [Math.min(left, x), Math.max(right, x), Math.min(top, y), Math.max(bottom, y)];
+				}
+			}
+		}
+		return [left, right, top, bottom];
+	};
+	// Framed on each pose by itself, the torso moves and changes size when a hand is raised.
+	assert.notDeepEqual(bounds(rest), bounds(raised));
+	// Framed on the rest pose, it stays exactly where it was.
+	assert.deepEqual(bounds(rest, rest), bounds(raised, rest));
+
+	// A pose that reaches far outside the rest frame still fits: nothing is cut off.
+	const far = [torso, box("RightHand", [-9, 6, 0]), box("LeftHand", [1.5, -1, 0])];
+	const image = decode(renderPose(far, ["front"], 128, rest).png);
+	let orange = 0;
+	for (let y = 0; y < 128; y += 1) for (let x = 0; x < 128; x += 1) if (isOrange(image.at(x, y))) orange += 1;
+	assert.ok(orange > 0);
+	for (let edge = 0; edge < 128; edge += 1) {
+		for (const pixel of [image.at(edge, 0), image.at(edge, 127), image.at(0, edge), image.at(127, edge)]) assert.ok(isBackground(pixel));
+	}
+});
+
+test("a preview's rest pose frames its picture and is not passed on", () => {
+	const torso = box("UpperTorso", [0, 0, 0], [2, 2, 1]);
+	const pose = { parts: [torso, box("RightHand", [-1.5, 2, 0])], rest: [torso, box("RightHand", [-1.5, -1, 0])] };
+	const framed = renderResult({ render: true }, { clip_id: "clip_1", pose });
+	const alone = renderResult({ render: true }, { clip_id: "clip_1", pose: { parts: pose.parts } });
+	assert.equal((framed.payload as { pose?: unknown }).pose, undefined);
+	assert.ok(framed.image && alone.image && framed.image !== alone.image);
+	// A rest pose that is not in the expected form means no picture, not a wrong one.
+	const bad = renderResult({ render: true }, { clip_id: "clip_1", pose: { parts: pose.parts, rest: [{ name: "x" }] } });
+	assert.equal(bad.image, undefined);
+	assert.equal((bad.payload as { render: { status: string } }).render.status, "unavailable");
+});

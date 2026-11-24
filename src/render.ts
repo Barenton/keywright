@@ -263,16 +263,12 @@ export function encodePng(width: number, height: number, rgb: Uint8Array): Buffe
 	]);
 }
 
-/**
- * Draws the pose once for each view, side by side. Every view is square, `tile` pixels on
- * a side, and all share one scale chosen so that the whole pose fits from any direction.
- */
-export function renderPose(parts: PosePart[], views: ViewName[], tile: number): { png: Buffer; width: number; height: number } {
-	if (views.length === 0 || views.length > MAX_VIEWS) throw new Error("between one and four views can be drawn");
-	if (!Number.isInteger(tile) || tile < MIN_TILE || tile > MAX_TILE || tile * views.length > MAX_WIDTH) {
-		throw new Error("the picture size is outside the limits");
-	}
-	const boxes = boxesOf(parts);
+// How much room is left around the rig at rest, so that raised arms and long strides
+// stay inside the picture without the framing having to change.
+const REST_MARGIN = 1.4;
+
+/** The middle of a set of boxes, and how far the furthest corner is from it. */
+function extentOf(boxes: Box[], about?: Vec): { centre: Vec; reach: number } {
 	const corners = boxes.flatMap(cornersOf);
 	const low: Vec = [Infinity, Infinity, Infinity];
 	const high: Vec = [-Infinity, -Infinity, -Infinity];
@@ -282,9 +278,33 @@ export function renderPose(parts: PosePart[], views: ViewName[], tile: number): 
 			high[axis] = Math.max(high[axis] as number, corner[axis] as number);
 		}
 	}
-	const centre = scale(add(low, high), 0.5);
+	const centre = about ?? scale(add(low, high), 0.5);
 	let reach = 0;
 	for (const corner of corners) reach = Math.max(reach, Math.hypot(...sub(corner, centre)));
+	return { centre, reach };
+}
+
+/**
+ * Draws the pose once for each view, side by side. Every view is square, `tile` pixels on
+ * a side, and all share one scale.
+ *
+ * When the rig's rest pose is given, the picture is framed on that, with room to spare,
+ * so that pictures of different poses of one rig line up and can be compared. Only a
+ * pose that reaches beyond that frame widens it. Without a rest pose the picture is
+ * framed on the pose itself.
+ */
+export function renderPose(parts: PosePart[], views: ViewName[], tile: number, rest?: PosePart[]): { png: Buffer; width: number; height: number } {
+	if (views.length === 0 || views.length > MAX_VIEWS) throw new Error("between one and four views can be drawn");
+	if (!Number.isInteger(tile) || tile < MIN_TILE || tile > MAX_TILE || tile * views.length > MAX_WIDTH) {
+		throw new Error("the picture size is outside the limits");
+	}
+	const boxes = boxesOf(parts);
+	let { centre, reach } = extentOf(boxes);
+	if (rest && rest.length > 0) {
+		const frame = extentOf(boxesOf(rest));
+		centre = frame.centre;
+		reach = Math.max(frame.reach * REST_MARGIN, extentOf(boxes, centre).reach);
+	}
 	const pixelsPerStud = (tile / 2 - tile * 0.06) / Math.max(reach, 0.5);
 
 	const width = tile * views.length;
@@ -320,7 +340,9 @@ export function renderResult(params: unknown, payload: unknown): { payload: unkn
 		const asked = input.render_size;
 		const size = typeof asked === "number" && Number.isInteger(asked) && asked >= MIN_TILE && asked <= MAX_TILE ? asked : DEFAULT_TILE;
 		const tile = Math.min(size, Math.floor(MAX_WIDTH / views.length));
-		const drawn = renderPose(parsePose(pose), views, tile);
+		// A plugin from before rest poses were sent has none; the picture is then framed on the pose.
+		const resting = isRecord(pose) && Array.isArray(pose.rest) ? parsePose({ parts: pose.rest }) : undefined;
+		const drawn = renderPose(parsePose(pose), views, tile, resting);
 		rest.render = { status: "ok", views, width: drawn.width, height: drawn.height, legend: LEGEND };
 		return { payload: rest, image: drawn.png.toString("base64") };
 	} catch (error) {

@@ -488,7 +488,16 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 		}
 		if render then
 			-- Positions relative to the rig's root part: nothing about the place is in them.
-			response.pose = { parts = Pose.parts(scan, preview.transforms, CFrame.new()) }
+			-- The rest pose goes along, so that every picture of this rig can be framed the
+			-- same way, whatever the pose: the rig then stays put from one picture to the next.
+			local resting: { [string]: CFrame } = {}
+			for name in scan.joints do
+				resting[name] = CFrame.new()
+			end
+			response.pose = {
+				parts = Pose.parts(scan, preview.transforms, CFrame.new()),
+				rest = Pose.parts(scan, resting, CFrame.new()),
+			}
 		end
 		if checkPlacement and preview.placed then
 			-- How far Studio's own placement of the parts is from what the joints say.
