@@ -5,8 +5,6 @@
 -- request is accepted until this side has proved the same. A listener that fails the
 -- proof is treated as a foreign program.
 
-local HttpService = game:GetService("HttpService")
-
 local Auth = require("./Auth")
 local Codec = require("./Codec")
 local Deadline = require("./Deadline")
@@ -28,7 +26,46 @@ export type Config = {
 	onCredential: (credential: Credential?) -> (),
 }
 
+-- What this module needs of Studio, gathered so that the offline tests can stand in for
+-- it: a WebSocket to a port, JSON, a source of unpredictable text, and threads.
+export type Platform = {
+	open: (port: number) -> any,
+	encode: (value: any) -> string,
+	decode: (text: string) -> any,
+	guid: () -> string,
+	delay: (seconds: number, work: () -> ()) -> (),
+	spawn: (work: (...any) -> (), ...any) -> (),
+	-- For the time limit on a request; Studio's own when absent.
+	kit: Deadline.Kit?,
+}
+
 local Connection = {}
+
+-- Looked up when first needed. A test sets this before starting a connection.
+Connection.platform = nil :: Platform?
+
+local function studio(): Platform
+	local HttpService = game:GetService("HttpService")
+	return {
+		open = function(port: number)
+			return HttpService:CreateWebStreamClient(Enum.WebStreamClientType.WebSocket, {
+				Url = `ws://127.0.0.1:{port}/v1`,
+				Method = "GET",
+			})
+		end,
+		encode = function(value: any): string
+			return HttpService:JSONEncode(value)
+		end,
+		decode = function(text: string): any
+			return HttpService:JSONDecode(text)
+		end,
+		guid = function(): string
+			return HttpService:GenerateGUID(false)
+		end,
+		delay = task.delay :: any,
+		spawn = task.spawn :: any,
+	}
+end
 
 -- Longest one request may take before Studio stops waiting for it and answers the next.
 -- Above the longest wait a relay allows, so that an ordinary slow request is never cut off here.
@@ -40,6 +77,7 @@ local FOREIGN_RETRY = 30
 local PAIRING_RETRY = 2
 
 function Connection.start(config: Config)
+	local platform = Connection.platform or studio()
 	local running = true
 	local generation = 0
 	local attempts = 0
@@ -79,7 +117,7 @@ function Connection.start(config: Config)
 
 	local function retry(delaySeconds: number)
 		local expected = generation
-		task.delay(delaySeconds, function()
+		platform.delay(delaySeconds, function()
 			if running and generation == expected then
 				connect()
 			end
@@ -88,7 +126,7 @@ function Connection.start(config: Config)
 
 	local function send(message: any)
 		if client then
-			client:Send(HttpService:JSONEncode(message))
+			client:Send(platform.encode(message))
 		end
 	end
 
@@ -103,7 +141,7 @@ function Connection.start(config: Config)
 			runningId = request.id
 			local finished, ok, result = Deadline.run(Connection.REQUEST_LIMIT, function()
 				return config.onRequest(request.method, request.params)
-			end)
+			end, platform.kit)
 			if not finished then
 				-- Nobody waits for it any longer. Work that can be told to stop is told.
 				if config.onCancel then
@@ -158,16 +196,13 @@ function Connection.start(config: Config)
 			return
 		end
 
-		local clientNonce = Auth.nonceFromGuid(HttpService:GenerateGUID(false))
+		local clientNonce = Auth.nonceFromGuid(platform.guid())
 		local serverNonce: string? = nil
 		local phase = "hello"
 		config.onState("connecting")
 
 		local created, result = pcall(function()
-			return HttpService:CreateWebStreamClient(Enum.WebStreamClientType.WebSocket, {
-				Url = `ws://127.0.0.1:{config.port}/v1`,
-				Method = "GET",
-			})
+			return platform.open(config.port)
 		end)
 		if not created then
 			stats.errors += 1
@@ -190,7 +225,7 @@ function Connection.start(config: Config)
 			end
 		end
 
-		task.delay(HANDSHAKE_TIMEOUT, function()
+		platform.delay(HANDSHAKE_TIMEOUT, function()
 			if generation == expected and phase ~= "ready" and client then
 				attempts += 1
 				fail("disconnected", "handshake timed out", BACKOFF[math.min(attempts, #BACKOFF)])
@@ -215,7 +250,7 @@ function Connection.start(config: Config)
 					return
 				end
 				local decoded, message = pcall(function()
-					return HttpService:JSONDecode(text)
+					return platform.decode(text)
 				end)
 				if not decoded or type(message) ~= "table" then
 					return fail("foreign", "listener sent something that is not JSON", FOREIGN_RETRY)
@@ -278,7 +313,7 @@ function Connection.start(config: Config)
 					config.onState("ready")
 				elseif message.t == "req" and type(message.id) == "string" and type(message.method) == "string" then
 					table.insert(queue, { id = message.id, method = message.method, params = message.params })
-					task.spawn(drain, expected)
+					platform.spawn(drain, expected)
 				elseif message.t == "cancel" and type(message.id) == "string" then
 					-- The caller timed out or went away. A request still waiting is dropped;
 					-- one being answered is told to stop.

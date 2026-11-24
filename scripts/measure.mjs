@@ -5,8 +5,10 @@
 // It talks only to the local broker, the way the MCP adapter does. It does not start,
 // stop or attach to Studio, install anything, or touch a file outside build/. It does
 // change the place the session has open: it makes working copies, which it discards
-// again at the end, and saved clips, which stay, all named "Measure ...". Because of
-// that it must be told the id of the place, and refuses any other.
+// again at the end, and one saved clip for each rig, named "Measure fixture ...", which
+// stays and is used again by later runs. No tool removes a saved clip, so it saves no
+// more than that. Because it changes the place, it must be told the id of the place,
+// and refuses any other.
 //
 // Usage: node scripts/measure.mjs --place-id <id> [--rounds 10000]
 
@@ -284,6 +286,22 @@ async function main() {
 			clips[jointClass] = { rig, clipId: opened.clip_id, revision: edited.revision };
 		}
 		const available = Object.keys(clips);
+		// The one clip this script keeps saved for each rig. Saved if the rig does not have
+		// it yet; a name that is taken means an earlier run saved it. Returns whether this
+		// run did.
+		const fixtureName = (jointClass) => `Measure fixture ${jointClass}`;
+		const ensureFixture = async (jointClass) => {
+			const { clipId } = clips[jointClass];
+			const current = await call("read_animation", { clip_id: clipId });
+			try {
+				await call("save_animation", { clip_id: clipId, expected_revision: current.revision, name: fixtureName(jointClass) });
+				saved += 1;
+				return true;
+			} catch (error) {
+				if (error?.code === "INVALID_ARGUMENT") return false;
+				throw error;
+			}
+		};
 		if (available.length === 0) throw new Error("The place has no supported R15 rig to measure on.");
 		const main = clips[available[0]];
 
@@ -464,18 +482,22 @@ async function main() {
 			if (typeof before.content_hash !== "string") {
 				results.push(skipped("E5", "A round trip through saving and opening changes nothing", "The plugin in Studio predates clip fingerprints. Reinstall it and run again."));
 			} else {
-				let changed = 0;
-				let source = { clipId: main.clipId, revision: before.revision, hash: before.content_hash };
-				for (const lap of ["a", "b"]) {
-					const name = `Measure ${stamp} ${lap}`;
-					await call("save_animation", { clip_id: source.clipId, expected_revision: source.revision, name });
-					saved += 1;
-					const reopened = await call("open_animation", { rig_id: main.rig.rig_id, source: `saved:${name}` });
-					const after = await call("read_animation", { clip_id: reopened.clip_id, hash: true });
-					if (after.content_hash !== before.content_hash) changed += 1;
-					source = { clipId: reopened.clip_id, revision: after.revision, hash: after.content_hash };
-				}
-				results.push(judge("E5", "Two round trips through saving and opening leave the clip's fingerprint unchanged", changed, 0, "changed"));
+				// The clip is saved once and kept: a later run opens what an earlier run saved,
+				// and it must still be, to the fingerprint, the clip as it is built now.
+				const mainClass = available[0];
+				const fresh = await ensureFixture(mainClass);
+				const reopened = await call("open_animation", { rig_id: main.rig.rig_id, source: `saved:${fixtureName(mainClass)}` });
+				const after = await call("read_animation", { clip_id: reopened.clip_id, hash: true });
+				results.push(
+					judge(
+						"E5",
+						"A saved clip opens with the fingerprint of the same clip built now",
+						after.content_hash === before.content_hash ? 0 : 1,
+						0,
+						"changed",
+						fresh ? "saved by this run" : "saved by an earlier run",
+					),
+				);
 				results.push(skipped("E5", "Opening a clip the Animation Editor saved, and the editor saving ours", "Needs a person in the Animation Editor."));
 			}
 		}
@@ -493,10 +515,8 @@ async function main() {
 				const inspected = await call("inspect_rig", { rig_id: rig.rig_id });
 				step("inspect", inspected.supported === true && inspected.joint_count === 15 && inspected.joint_classes?.[jointClass] === 15);
 
-				const name = `Measure ${stamp} demo ${jointClass}`;
-				const current = await call("read_animation", { clip_id: clipId });
-				await call("save_animation", { clip_id: clipId, expected_revision: current.revision, name });
-				saved += 1;
+				const name = fixtureName(jointClass);
+				await ensureFixture(jointClass);
 				const working = await call("open_animation", { rig_id: rig.rig_id, source: `saved:${name}` });
 				const before = await call("read_animation", { clip_id: working.clip_id, hash: true });
 				step("open", typeof before.content_hash === "string" && before.keyframe_count === TIMES.length);
@@ -757,7 +777,7 @@ async function main() {
 		results.push(
 			skipped(
 				"Tidy",
-				`Discarded ${discarded} of the ${made.length} working copies this run made; ${saved} saved clips named "Measure ${stamp} ..." remain`,
+				`Discarded ${discarded} of the ${made.length} working copies this run made; saved ${saved} new ${saved === 1 ? "clip" : "clips"} ("Measure fixture ..."), kept for later runs`,
 				leftover ? `Not all could be discarded: ${leftover}` : "",
 			),
 		);
