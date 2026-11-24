@@ -4,6 +4,7 @@
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
 
+local Access = require("./src/Access")
 local Connection = require("./src/Connection")
 local Handlers = require("./src/Handlers")
 local Preview = require("./src/Preview")
@@ -12,6 +13,7 @@ local PLUGIN_VERSION = "0.0.0"
 local DEFAULT_PORT = 47318
 local SETTING_PORT = "MotionBridgePort"
 local SETTING_CREDENTIAL = "MotionBridgeCredential"
+local SETTING_ACCESS = "MotionBridgeAccess"
 local CODE_ALPHABET = "ABCDEFGHJKMNPQRSTVWXYZ23456789"
 
 -- Only the edit data model talks to the broker.
@@ -169,6 +171,41 @@ local function start()
 	})
 end
 
+-- Whether access is on is remembered for this place, so that reloading the plugin or
+-- reopening the place does not turn it off. A place that has never been saved to Roblox
+-- cannot be told from any other such place, so for it access is off every time.
+local function rememberedPlaces(): any
+	local stored = readSetting(SETTING_ACCESS)
+	if type(stored) ~= "string" then
+		return nil
+	end
+	local ok, decoded = pcall(function()
+		return HttpService:JSONDecode(stored)
+	end)
+	return if ok then decoded else nil
+end
+
+local function remember(on: boolean)
+	if game.PlaceId == 0 then
+		return
+	end
+	-- Settings are shared by every Studio window and a write can fail silently, so the
+	-- latest value is read before each write and the result is read back.
+	for _ = 1, 3 do
+		local places = Access.update(rememberedPlaces(), game.PlaceId, on)
+		pcall(function()
+			plugin:SetSetting(SETTING_ACCESS, HttpService:JSONEncode(places))
+		end)
+		task.wait(0.1)
+		if Access.remembered(rememberedPlaces(), game.PlaceId) == on then
+			return
+		end
+	end
+	if on then
+		pairing.Text = "Agent access is on, but could not be remembered for this place."
+	end
+end
+
 toggle.MouseButton1Click:Connect(function()
 	if connection then
 		connection.stop()
@@ -177,11 +214,19 @@ toggle.MouseButton1Click:Connect(function()
 		Preview.cancel("agent access was turned off")
 		pairing.Text = ""
 		toggle.Text = "Turn on agent access"
+		remember(false)
 	else
 		toggle.Text = "Turn off agent access"
 		start()
+		remember(true)
 	end
 end)
+
+if Access.remembered(rememberedPlaces(), game.PlaceId) then
+	-- A person turned access on for this place earlier and has not turned it off.
+	toggle.Text = "Turn off agent access"
+	start()
+end
 
 plugin.Unloading:Connect(function()
 	if connection then

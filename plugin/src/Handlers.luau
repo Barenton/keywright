@@ -68,6 +68,17 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry)
 		return model, rigId
 	end
 
+	-- Working copies left in the place by an earlier session of the plugin are picked up
+	-- for rigs that are still in the workspace.
+	local function restore(): number
+		return Clips.restore(function(model: Instance): string?
+			if model:IsA("Model") and model.Parent == workspace and model:FindFirstChildOfClass("Humanoid") then
+				return register(registry, model)
+			end
+			return nil
+		end)
+	end
+
 	methods.get_workspace = function(_params: any): any
 		local rigs = {}
 		for _, child in workspace:GetChildren() do
@@ -95,11 +106,14 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry)
 			})
 		end
 		local captureAvailable, captureReason = Capture.available()
+		local unassigned = restore()
 		return {
 			edit_mode = RunService:IsEdit(),
 			rigs = rigs,
 			selection = selection,
 			working_copies = Clips.list(),
+			-- Working copies in the place whose rig can no longer be told.
+			unassigned_working_copies = if unassigned > 0 then unassigned else nil,
 			capture = { available = captureAvailable, reason = captureReason },
 		}
 	end
@@ -148,7 +162,7 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry)
 				"Close the Animation Editor if it is open, stop any playtest, and retry."
 			)
 		end
-		local ok, result = pcall(Clips.open, rigId, name, source)
+		local ok, result = pcall(Clips.open, rigId, name, source, model)
 		ChangeHistoryService:FinishRecording(
 			recording :: string,
 			if ok then Enum.FinishRecordingOperation.Commit else Enum.FinishRecordingOperation.Cancel
@@ -316,6 +330,7 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry)
 		return response
 	end
 
+	pcall(restore)
 	return methods, registry
 end
 

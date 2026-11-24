@@ -1,11 +1,14 @@
 --!strict
 -- Working copies: editable KeyframeSequence instances kept in Motion Bridge's own
--- container, with a revision that changes whenever the instance tree changes.
+-- container, with a revision that changes whenever the instance tree changes. Each rig's
+-- working copies sit on that rig's shelf (see WorkingStore), so that copies left in the
+-- place by an earlier plugin session can be picked up again.
 
 local ServerStorage = game:GetService("ServerStorage")
 
 local Errors = require("./Errors")
 local Rig = require("./Rig")
+local WorkingStore = require("./WorkingStore")
 
 local Clips = {}
 
@@ -25,6 +28,7 @@ export type Working = {
 }
 
 local registry: { [string]: Working } = {}
+local known: { [Instance]: Working } = {}
 local nextId = 1
 
 function Clips.container(): Folder
@@ -80,19 +84,7 @@ local function watch(working: Working)
 	)
 end
 
--- Creates a working copy. Must be called inside an undo recording.
-function Clips.open(rigId: string, name: string, source: KeyframeSequence?): Working
-	local instance: KeyframeSequence
-	if source then
-		instance = source:Clone()
-	else
-		instance = Instance.new("KeyframeSequence")
-		instance.Loop = false
-		instance.Priority = Enum.AnimationPriority.Action
-	end
-	instance.Name = name
-	instance.Parent = Clips.container()
-
+local function register(instance: KeyframeSequence, rigId: string, source: KeyframeSequence?): Working
 	local working: Working = {
 		id = "clip_" .. nextId,
 		instance = instance,
@@ -105,8 +97,50 @@ function Clips.open(rigId: string, name: string, source: KeyframeSequence?): Wor
 	}
 	nextId += 1
 	registry[working.id] = working
+	known[instance] = working
 	watch(working)
 	return working
+end
+
+-- Creates a working copy for the rig. Must be called inside an undo recording.
+function Clips.open(rigId: string, name: string, source: KeyframeSequence?, model: Model): Working
+	local instance: KeyframeSequence
+	if source then
+		instance = source:Clone()
+	else
+		instance = Instance.new("KeyframeSequence")
+		instance.Loop = false
+		instance.Priority = Enum.AnimationPriority.Action
+	end
+	instance.Name = name
+	instance.Parent = WorkingStore.shelf(Clips.container(), model, function(className: string)
+		return Instance.new(className)
+	end)
+	return register(instance, rigId, source)
+end
+
+-- Picks up working copies that are in the place but not known to this session, as after
+-- a plugin reload. `rigIdOf` gives the id of a rig, or nil if the model is not one that
+-- can be worked on. What a copy was opened from is not kept across sessions. Returns how
+-- many working copies in the place could not be matched to a rig. Changes nothing.
+function Clips.restore(rigIdOf: (model: Instance) -> string?): number
+	local root = ServerStorage:FindFirstChild(Clips.CONTAINER_NAME)
+	local folder = root and root:FindFirstChild(Clips.WORKING_NAME)
+	if not folder then
+		return 0
+	end
+	local found, unassigned = WorkingStore.discover(folder)
+	for _, entry in found do
+		if not known[entry.instance] then
+			local rigId = rigIdOf(entry.model)
+			if rigId then
+				register(entry.instance, rigId, nil)
+			else
+				unassigned += 1
+			end
+		end
+	end
+	return unassigned
 end
 
 function Clips.get(clipId: string): Working
@@ -144,6 +178,7 @@ function Clips.close(working: Working)
 		signal:Disconnect()
 	end
 	registry[working.id] = nil
+	known[working.instance] = nil
 end
 
 -- Runs `change` as one edit. Signals raised by our own writes are not counted as
