@@ -33,7 +33,7 @@ const rangeTo = time("End of the time range in seconds.");
 const easingStyle = z
 	.enum(["Linear", "Constant", "Elastic", "CubicV2", "Bounce"])
 	.optional()
-	.describe("How the pose is approached from the keyframe before it. The deprecated Cubic style is kept where a clip has it but cannot be set.");
+	.describe("How the joint moves from this pose to its next one. A pose's easing shapes the stretch that starts at it, not the one that ends at it. The deprecated Cubic style is kept where a clip has it but cannot be set.");
 const easingDirection = z
 	.enum(["In", "Out", "InOut"])
 	.optional()
@@ -78,6 +78,12 @@ const operations = [
 	z.object({
 		type: z.literal("add_keyframe").describe("Add an empty keyframe. Refused if there is one within a millisecond."),
 		time: time("Time of the new keyframe in seconds."),
+		hold: z
+			.boolean()
+			.optional()
+			.describe(
+				"Key every joint the clip moves at the pose it already has at this time, as Studio plays it, so that the clip passes through the same pose there. Between keyframes the motion stays the same only for joints whose easing is Linear or Constant; for any other easing the result lists the joint under held[].motion_changed, because splitting an eased stretch in two changes its shape. At most 8 per batch.",
+			),
 	}),
 	z.object({
 		type: z.literal("remove_keyframe").describe("Remove a keyframe with everything in it."),

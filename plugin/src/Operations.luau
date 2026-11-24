@@ -26,6 +26,7 @@ Operations.MAX_POSITION = 1000
 Operations.MAX_KEYFRAMES = 2000
 Operations.MAX_NAME = 100
 Operations.MAX_MARKER_VALUE = 200
+Operations.MAX_HOLDS = 8
 Operations.MIN_SCALE = 0.01
 Operations.MAX_SCALE = 100
 Operations.TIME_TOLERANCE = 0.001
@@ -41,6 +42,12 @@ export type Context = {
 	joints: { [string]: any },
 	-- The clip the working copy was opened from, if any.
 	source: Instance?,
+	-- For a keyframe that holds the pose the clip already has at its time: the pose of
+	-- each animated joint there, by the operation's place in the batch. The engine works
+	-- these out, not this module, so whoever runs the batch supplies them.
+	held: { [number]: { [string]: CFrame } }?,
+	-- Filled in while applying: for each such keyframe, what a caller should know.
+	holds: { any }?,
 }
 
 export type Changed = { [string]: number }
@@ -243,6 +250,9 @@ local checks: { [string]: Check } = {
 	end,
 	add_keyframe = function(where, operation)
 		needTime(where, operation.time, "time")
+		if operation.hold ~= nil and type(operation.hold) ~= "boolean" then
+			refuse(where, "hold must be true or false.")
+		end
 	end,
 	remove_keyframe = function(where, operation)
 		needTime(where, operation.time, "time")
@@ -333,6 +343,41 @@ function Operations.check(operations: any, joints: { [string]: any })
 		end
 		(check :: Check)(where, operation, joints)
 	end
+	if #Operations.holds(operations) > Operations.MAX_HOLDS then
+		Errors.throw(
+			"LIMIT_EXCEEDED",
+			`A batch adds at most {Operations.MAX_HOLDS} keyframes that hold the current pose.`
+		)
+	end
+end
+
+-- The places in a batch of the keyframes that are to hold the clip's current pose.
+function Operations.holds(operations: { any }): { number }
+	local places = {}
+	for index, operation in operations do
+		if type(operation) == "table" and operation.type == "add_keyframe" and operation.hold == true then
+			table.insert(places, index)
+		end
+	end
+	return places
+end
+
+-- The joints a clip moves: those with a pose that has weight, in any keyframe.
+function Operations.animated(sequence: Instance): { string }
+	local seen: { [string]: boolean } = {}
+	for _, keyframe in Operations.keyframes(sequence) do
+		for _, descendant: any in keyframe:GetDescendants() do
+			if descendant:IsA("Pose") and descendant.Weight > 0 then
+				seen[descendant.Name] = true
+			end
+		end
+	end
+	local names = {}
+	for name in seen do
+		table.insert(names, name)
+	end
+	table.sort(names)
+	return names
 end
 
 -- ---------------------------------------------------------------------------------------
@@ -522,9 +567,71 @@ local appliers: { [string]: Apply } = {
 		count(changed, "poses_changed", found)
 	end,
 
-	add_keyframe = function(where, sequence, operation, _context, changed)
+	add_keyframe = function(where, sequence, operation, context, changed)
 		needFree(where, sequence, operation.time)
-		newKeyframe(sequence, operation.time, changed)
+		if operation.hold ~= true then
+			newKeyframe(sequence, operation.time, changed)
+			return
+		end
+		local index = tonumber(string.match(where, "%d+")) :: number
+		local poses = context.held and context.held[index]
+		if not poses then
+			Errors.throw(
+				"PREVIEW_UNAVAILABLE",
+				`{where}: the clip's pose at {operation.time} seconds could not be worked out.`
+			)
+		end
+		-- Easing belongs to the pose a stretch of motion starts from. The new keyframe
+		-- starts the second half of a stretch, so it takes the easing of the pose before
+		-- it. Found before the keyframe exists, so that it is not found itself.
+		local easing: { [string]: Pose } = {}
+		local later: { [string]: boolean } = {}
+		for _, keyframe in Operations.keyframes(sequence) do
+			for name in poses :: { [string]: CFrame } do
+				local found = weighted(keyframe, name)
+				if found and keyframe.Time < operation.time then
+					easing[name] = found
+				elseif found then
+					later[name] = true
+				end
+			end
+		end
+		local created = newKeyframe(sequence, operation.time, changed)
+		local reshaped: { string } = {}
+		local names: { string } = {}
+		for name in poses :: { [string]: CFrame } do
+			-- Only a joint that is between two of its own poses here is keyed. Before its
+			-- first pose or after its last, a new pose would start or end a stretch of
+			-- motion that was not there.
+			if easing[name] and later[name] then
+				table.insert(names, name)
+			end
+		end
+		table.sort(names)
+		for _, name in names do
+			local pose = Operations.ensurePose(created, name)
+			pose.CFrame = (poses :: { [string]: CFrame })[name]
+			pose.Weight = 1
+			local before = easing[name]
+			if before then
+				pose.EasingStyle = before.EasingStyle
+				pose.EasingDirection = before.EasingDirection
+				-- Only a straight or a stepped stretch is the same motion once split in two.
+				local style = before.EasingStyle.Name
+				if style ~= "Linear" and style ~= "Constant" then
+					table.insert(reshaped, name)
+				end
+			end
+			count(changed, "poses_created")
+		end
+		if context.holds then
+			table.insert(context.holds, {
+				time = operation.time,
+				joints = #names,
+				-- Joints whose motion around the new keyframe is no longer what it was.
+				motion_changed = if #reshaped > 0 then reshaped else nil,
+			})
+		end
 	end,
 
 	remove_keyframe = function(where, sequence, operation, _context, changed)

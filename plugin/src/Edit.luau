@@ -30,11 +30,16 @@ Edit.MAX_KEYFRAMES = Operations.MAX_KEYFRAMES
 -- make a batch fail or stop partway.
 Edit.fault = nil :: ((working: Clips.Working, index: number) -> ())?
 
+-- `sample` gives the pose a clip has at a time, for the joints named, as the engine
+-- plays it. It is needed only for a keyframe that is to hold the current pose.
+export type Sample = (sequence: KeyframeSequence, time: number, joints: { string }) -> { [string]: CFrame }
+
 function Edit.apply(
 	working: Clips.Working,
 	joints: { [string]: Rig.Joint },
 	expectedRevision: any,
-	operations: any
+	operations: any,
+	sample: Sample?
 ): any
 	if not RunService:IsEdit() then
 		Errors.throw("STUDIO_NOT_IN_EDIT_MODE", "Studio is running a playtest.", "Stop the playtest and try again.")
@@ -48,15 +53,38 @@ function Edit.apply(
 		)
 	end
 	Operations.check(operations, joints)
-	local context: Operations.Context = { joints = joints, source = working.source }
+	local held: { [number]: { [string]: CFrame } } = {}
+	local context: Operations.Context = { joints = joints, source = working.source, held = held }
 
 	-- The whole batch, on a copy nobody else can see. Anything that would fail fails here.
+	-- A keyframe that is to hold the current pose is sampled here too, from the copy as
+	-- the operations before it have left it, and the real run uses what was sampled.
 	local trial = working.instance:Clone()
-	local tried, problem = pcall(Operations.run, trial, operations, context)
+	local tried, problem = pcall(Operations.run, trial, operations, context, function(index)
+		local operation = operations[index]
+		if operation.type == "add_keyframe" and operation.hold == true then
+			if not sample then
+				Errors.throw(
+					"PREVIEW_UNAVAILABLE",
+					"This clip cannot be sampled here, so no keyframe can hold its pose."
+				)
+			end
+			held[index] = (sample :: Sample)(trial, operation.time, Operations.animated(trial))
+		end
+	end)
 	trial:Destroy()
 	if not tried then
 		error(problem, 0)
 	end
+	-- Clips.revisionOf is read again: sampling waits, and the clip could have changed.
+	if Clips.revisionOf(working) ~= current then
+		Errors.throw(
+			"REVISION_CONFLICT",
+			"The clip changed while its pose was being sampled.",
+			"Read the clip again and reapply the change to the current revision."
+		)
+	end
+	context.holds = {}
 
 	local recording = Recording.begin("MotionBridgeEdit", "Motion Bridge edit")
 	local changed: Operations.Changed = {}
@@ -70,7 +98,14 @@ function Edit.apply(
 		Recording.finish(recording, ok)
 	end)
 
-	return { revision = Clips.revisionOf(working), changed = changed }
+	local holds = context.holds :: { any }
+	return {
+		revision = Clips.revisionOf(working),
+		changed = changed,
+		-- For each keyframe that holds the pose: how many joints it keyed, and any whose
+		-- motion around it changed because their easing is not straight or stepped.
+		held = if #holds > 0 then holds else nil,
+	}
 end
 
 return Edit

@@ -251,7 +251,14 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 			Errors.throw("NOT_FOUND", "The rig this clip was opened for no longer exists.")
 		end
 		local scan = Rig.require(model)
-		return Edit.apply(working, scan.joints, params.expected_revision, params.operations)
+		-- A keyframe that holds the current pose needs the engine to say what that pose is.
+		local function sample(sequence: KeyframeSequence, time: number, joints: { string }): { [string]: CFrame }
+			if #joints == 0 then
+				return {}
+			end
+			return Preview.run({ model = model, sequence = sequence, time = time, joints = joints, parent = workspace }).transforms
+		end
+		return Edit.apply(working, scan.joints, params.expected_revision, params.operations, sample)
 	end
 
 	-- What the checks need to know about a rig: its joints, and which of them are driven

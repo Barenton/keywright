@@ -672,6 +672,27 @@ async function main() {
 				);
 				step("an unknown operation is refused by the plugin", unknown?.code === "INVALID_ARGUMENT");
 
+				// A keyframe that holds the pose the clip already has. The stretch from 1.5 to
+				// 1.75 seconds starts at a pose with straight easing, so the head must be where
+				// it was at the new keyframe and on both sides of it. The stretch from 0 is
+				// eased, so a keyframe there is reported as changing the motion.
+				const probe = async (time) => (await call("preview_animation", { clip_id: clipId, time, joints: ["Head"] }, 60000)).joints.Head.rotation;
+				const stretch = [1.52, 1.56, 1.6, 1.65, 1.7];
+				const was = [];
+				for (const time of stretch) was.push(await probe(time));
+				const held = await call("edit_animation", { clip_id: clipId, expected_revision: revision, operations: [{ type: "add_keyframe", time: 1.6, hold: true }] });
+				revision = held.revision;
+				let drift = 0;
+				for (const [index, time] of stretch.entries()) {
+					const now = await probe(time);
+					drift = Math.max(drift, ...now.map((value, axis) => angleBetween(value, was[index][axis])));
+				}
+				step("a keyframe that holds a straight stretch leaves the motion as it was", held.held?.length === 1 && held.held[0].motion_changed === undefined && drift < 0.02);
+				const eased = await call("edit_animation", { clip_id: clipId, expected_revision: revision, operations: [{ type: "add_keyframe", time: 0.25, hold: true }] });
+				revision = eased.revision;
+				step("one that splits an eased stretch says which joints changed", eased.held?.[0]?.motion_changed?.includes("Head") === true);
+				await edit([{ type: "remove_keyframe", time: 1.6 }, { type: "remove_keyframe", time: 0.25 }]);
+
 				// The checks: this clip loops, and its head ends 15 degrees from where it starts.
 				// With the speed limit lowered far enough, its ordinary turns count as abrupt.
 				const checked = await call("validate_animation", { clip_id: clipId });
@@ -689,7 +710,7 @@ async function main() {
 				outdated = /unknown operation type/.test(message);
 				failed.push(`stopped: ${message}`);
 			}
-			const question = "Every kind of edit does what it says, read back from Studio: poses, offsets, easing, keyframes, retiming, settings, markers, quaternions, paged reads, validation, and a refused batch";
+			const question = "Every kind of edit does what it says, read back from Studio: poses, offsets, easing, keyframes, retiming, settings, markers, quaternions, paged reads, hold keyframes, validation, and a refused batch";
 			results.push(outdated ? skipped("Edits", question, "The plugin in Studio predates these operations. Reinstall it and run again.") : judge("Edits", question, failed.length, 0, "failed steps", failed.join("; ")));
 		}
 
