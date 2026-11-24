@@ -130,7 +130,7 @@ for name, overrides in
 		["marker of another class"] = { markerClass = "Folder", markerValue = "<nil>" },
 		["empty marker"] = { markerValue = "" },
 		["old probe marker"] = { markerValue = '{"port":47419,"code":"ABCDEFGH23"}' },
-		["wrong prefix"] = { markerValue = "motion-bridge-fixture/2/" .. FIXTURE_ID },
+		["wrong prefix"] = { markerValue = "keywright-fixture/2/" .. FIXTURE_ID },
 		["short id"] = { markerValue = FixtureGuard.MARKER_PREFIX .. "0123" },
 		["uppercase id"] = { markerValue = FixtureGuard.MARKER_PREFIX .. string.upper(FIXTURE_ID) },
 		["trailing text"] = { markerValue = FixtureGuard.MARKER_PREFIX .. FIXTURE_ID .. "x" },
@@ -204,7 +204,7 @@ for name, overrides in
 		["a published experience"] = { gameId = 456 },
 		["a playtest"] = { isEdit = false },
 		["no marker"] = { markerClass = "<nil>", markerValue = "<nil>" },
-		["a malformed marker"] = { markerValue = "motion-bridge-fixture/1/xyz" },
+		["a malformed marker"] = { markerValue = "keywright-fixture/1/xyz" },
 	} :: { [string]: { [string]: any } }
 do
 	check(`armed screenshots still refused in {name}`, (shots(overrides, FIXTURE_ID, FIXTURE_ID)), false)

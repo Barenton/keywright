@@ -65,7 +65,7 @@ function attempt() {
 attempt();
 `;
 
-const home = mkdtempSync(join(tmpdir(), "motion-bridge-wsl-"));
+const home = mkdtempSync(join(tmpdir(), "keywright-wsl-"));
 const port = await freePort();
 const broker = new Broker({ home, port });
 await broker.start();

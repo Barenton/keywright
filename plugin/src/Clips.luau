@@ -1,5 +1,5 @@
 --!strict
--- Working copies: editable KeyframeSequence instances kept in Motion Bridge's own
+-- Working copies: editable KeyframeSequence instances kept in Keywright's own
 -- container, with a revision that changes whenever the instance tree changes. Each rig's
 -- working copies sit on that rig's shelf (see WorkingStore), so that copies left in the
 -- place by an earlier plugin session can be picked up again.
@@ -14,7 +14,7 @@ local WorkingStore = require("./WorkingStore")
 
 local Clips = {}
 
-Clips.CONTAINER_NAME = "MotionBridge"
+Clips.CONTAINER_NAME = "Keywright"
 Clips.WORKING_NAME = "WorkingCopies"
 Clips.SOURCES_NAME = "Sources"
 Clips.TIME_TOLERANCE = Operations.TIME_TOLERANCE
@@ -39,18 +39,34 @@ local registry: { [string]: Working } = {}
 local known: { [Instance]: Working } = {}
 local nextId = 1
 
+-- The name the plugin's folder had before the project was called Keywright.
+Clips.FORMER_CONTAINER_NAME = "Motion" .. "Bridge"
+
+-- The plugin's folder in the place, under its name or its former one.
+local function existingRoot(): Instance?
+	return ServerStorage:FindFirstChild(Clips.CONTAINER_NAME)
+		or ServerStorage:FindFirstChild(Clips.FORMER_CONTAINER_NAME)
+end
+
 function Clips.container(): Folder
-	local root = ServerStorage:FindFirstChild(Clips.CONTAINER_NAME)
-	if not root then
-		root = Instance.new("Folder")
-		root.Name = Clips.CONTAINER_NAME
-		root.Parent = ServerStorage
+	local root: Instance
+	local existing = existingRoot()
+	if existing then
+		-- A folder from before the rename is kept, with everything in it, under the new name.
+		existing.Name = Clips.CONTAINER_NAME
+		root = existing
+	else
+		local created = Instance.new("Folder")
+		created.Name = Clips.CONTAINER_NAME
+		created.Parent = ServerStorage
+		root = created
 	end
 	local working = root:FindFirstChild(Clips.WORKING_NAME)
 	if not working then
-		working = Instance.new("Folder")
-		working.Name = Clips.WORKING_NAME
-		working.Parent = root
+		local created = Instance.new("Folder")
+		created.Name = Clips.WORKING_NAME
+		created.Parent = root
+		working = created
 	end
 	return working :: Folder
 end
@@ -58,7 +74,7 @@ end
 -- The folder of records saying what each working copy was opened from. Made if `make`
 -- is true and there is none, which must then be inside an undo recording.
 local function links(make: boolean): Instance?
-	local root = if make then Clips.container().Parent else ServerStorage:FindFirstChild(Clips.CONTAINER_NAME)
+	local root = if make then Clips.container().Parent else existingRoot()
 	if not root then
 		return nil
 	end
@@ -235,7 +251,7 @@ end
 -- can be worked on. What a copy was opened from is read back from its record. Returns how
 -- many working copies in the place could not be matched to a rig. Changes nothing.
 function Clips.restore(rigIdOf: (model: Instance) -> string?): number
-	local root = ServerStorage:FindFirstChild(Clips.CONTAINER_NAME)
+	local root = existingRoot()
 	local folder = root and root:FindFirstChild(Clips.WORKING_NAME)
 	if not folder then
 		return 0

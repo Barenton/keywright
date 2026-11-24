@@ -295,7 +295,7 @@ function Rig.describe(model: Model, detail: boolean?): (Description, Scan)
 	return description, scan
 end
 
--- Fails with UNSUPPORTED_RIG unless the model is a rig Motion Bridge can address unambiguously.
+-- Fails with UNSUPPORTED_RIG unless the model is a rig Keywright can address unambiguously.
 function Rig.require(model: Model): Scan
 	local description, scan = Rig.describe(model)
 	if not description.supported then

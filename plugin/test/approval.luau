@@ -121,7 +121,7 @@ end
 -- its root part, standing in the place.
 local function buildClone(place: any): any
 	local clone = place.rig:Clone()
-	clone.Name = "MotionBridgePreview"
+	clone.Name = "KeywrightPreview"
 	for _, descendant in clone:GetDescendants() do
 		if descendant:IsA("BasePart") then
 			descendant.Transparency = if descendant.Name == "HumanoidRootPart" then 1 else 0

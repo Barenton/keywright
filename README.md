@@ -1,6 +1,6 @@
-# Motion Bridge
+# Keywright
 
-Motion Bridge lets AI agents author Roblox animations through the Model Context Protocol (MCP). A Roblox Studio plugin holds the animation engine; a small local relay connects MCP clients to it.
+Keywright lets AI agents author Roblox animations through the Model Context Protocol (MCP). A Roblox Studio plugin holds the animation engine; a small local relay connects MCP clients to it.
 
 **Status: early development. Nothing is released.** The plugin has been run in Studio on Windows by hand and by a measuring script; see [What is tested](#what-is-tested).
 
@@ -36,7 +36,7 @@ Viewport screenshots through Studio's `StudioCaptureService` exist in the code b
 ## Security model
 
 - The broker listens on `127.0.0.1` only and rejects requests that carry a web `Origin` or a non-loopback `Host`.
-- Every connection runs a mutual challenge–response handshake before any request is sent or accepted. Adapters use a per-user secret file. The plugin pairs once with a one-time code and then uses a derived credential. `motion-bridge rotate` replaces the secret, after which every Studio window must pair again.
+- Every connection runs a mutual challenge–response handshake before any request is sent or accepted. Adapters use a per-user secret file. The plugin pairs once with a one-time code and then uses a derived credential. `keywright rotate` replaces the secret, after which every Studio window must pair again.
 - A program that occupies the broker port without passing the handshake is reported as `BROKER_PORT_CONFLICT`. It receives one hello message and nothing else.
 - No tool runs arbitrary Luau or touches the filesystem.
 
@@ -53,8 +53,8 @@ Malicious software already running as the same OS user is out of scope.
 npm install
 npm test                # build, then run the TypeScript tests
 npm run test:luau       # headless tests for the Luau modules that only compute
-npm run build:plugin    # build/MotionBridge.rbxm
-npm run build:fault     # build/MotionBridgeFault.rbxm, a test build (see below)
+npm run build:plugin    # build/Keywright.rbxm
+npm run build:fault     # build/KeywrightFault.rbxm, a test build (see below)
 npm run measure -- --place-id <id>   # measure against a connected Studio session
 ```
 

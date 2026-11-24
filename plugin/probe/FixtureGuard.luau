@@ -6,15 +6,15 @@
 
 local FixtureGuard = {}
 
-FixtureGuard.MARKER_NAME = "MotionBridgeFixture"
-FixtureGuard.MARKER_PREFIX = "motion-bridge-fixture/1/"
+FixtureGuard.MARKER_NAME = "KeywrightFixture"
+FixtureGuard.MARKER_PREFIX = "keywright-fixture/1/"
 FixtureGuard.ID_LENGTH = 32
 -- Attribute a person adds to the marker, set to true, to start the probe in screenshot
 -- mode. It selects a mode and approves nothing: approval is given in the probe's panel.
 FixtureGuard.MODE_ATTRIBUTE = "ScreenshotMode"
 
 export type Observation = {
-	markerClass: string?, -- ClassName of ServerStorage.MotionBridgeFixture, or nil if absent
+	markerClass: string?, -- ClassName of ServerStorage.KeywrightFixture, or nil if absent
 	markerValue: string?,
 	placeId: number,
 	gameId: number,

@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_PORT } from "./protocol.js";
@@ -11,24 +11,45 @@ export interface BrokerState {
 	startedAt: string;
 }
 
-/** Per-user directory holding the secret, the broker state file and plugin credentials. */
-export function stateDir(env: NodeJS.ProcessEnv = process.env): string {
-	if (env.MOTION_BRIDGE_HOME) return env.MOTION_BRIDGE_HOME;
+/** The name the project had before it was called Keywright. */
+const FORMER_NAME = "motion-" + "bridge";
+
+/** The per-user directory for a product name, by the platform's convention. */
+function userDir(name: string, env: NodeJS.ProcessEnv): string {
 	if (process.platform === "win32") {
-		return join(env.APPDATA ?? join(homedir(), "AppData", "Roaming"), "motion-bridge");
+		return join(env.APPDATA ?? join(homedir(), "AppData", "Roaming"), name);
 	}
 	if (process.platform === "darwin") {
-		return join(homedir(), "Library", "Application Support", "motion-bridge");
+		return join(homedir(), "Library", "Application Support", name);
 	}
-	return join(env.XDG_CONFIG_HOME ?? join(homedir(), ".config"), "motion-bridge");
+	return join(env.XDG_CONFIG_HOME ?? join(homedir(), ".config"), name);
+}
+
+/**
+ * Per-user directory holding the secret, the broker state file and plugin credentials.
+ * A directory left by the project under its former name is taken over once, so that a
+ * pairing made before the rename still works.
+ */
+export function stateDir(env: NodeJS.ProcessEnv = process.env): string {
+	if (env.KEYWRIGHT_HOME) return env.KEYWRIGHT_HOME;
+	const dir = userDir("keywright", env);
+	const former = userDir(FORMER_NAME, env);
+	if (!existsSync(dir) && existsSync(former)) {
+		try {
+			renameSync(former, dir);
+		} catch {
+			// Another process took it over first, or it cannot be moved: start afresh.
+		}
+	}
+	return dir;
 }
 
 export function configuredPort(env: NodeJS.ProcessEnv = process.env): number {
-	const raw = env.MOTION_BRIDGE_PORT;
+	const raw = env.KEYWRIGHT_PORT;
 	if (raw === undefined || raw === "") return DEFAULT_PORT;
 	const port = Number(raw);
 	if (!Number.isInteger(port) || port < 1024 || port > 65535) {
-		throw new Error(`MOTION_BRIDGE_PORT must be an integer from 1024 to 65535, got "${raw}"`);
+		throw new Error(`KEYWRIGHT_PORT must be an integer from 1024 to 65535, got "${raw}"`);
 	}
 	return port;
 }

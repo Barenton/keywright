@@ -47,7 +47,7 @@ end
 local port = marker:GetAttribute("Port")
 local code = marker:GetAttribute("PairingCode")
 if type(port) ~= "number" or type(code) ~= "string" then
-	print(`[MotionBridgeProbe] Fixture {detail} recognised. No connection is configured, so nothing will run.`)
+	print(`[KeywrightProbe] Fixture {detail} recognised. No connection is configured, so nothing will run.`)
 	return
 end
 
@@ -74,7 +74,7 @@ if screenshotMode then
 	-- already in the place is left alone and screenshots stay off.
 	local rig: Model? = nil
 	if workspace:FindFirstChild(E2Scene.RIG_NAME) then
-		print(`[MotionBridgeProbe] A "{E2Scene.RIG_NAME}" is already in the place. Remove it and reload the probe.`)
+		print(`[KeywrightProbe] A "{E2Scene.RIG_NAME}" is already in the place. Remove it and reload the probe.`)
 	else
 		local built = SyntheticRig.build("Motor6D", E2Scene.RIG_NAME, CFrame.new(0, 3.7, 0))
 		-- Removed when the probe unloads. It stays archivable because a preview has to be
@@ -179,10 +179,10 @@ if screenshotMode then
 
 	-- The panel is the only way to approve. What is typed into it stays in memory.
 	local widget = plugin:CreateDockWidgetPluginGuiAsync(
-		"MotionBridgeProbeScreenshots",
+		"KeywrightProbeScreenshots",
 		DockWidgetPluginGuiInfo.new(Enum.InitialDockState.Float, true, true, 360, 230, 300, 200)
 	)
-	widget.Title = "Motion Bridge probe: screenshots"
+	widget.Title = "Keywright probe: screenshots"
 	table.insert(owned, widget)
 	local frame = Instance.new("Frame")
 	frame.Size = UDim2.fromScale(1, 1)
@@ -248,7 +248,7 @@ if screenshotMode then
 		describe.MouseButton1Click:Connect(function()
 			local seen = look()
 			local view = seen.view
-			print("[MotionBridgeProbe] What the probe sees:")
+			print("[KeywrightProbe] What the probe sees:")
 			print(`  fixture guard: {select(2, FixtureGuard.check(seen.guard))}`)
 			print(
 				`  3D viewport active: {tostring(seen.viewportActive)}; nothing selected: {tostring(seen.selectionEmpty)}`
@@ -263,7 +263,7 @@ if screenshotMode then
 			print(`  screenshots now: {Approval.refusal(state, seen, false) or "possible"}`)
 		end)
 	)
-	print("[MotionBridgeProbe] Screenshot mode. Approve in the probe's panel once the camera is framed.")
+	print("[KeywrightProbe] Screenshot mode. Approve in the probe's panel once the camera is framed.")
 else
 	local Probes = require("./Probes")
 	for name, handler in Probes.create(methods, registry) do
@@ -293,7 +293,7 @@ connection = Connection.start({
 		Preview.cancel(reason)
 	end,
 	onState = function(state, stateDetail)
-		print(`[MotionBridgeProbe] {state} {stateDetail or ""}`)
+		print(`[KeywrightProbe] {state} {stateDetail or ""}`)
 	end,
 	onCredential = function() end,
 })

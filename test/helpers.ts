@@ -11,7 +11,7 @@ import type { SessionInfo, WireError } from "../src/protocol.js";
 export const CLI_PATH = fileURLToPath(new URL("../src/cli.js", import.meta.url));
 
 export function tempHome(): { home: string; cleanup: () => void } {
-	const home = mkdtempSync(join(tmpdir(), "motion-bridge-test-"));
+	const home = mkdtempSync(join(tmpdir(), "keywright-test-"));
 	return { home, cleanup: () => rmSync(home, { recursive: true, force: true }) };
 }
 

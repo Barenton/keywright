@@ -16,7 +16,7 @@ import { CLI_PATH, FakePlugin, freePort, isAlive, tempHome, waitFor } from "./he
 const run = promisify(execFile);
 
 function cliEnv(home: string, port: number, extra: Record<string, string> = {}): NodeJS.ProcessEnv {
-	return { ...process.env, MOTION_BRIDGE_HOME: home, MOTION_BRIDGE_PORT: String(port), ...extra };
+	return { ...process.env, KEYWRIGHT_HOME: home, KEYWRIGHT_PORT: String(port), ...extra };
 }
 
 async function stopBroker(home: string): Promise<void> {
@@ -38,7 +38,7 @@ async function expectConflict(home: string, port: number): Promise<void> {
 		assert.ok(error instanceof BridgeError, String(error));
 		assert.equal(error.code, "BROKER_PORT_CONFLICT");
 		assert.match(error.message, new RegExp(String(port)));
-		assert.ok(error.hint?.includes("MOTION_BRIDGE_PORT"));
+		assert.ok(error.hint?.includes("KEYWRIGHT_PORT"));
 		// Nothing of ours may have started behind the foreign listener.
 		assert.equal(readBrokerState(home), undefined);
 		return;
@@ -177,7 +177,7 @@ test("the broker exits when no adapter has been connected for the idle period", 
 		const client = await ensureBroker({
 			home: temp.home,
 			port,
-			env: cliEnv(temp.home, port, { MOTION_BRIDGE_IDLE_EXIT_MS: "300" }),
+			env: cliEnv(temp.home, port, { KEYWRIGHT_IDLE_EXIT_MS: "300" }),
 		});
 		const { pid } = (await client.request("broker.status")) as { pid: number };
 		assert.ok(isAlive(pid));

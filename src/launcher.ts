@@ -18,8 +18,8 @@ export interface EnsureBrokerOptions {
 function portConflict(port: number): BridgeError {
 	return new BridgeError(
 		"BROKER_PORT_CONFLICT",
-		`Port ${port} is held by another program that is not the Motion Bridge broker.`,
-		"Close that program, or set MOTION_BRIDGE_PORT to a free port and set the same port in the Studio plugin panel.",
+		`Port ${port} is held by another program that is not the Keywright broker.`,
+		"Close that program, or set KEYWRIGHT_PORT to a free port and set the same port in the Studio plugin panel.",
 	);
 }
 
@@ -35,8 +35,8 @@ function spawnBroker(options: EnsureBrokerOptions): void {
 		windowsHide: true,
 		env: {
 			...(options.env ?? process.env),
-			MOTION_BRIDGE_HOME: options.home,
-			MOTION_BRIDGE_PORT: String(options.port),
+			KEYWRIGHT_HOME: options.home,
+			KEYWRIGHT_PORT: String(options.port),
 		},
 	});
 	child.unref();
@@ -80,7 +80,7 @@ export async function ensureBroker(options: EnsureBrokerOptions): Promise<Broker
 			throw new BridgeError(
 				"BROKER_UNAVAILABLE",
 				`The broker did not start on port ${options.port}.`,
-				"Run `motion-bridge broker` in a terminal to see why it fails.",
+				"Run `keywright broker` in a terminal to see why it fails.",
 			);
 		}
 		await sleep(RETRY_INTERVAL_MS);

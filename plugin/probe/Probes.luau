@@ -651,12 +651,12 @@ function Probes.create(
 			result.preview_adds_no_undo_entry = { can_undo_before = canUndoBefore, can_undo_after = canUndoAfter }
 
 			-- A recording cannot be started while another is open; this is what a reload would leave behind.
-			local open = ChangeHistoryService:TryBeginRecording("MotionBridgeProbeDangling")
-			local nested = ChangeHistoryService:TryBeginRecording("MotionBridgeProbeNested")
+			local open = ChangeHistoryService:TryBeginRecording("KeywrightProbeDangling")
+			local nested = ChangeHistoryService:TryBeginRecording("KeywrightProbeNested")
 			local inProgress = ChangeHistoryService:IsRecordingInProgress()
 			ChangeHistoryService:FinishRecording("", Enum.FinishRecordingOperation.Cancel)
 			local afterCancel = ChangeHistoryService:IsRecordingInProgress()
-			local recovered = ChangeHistoryService:TryBeginRecording("MotionBridgeProbeRecovered")
+			local recovered = ChangeHistoryService:TryBeginRecording("KeywrightProbeRecovered")
 			if recovered then
 				ChangeHistoryService:FinishRecording(recovered, Enum.FinishRecordingOperation.Cancel)
 			end
@@ -717,7 +717,7 @@ function Probes.create(
 			}
 			if png.png then
 				result.json_encode_of_buffer_prefix =
-					string.sub(HttpService:JSONEncode(buffer.fromstring("motion bridge")), 1, 120)
+					string.sub(HttpService:JSONEncode(buffer.fromstring("Keywright")), 1, 120)
 			end
 
 			-- How many frames after a seek does the capture show the new pose?

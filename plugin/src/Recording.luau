@@ -55,7 +55,7 @@ function Recording.begin(name: string, displayName: string): string
 		if open then
 			Errors.throw(
 				"STUDIO_NOT_IN_EDIT_MODE",
-				"Studio could not start an undo recording: an earlier Motion Bridge change has not finished.",
+				"Studio could not start an undo recording: an earlier Keywright change has not finished.",
 				"Wait for the earlier change, or reload the plugin if it never finishes."
 			)
 		end

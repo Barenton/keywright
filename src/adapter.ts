@@ -217,7 +217,7 @@ export interface AdapterOptions {
 }
 
 export function createAdapter(options: AdapterOptions): McpServer {
-	const server = new McpServer({ name: "motion-bridge", version: ADAPTER_VERSION });
+	const server = new McpServer({ name: "keywright", version: ADAPTER_VERSION });
 	let client: BrokerClient | undefined;
 
 	const broker = async (): Promise<BrokerClient> => {
@@ -303,7 +303,7 @@ export function createAdapter(options: AdapterOptions): McpServer {
 		"read_animation",
 		{
 			description:
-				"Read a working copy. Returns a summary: duration, keyframe times, animated joints, markers, settings, revision, and a count of any content Motion Bridge keeps but does not edit. Pose values are returned only for the joints listed, and only as many as fit; when there are more, next_cursor says so, and passing it back as cursor returns the next part.",
+				"Read a working copy. Returns a summary: duration, keyframe times, animated joints, markers, settings, revision, and a count of any content Keywright keeps but does not edit. Pose values are returned only for the joints listed, and only as many as fit; when there are more, next_cursor says so, and passing it back as cursor returns the next part.",
 			inputSchema: {
 				studio_session: studioSession,
 				clip_id: clipId,
@@ -398,7 +398,7 @@ export function createAdapter(options: AdapterOptions): McpServer {
 					.boolean()
 					.optional()
 					.describe(
-						"Propose replacing the clip this working copy was opened from, in place of saving a new one. Only a person can approve it, in the Motion Bridge panel. Refused with SOURCE_CHANGED if that clip has changed since the working copy was opened. A rejection stands for that revision.",
+						"Propose replacing the clip this working copy was opened from, in place of saving a new one. Only a person can approve it, in the Keywright panel. Refused with SOURCE_CHANGED if that clip has changed since the working copy was opened. A rejection stands for that revision.",
 					),
 			},
 		},

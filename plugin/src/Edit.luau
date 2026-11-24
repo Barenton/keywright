@@ -86,7 +86,7 @@ function Edit.apply(
 	end
 	context.holds = {}
 
-	local recording = Recording.begin("MotionBridgeEdit", "Motion Bridge edit")
+	local recording = Recording.begin("KeywrightEdit", "Keywright edit")
 	local changed: Operations.Changed = {}
 	Clips.mutate(working, function()
 		changed = Operations.run(working.instance, operations, context, function(index)

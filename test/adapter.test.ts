@@ -102,7 +102,7 @@ describe("MCP adapter over stdio", () => {
 			new StdioClientTransport({
 				command: process.execPath,
 				args: [CLI_PATH],
-				env: { ...process.env, MOTION_BRIDGE_HOME: temp.home, MOTION_BRIDGE_PORT: String(port) } as Record<string, string>,
+				env: { ...process.env, KEYWRIGHT_HOME: temp.home, KEYWRIGHT_PORT: String(port) } as Record<string, string>,
 			}),
 		);
 	});

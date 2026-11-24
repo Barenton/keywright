@@ -11,7 +11,7 @@
 
 local E2Scene = {}
 
-E2Scene.RIG_NAME = "MotionBridgeE2Rig"
+E2Scene.RIG_NAME = "KeywrightE2Rig"
 E2Scene.BASEPLATE_NAME = "Baseplate"
 E2Scene.BASEPLATE_SIZE = { 64, 1, 64 }
 E2Scene.BASEPLATE_POSITION = { 0, -0.5, 0 }

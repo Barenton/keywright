@@ -14,9 +14,9 @@ local Recording = require("./src/Recording")
 
 local PLUGIN_VERSION = "0.0.0"
 local DEFAULT_PORT = 47318
-local SETTING_PORT = "MotionBridgePort"
-local SETTING_CREDENTIAL = "MotionBridgeCredential"
-local SETTING_ACCESS = "MotionBridgeAccess"
+local SETTING_PORT = "KeywrightPort"
+local SETTING_CREDENTIAL = "KeywrightCredential"
+local SETTING_ACCESS = "KeywrightAccess"
 local CODE_ALPHABET = "ABCDEFGHJKMNPQRSTVWXYZ23456789"
 
 -- Only the edit data model talks to the broker.
@@ -24,11 +24,23 @@ if not RunService:IsEdit() then
 	return
 end
 
+-- The start of the names settings had before the project was called Keywright.
+local FORMER_PREFIX = "Motion" .. "Bridge"
+
 local function readSetting(key: string): any
 	local ok, value = pcall(function()
 		return plugin:GetSetting(key)
 	end)
-	return if ok then value else nil
+	if ok and value ~= nil then
+		return value
+	end
+	-- A setting stored under the former name is still read, so that a pairing and the
+	-- places where access was on carry over. It is written under the new name from then on.
+	local former = FORMER_PREFIX .. string.sub(key, #"Keywright" + 1)
+	local found, old = pcall(function()
+		return plugin:GetSetting(former)
+	end)
+	return if found then old else nil
 end
 
 -- Plugin settings are shared by every Studio window and writes can fail silently,
@@ -70,13 +82,13 @@ local function newPairingCode(): string
 	return code
 end
 
-local toolbar = plugin:CreateToolbar("Motion Bridge")
-local button = toolbar:CreateButton("Motion Bridge", "Show the Motion Bridge panel", "")
+local toolbar = plugin:CreateToolbar("Keywright")
+local button = toolbar:CreateButton("Keywright", "Show the Keywright panel", "")
 local widget = plugin:CreateDockWidgetPluginGuiAsync(
-	"MotionBridgePanel",
+	"KeywrightPanel",
 	DockWidgetPluginGuiInfo.new(Enum.InitialDockState.Right, false, false, 280, 160, 220, 120)
 )
-widget.Title = "Motion Bridge"
+widget.Title = "Keywright"
 button.Click:Connect(function()
 	widget.Enabled = not widget.Enabled
 end)
@@ -167,7 +179,7 @@ local function start()
 	local port = readSetting(SETTING_PORT)
 	local credential = loadCredential()
 	local code = if credential then nil else newPairingCode()
-	pairing.Text = if code then `Pair once: run "motion-bridge pair {code}" in a terminal.` else ""
+	pairing.Text = if code then `Pair once: run "keywright pair {code}" in a terminal.` else ""
 	connection = Connection.start({
 		port = if type(port) == "number" then port else DEFAULT_PORT,
 		session = {

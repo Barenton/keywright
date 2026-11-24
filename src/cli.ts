@@ -7,7 +7,7 @@ import { ensureBroker } from "./launcher.js";
 import { BridgeError } from "./protocol.js";
 import { configuredPort, loadOrCreateSecret, rotateSecret, stateDir } from "./state.js";
 
-const USAGE = `Usage: motion-bridge [command]
+const USAGE = `Usage: keywright [command]
 
   (no command)   Run the MCP adapter on stdio. This is what MCP clients start.
   broker         Run the local broker in the foreground.
@@ -16,13 +16,13 @@ const USAGE = `Usage: motion-bridge [command]
   rotate         Replace the secret. Every Studio window must then pair again.
 
 Environment:
-  MOTION_BRIDGE_PORT   Loopback port (default 47318).
-  MOTION_BRIDGE_HOME   Directory for the secret, state file and log.`;
+  KEYWRIGHT_PORT   Loopback port (default 47318).
+  KEYWRIGHT_HOME   Directory for the secret, state file and log.`;
 
 async function runBroker(): Promise<number> {
 	const home = stateDir();
 	const port = configuredPort();
-	const idle = Number(process.env.MOTION_BRIDGE_IDLE_EXIT_MS);
+	const idle = Number(process.env.KEYWRIGHT_IDLE_EXIT_MS);
 	const broker = new Broker({
 		home,
 		port,
@@ -92,7 +92,7 @@ async function rotate(): Promise<number> {
 		await new Promise((resolve) => setTimeout(resolve, 100));
 	}
 	rotateSecret(home);
-	process.stdout.write("The secret was replaced. Every Studio window must pair again: turn agent access off and on in the Motion Bridge panel to get a new code.\n");
+	process.stdout.write("The secret was replaced. Every Studio window must pair again: turn agent access off and on in the Keywright panel to get a new code.\n");
 	return 0;
 }
 
@@ -113,7 +113,7 @@ async function main(argv: string[]): Promise<number> {
 			}
 			const code = rest[0];
 			if (code === undefined || !isValidPairingCode(code)) {
-				process.stderr.write("Give the pairing code shown in the Studio plugin panel: motion-bridge pair <code>\n");
+				process.stderr.write("Give the pairing code shown in the Studio plugin panel: keywright pair <code>\n");
 				return 2;
 			}
 			await client.request("broker.pair_register", { code });

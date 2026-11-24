@@ -16,8 +16,8 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, w
 import { dirname, isAbsolute, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-export const MARKER_NAME = "MotionBridgeFixture";
-export const MARKER_PREFIX = "motion-bridge-fixture/1/";
+export const MARKER_NAME = "KeywrightFixture";
+export const MARKER_PREFIX = "keywright-fixture/1/";
 // Attribute a person sets on the marker to start the probe in screenshot mode. It selects
 // a mode and approves nothing. Never set here.
 export const MODE_ATTRIBUTE = "ScreenshotMode";
@@ -54,7 +54,7 @@ export function planFixture(root, id) {
 /** The whole place: the marker and a baseplate. No scripts. */
 export function placeProject(marker) {
 	return {
-		name: "MotionBridgeFixture",
+		name: "KeywrightFixture",
 		tree: {
 			$className: "DataModel",
 			ServerStorage: {
@@ -70,7 +70,7 @@ export function placeProject(marker) {
 }
 
 export function instructions(plan, created) {
-	return `# Motion Bridge disposable Studio fixture
+	return `# Keywright disposable Studio fixture
 
 Fixture id: \`${plan.id}\`
 Created: ${created}
@@ -81,7 +81,7 @@ Created: ${created}
 
 - \`ServerStorage.${MARKER_NAME}\` (StringValue) = \`${plan.marker}\`
 
-It contains no scripts. The Motion Bridge probe code refuses to act unless the open
+It contains no scripts. The Keywright probe code refuses to act unless the open
 place is unpublished, is in edit mode, and carries a marker of this form. The rules
 are in \`plugin/probe/FixtureGuard.luau\`.
 
@@ -145,7 +145,7 @@ the invisible rig stands and asks Studio for a PNG through StudioCaptureService 
 shows its own permission prompt). The copy, as posed, must be wholly in the picture and
 above the baseplate, or no image is taken. None of this has been run in Studio yet.
 
-If a rig named MotionBridgeE2Rig is already in the place when the probe loads, remove it
+If a rig named KeywrightE2Rig is already in the place when the probe loads, remove it
 and reload: the probe only ever uses a rig it built itself in that session.
 
 ## Handling
@@ -191,7 +191,7 @@ export function prepareFixture(root = PROJECT_ROOT, { id = newFixtureId(), build
 		hashes[name] = createHash("sha256").update(readFileSync(plan.files[name])).digest("hex");
 	}
 	const manifest = {
-		kind: "motion-bridge-disposable-fixture",
+		kind: "keywright-disposable-fixture",
 		id: plan.id,
 		created,
 		marker_name: MARKER_NAME,

@@ -212,7 +212,7 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 			elseif source then source.Name
 			else "Untitled"
 
-		local recording = Recording.begin("MotionBridgeOpen", "Motion Bridge open animation")
+		local recording = Recording.begin("KeywrightOpen", "Keywright open animation")
 		local ok, result = pcall(Clips.open, rigId, name, source, model)
 		Recording.finish(recording, ok)
 		if not ok then
@@ -363,14 +363,14 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 					source = found.source,
 					reason = found.reason,
 					hint = if found.status == "pending"
-						then "A person must approve or reject this in the Motion Bridge panel in Studio. Call again to see the outcome."
+						then "A person must approve or reject this in the Keywright panel in Studio. Call again to see the outcome."
 						elseif found.status == "rejected" then "It will not be proposed again for this revision."
 						else nil,
 				},
 			}
 		end
 
-		local recording = Recording.begin("MotionBridgeSave", "Motion Bridge save animation")
+		local recording = Recording.begin("KeywrightSave", "Keywright save animation")
 		local ok, result = pcall(Saves.save, working.instance, model, ServerStorage, name, function(className: string)
 			return Instance.new(className)
 		end)
@@ -398,7 +398,7 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 				"Read the clip again, then discard the revision you have seen."
 			)
 		end
-		local recording = Recording.begin("MotionBridgeDiscard", "Motion Bridge discard animation")
+		local recording = Recording.begin("KeywrightDiscard", "Keywright discard animation")
 		local name = working.instance.Name
 		local ok, problem = pcall(function()
 			-- Taken out of the place, not destroyed, so that undo can put it back.
@@ -730,7 +730,7 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 				then
 					Errors.throw("VALIDATION_FAILED", "The working copy has structural errors.")
 				end
-				local recording = Recording.begin("MotionBridgeReplace", "Motion Bridge replace clip")
+				local recording = Recording.begin("KeywrightReplace", "Keywright replace clip")
 				Clips.replaceSource(working, function(done: boolean)
 					Recording.finish(recording, done)
 				end)

@@ -42,7 +42,7 @@ test("each fixture gets a unique, explicit marker", () => {
 	const second = fixture.newFixtureId();
 	assert.match(first, /^[0-9a-f]{32}$/);
 	assert.notEqual(first, second);
-	assert.equal(fixture.markerValue(first), `motion-bridge-fixture/1/${first}`);
+	assert.equal(fixture.markerValue(first), `keywright-fixture/1/${first}`);
 	assert.throws(() => fixture.markerValue("not-an-id"));
 	assert.throws(() => fixture.markerValue(first.toUpperCase()));
 });
@@ -132,7 +132,7 @@ test("nothing on the screenshot path writes to a camera or drives the undo histo
 });
 
 test("preparing writes exactly four files, all inside build/fixture, and replaces the previous fixture", () => {
-	const root = mkdtempSync(join(tmpdir(), "motion-bridge-fixture-"));
+	const root = mkdtempSync(join(tmpdir(), "keywright-fixture-"));
 	try {
 		writeFileSync(join(root, "outside.txt"), "untouched");
 		const first = fixture.prepareFixture(root, { build: fakeBuild });
@@ -152,8 +152,8 @@ test("preparing writes exactly four files, all inside build/fixture, and replace
 });
 
 test("preparing refuses to write through a symlinked build or fixture directory", () => {
-	const root = mkdtempSync(join(tmpdir(), "motion-bridge-fixture-"));
-	const elsewhere = mkdtempSync(join(tmpdir(), "motion-bridge-elsewhere-"));
+	const root = mkdtempSync(join(tmpdir(), "keywright-fixture-"));
+	const elsewhere = mkdtempSync(join(tmpdir(), "keywright-elsewhere-"));
 	try {
 		symlinkSync(elsewhere, join(root, "build"));
 		assert.throws(() => fixture.prepareFixture(root, { build: fakeBuild }), /symbolic link/);

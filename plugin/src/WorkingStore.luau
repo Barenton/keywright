@@ -1,7 +1,7 @@
 --!strict
 -- Where working copies are kept, laid out so that they can be found again.
 --
--- Working copies live in Motion Bridge's own folder in ServerStorage, never in storage
+-- Working copies live in Keywright's own folder in ServerStorage, never in storage
 -- the Animation Editor manages. Inside that folder each rig has a shelf: an ObjectValue
 -- named after the rig whose value points back at it, with the rig's working copies as
 -- its children. That is the same pattern the Animation Editor uses for saved clips, and

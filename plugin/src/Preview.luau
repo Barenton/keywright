@@ -26,7 +26,7 @@ local Sampler = require("./Sampler")
 
 local Preview = {}
 
-Preview.CLONE_NAME = "MotionBridgePreview"
+Preview.CLONE_NAME = "KeywrightPreview"
 -- Seconds allowed for cloning, seeking and sampling.
 Preview.SAMPLE_BUDGET = 10
 -- Seconds a capture may take before it is abandoned and the clone removed.
