@@ -20,6 +20,8 @@ export const ERROR_CODES = [
 	"SESSION_NOT_FOUND",
 	"STUDIO_NOT_IN_EDIT_MODE",
 	"CAPTURE_UNAVAILABLE",
+	"PREVIEW_UNAVAILABLE",
+	"CANCELLED",
 	"LIMIT_EXCEEDED",
 	"INVALID_ARGUMENT",
 	"TIMEOUT",
@@ -92,6 +94,9 @@ export const RequestMessage = z.object({
 	params: z.unknown().optional(),
 	timeoutMs: z.number().int().positive().max(MAX_REQUEST_TIMEOUT_MS).optional(),
 });
+
+/** Sent by a caller that has given up on a request, and by the broker to the Studio session working on it. */
+export const CancelMessage = z.object({ t: z.literal("cancel"), id: z.string().min(1).max(64) });
 
 export const ResponseMessage = z.object({
 	t: z.literal("res"),

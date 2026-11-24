@@ -247,6 +247,65 @@ describe("broker", () => {
 		quick.close();
 	});
 
+	test("a connection that replaces a session cannot answer what the old one was asked", async () => {
+		const original = await pairPlugin(SESSION_A, async () => {
+			await sleep(2000);
+			return { from: "original" };
+		});
+		const pending = adapter.request("preview_animation", { capture: true }, SESSION_A, 1500);
+		await sleep(50);
+		const asked = original.requestIds[0] as string;
+		// A second authenticated plugin takes over the same session id and answers the old request.
+		const replacement = await FakePlugin.connect(port, original.credential as { id: string; keyHex: string }, SESSION_A, () => ({
+			from: "replacement",
+		}));
+		replacement.ws.send(JSON.stringify({ t: "res", id: asked, ok: true, result: { from: "replacement", images: [] } }));
+		await expectBridgeError(pending, "SESSION_NOT_FOUND");
+		assert.deepEqual(replacement.requestIds, []);
+		// The replacement serves new requests as itself.
+		assert.deepEqual(await adapter.request("read_animation", {}, SESSION_A), { from: "replacement" });
+		replacement.close();
+		original.close();
+	});
+
+	test("a caller that cancels a request stops it in the session", async () => {
+		const plugin = await pairPlugin(SESSION_A, async () => {
+			await sleep(300);
+			return {};
+		});
+		const caller = await connectAdapter(port, secret);
+		const controller = new AbortController();
+		const pending = caller.request("preview_animation", { capture: true }, SESSION_A, 5000, controller.signal);
+		const outcome = pending.then(
+			() => "answered",
+			(error: { code?: string }) => error.code,
+		);
+		await sleep(50);
+		assert.deepEqual(plugin.cancelled, []);
+		controller.abort();
+		assert.equal(await outcome, "CANCELLED");
+		await sleep(50);
+		assert.deepEqual(plugin.cancelled, plugin.requestIds);
+		// The late answer goes nowhere, and the connection is still usable.
+		await sleep(300);
+		assert.deepEqual(await caller.request("broker.status").then(() => "alive"), "alive");
+		// A request cancelled before it is sent never reaches the session.
+		const before = plugin.requestIds.length;
+		const spent = new AbortController();
+		spent.abort();
+		await expectBridgeError(caller.request("preview_animation", {}, SESSION_A, 5000, spent.signal), "CANCELLED");
+		await sleep(30);
+		assert.equal(plugin.requestIds.length, before);
+		// One caller cannot cancel another's request.
+		const other = adapter.request("read_animation", {}, SESSION_A, 2000);
+		await sleep(30);
+		const theirs = plugin.requestIds.length;
+		caller.close();
+		await other;
+		assert.equal(plugin.cancelled.length, theirs - 1);
+		plugin.close();
+	});
+
 	test("a session that disconnects mid-request fails the request", async () => {
 		const plugin = await pairPlugin(SESSION_A, () => new Promise(() => {}));
 		const pending = adapter.request("edit_animation", {}, SESSION_A);

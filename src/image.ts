@@ -17,8 +17,12 @@ export const REMOVED = "[removed by the relay]";
 
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/;
-/** Chunks a plain still image may contain. Anything else, animation and text included, is refused. */
-const ALLOWED_CHUNKS = new Set(["IHDR", "PLTE", "IDAT", "IEND", "tRNS", "gAMA", "cHRM", "sRGB", "iCCP", "sBIT", "bKGD", "pHYs"]);
+/**
+ * Chunks a plain still image may contain besides its header, palette, image data and end,
+ * with the exact length each must have. Each may appear once, before the image data.
+ * Anything else is refused: animation, text, embedded profiles, and private chunks.
+ */
+const ANCILLARY_CHUNKS: Record<string, number> = { gAMA: 4, cHRM: 32, sRGB: 1, pHYs: 9 };
 /** Samples per pixel for each colour type, and the bit depths each allows. */
 const COLOUR_TYPES: Record<number, { samples: number; depths: number[] }> = {
 	0: { samples: 1, depths: [1, 2, 4, 8, 16] },
@@ -54,9 +58,10 @@ function crc32(data: Buffer, start: number, end: number): number {
 export function inspectPng(data: Buffer): { width: number; height: number } {
 	if (data.length < 8 || !data.subarray(0, 8).equals(PNG_SIGNATURE)) throw new Error("it is not a PNG");
 	let offset = 8;
-	let header: { width: number; height: number; rowBytes: number } | undefined;
+	let header: { width: number; height: number; rowBytes: number; indexed: boolean; palette: boolean } | undefined;
 	const imageData: Buffer[] = [];
 	let imageDataEnded = false;
+	const seen = new Set<string>();
 	for (;;) {
 		if (offset + 12 > data.length) throw new Error("it is cut short");
 		const length = data.readUInt32BE(offset);
@@ -67,13 +72,13 @@ export function inspectPng(data: Buffer): { width: number; height: number } {
 		if (crc32(data, offset + 4, offset + 8 + length) !== data.readUInt32BE(offset + 8 + length)) {
 			throw new Error("a chunk fails its checksum");
 		}
-		if (!ALLOWED_CHUNKS.has(type)) throw new Error(`it contains a ${type} chunk, which a plain still image does not have`);
 		if (header === undefined) {
 			if (type !== "IHDR" || length !== 13) throw new Error("it does not start with a header");
 			const width = data.readUInt32BE(offset + 8);
 			const height = data.readUInt32BE(offset + 12);
 			const bitDepth = data[offset + 16] as number;
-			const colour = COLOUR_TYPES[data[offset + 17] as number];
+			const colourType = data[offset + 17] as number;
+			const colour = COLOUR_TYPES[colourType];
 			if (!colour?.depths.includes(bitDepth) || data[offset + 18] !== 0 || data[offset + 19] !== 0) {
 				throw new Error("its header is malformed");
 			}
@@ -81,12 +86,19 @@ export function inspectPng(data: Buffer): { width: number; height: number } {
 			if (width < 1 || height < 1 || width > MAX_IMAGE_EDGE || height > MAX_IMAGE_EDGE) {
 				throw new Error(`it declares ${width} by ${height} pixels, outside the limits`);
 			}
-			header = { width, height, rowBytes: 1 + Math.ceil((width * colour.samples * bitDepth) / 8) };
+			header = {
+				width,
+				height,
+				rowBytes: 1 + Math.ceil((width * colour.samples * bitDepth) / 8),
+				indexed: colourType === 3,
+				palette: colourType === 2 || colourType === 3 || colourType === 6,
+			};
 		} else if (type === "IHDR") {
 			throw new Error("it has two headers");
 		} else if (type === "IDAT") {
 			if (imageDataEnded) throw new Error("its image data is split apart");
 			if (length === 0) throw new Error("it has an empty image data chunk");
+			if (header.indexed && !seen.has("PLTE")) throw new Error("it uses a palette but has none");
 			imageData.push(data.subarray(offset + 8, offset + 8 + length));
 		} else if (type === "IEND") {
 			if (length !== 0) throw new Error("its end chunk is malformed");
@@ -94,9 +106,23 @@ export function inspectPng(data: Buffer): { width: number; height: number } {
 			if (imageData.length === 0) throw new Error("it has no image data");
 			checkPixels(Buffer.concat(imageData), header);
 			return { width: header.width, height: header.height };
-		} else if (imageData.length > 0) {
-			imageDataEnded = true;
+		} else {
+			// Everything else belongs before the image data, once, and in a known form.
+			if (imageData.length > 0) {
+				imageDataEnded = true;
+				throw new Error(`it has a ${type} chunk after its image data`);
+			}
+			if (seen.has(type)) throw new Error(`it has two ${type} chunks`);
+			if (type === "PLTE") {
+				if (!header.palette) throw new Error("it has a palette its colour type does not allow");
+				if (length === 0 || length % 3 !== 0 || length > 768) throw new Error("its palette is malformed");
+			} else if (ANCILLARY_CHUNKS[type] === undefined) {
+				throw new Error(`it contains a ${type} chunk, which a plain still image does not have`);
+			} else if (ANCILLARY_CHUNKS[type] !== length) {
+				throw new Error(`its ${type} chunk is malformed`);
+			}
 		}
+		seen.add(type);
 		offset = end;
 	}
 }
@@ -111,6 +137,15 @@ function checkPixels(compressed: Buffer, header: { height: number; rowBytes: num
 	} catch {
 		throw new Error("its image data does not decompress");
 	}
+	// A complete stream stops being one when its last byte is taken away. If it still
+	// decompresses, the stream ended earlier and something else follows it.
+	let endsAtTheEnd = false;
+	try {
+		inflateSync(compressed.subarray(0, compressed.length - 1), { maxOutputLength: expected + 1 });
+	} catch {
+		endsAtTheEnd = true;
+	}
+	if (!endsAtTheEnd) throw new Error("its image data has bytes left over after the image");
 	if (pixels.length !== expected) throw new Error("its image data is not the size its header describes");
 	for (let row = 0; row < header.height; row += 1) {
 		if ((pixels[row * header.rowBytes] as number) > 4) throw new Error("its image data is malformed");
@@ -151,7 +186,8 @@ export function scrub(value: unknown, depth = 0): { value: unknown; removed: boo
 	}
 	const result: Record<string, unknown> = {};
 	for (const [key, item] of Object.entries(value)) {
-		if (key === "images" || key === "png_base64") {
+		// A field is dropped whole when it is named for images or its name itself carries one.
+		if (key === "images" || key === "png_base64" || looksLikeImage(key)) {
 			removed = true;
 			continue;
 		}

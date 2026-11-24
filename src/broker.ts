@@ -17,6 +17,7 @@ import {
 import {
 	AuthMessage,
 	BridgeError,
+	CancelMessage,
 	HANDSHAKE_TIMEOUT_MS,
 	HelloMessage,
 	IDLE_EXIT_MS,
@@ -67,6 +68,8 @@ interface PendingRequest {
 	adapter: Peer;
 	clientId: string;
 	sessionId: string;
+	/** The one connection the request was sent to. Only it can answer. */
+	target: Peer;
 	timer: NodeJS.Timeout;
 }
 
@@ -285,6 +288,17 @@ export class Broker {
 	}
 
 	private onAdapterMessage(peer: Peer, message: unknown): void {
+		const abandoned = CancelMessage.safeParse(message);
+		if (abandoned.success) {
+			// The caller no longer wants an answer. Its request stops waiting and Studio is told.
+			for (const [brokerId, pending] of this.pending) {
+				if (pending.adapter !== peer || pending.clientId !== abandoned.data.id) continue;
+				clearTimeout(pending.timer);
+				this.pending.delete(brokerId);
+				this.cancel(pending.target, brokerId);
+			}
+			return;
+		}
 		const request = RequestMessage.safeParse(message);
 		if (!request.success) return this.deny(peer, "malformed");
 		const { id, method, session, params, timeoutMs } = request.data;
@@ -313,7 +327,7 @@ export class Broker {
 		const timer = setTimeout(() => {
 			this.pending.delete(brokerId);
 			// Nobody is waiting any more, so Studio is told to stop working on it.
-			this.cancel(session, brokerId);
+			this.cancel(target, brokerId);
 			fail(
 				new BridgeError(
 					"TIMEOUT",
@@ -322,14 +336,29 @@ export class Broker {
 				),
 			);
 		}, timeoutMs ?? REQUEST_TIMEOUT_MS);
-		this.pending.set(brokerId, { adapter: peer, clientId: id, sessionId: session, timer });
+		this.pending.set(brokerId, { adapter: peer, clientId: id, sessionId: session, target, timer });
 		this.send(target, { t: "req", id: brokerId, method, params });
 	}
 
-	/** Tells a Studio session that a request it was sent has been abandoned. */
-	private cancel(sessionId: string, brokerId: string): void {
-		const target = this.sessions.get(sessionId);
-		if (target) this.send(target, { t: "cancel", id: brokerId });
+	/** Tells the Studio connection a request was sent to that the request has been abandoned. */
+	private cancel(target: Peer, brokerId: string): void {
+		if (this.peers.has(target)) this.send(target, { t: "cancel", id: brokerId });
+	}
+
+	/** Fails every request still waiting on a Studio connection that can no longer answer it. */
+	private failPendingFor(target: Peer, message: string): void {
+		for (const [brokerId, request] of this.pending) {
+			if (request.target !== target) continue;
+			clearTimeout(request.timer);
+			this.pending.delete(brokerId);
+			this.cancel(target, brokerId);
+			this.send(request.adapter, {
+				t: "res",
+				id: request.clientId,
+				ok: false,
+				error: new BridgeError("SESSION_NOT_FOUND", message, "Read the revision before retrying a mutation.").toWire(),
+			});
+		}
 	}
 
 	private handleBrokerMethod(method: string, params: unknown): unknown {
@@ -365,7 +394,11 @@ export class Broker {
 			const parsed = SessionMessage.safeParse(message);
 			if (!parsed.success) return this.deny(peer, "malformed");
 			const previous = this.sessions.get(parsed.data.session.id);
-			if (previous && previous !== peer) previous.ws.close();
+			if (previous && previous !== peer) {
+				// Requests sent to the old connection are not inherited by the new one.
+				this.failPendingFor(previous, "The Studio session was replaced by another connection before answering.");
+				previous.ws.close();
+			}
 			if (peer.session) this.sessions.delete(peer.session.id);
 			peer.session = parsed.data.session;
 			this.sessions.set(peer.session.id, peer);
@@ -376,8 +409,8 @@ export class Broker {
 			const parsed = ResponseMessage.safeParse(message);
 			if (!parsed.success) return this.deny(peer, "malformed");
 			const request = this.pending.get(parsed.data.id);
-			// A response only counts when it comes from the session the request was sent to.
-			if (!request || request.sessionId !== peer.session?.id) return;
+			// A response only counts when it comes from the very connection the request was sent to.
+			if (!request || request.target !== peer) return;
 			clearTimeout(request.timer);
 			this.pending.delete(parsed.data.id);
 			const error: WireError | undefined = parsed.data.error;
@@ -399,29 +432,15 @@ export class Broker {
 			const sessionId = peer.session.id;
 			this.sessions.delete(sessionId);
 			this.log(`session ${sessionId} disconnected`);
-			for (const [brokerId, request] of this.pending) {
-				if (request.sessionId !== sessionId) continue;
-				clearTimeout(request.timer);
-				this.pending.delete(brokerId);
-				this.send(request.adapter, {
-					t: "res",
-					id: request.clientId,
-					ok: false,
-					error: new BridgeError(
-						"SESSION_NOT_FOUND",
-						"The Studio session disconnected before answering.",
-						"Read the revision before retrying a mutation.",
-					).toWire(),
-				});
-			}
 		}
+		if (peer.role === "plugin") this.failPendingFor(peer, "The Studio session disconnected before answering.");
 		if (peer.role === "adapter") {
 			for (const [brokerId, request] of this.pending) {
 				if (request.adapter !== peer) continue;
 				clearTimeout(request.timer);
 				this.pending.delete(brokerId);
 				// The caller is gone; its request must not keep running in Studio.
-				this.cancel(request.sessionId, brokerId);
+				this.cancel(request.target, brokerId);
 			}
 			this.armIdleTimer();
 		}

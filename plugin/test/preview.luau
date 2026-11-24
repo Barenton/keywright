@@ -847,6 +847,11 @@ case("a capture that runs out of time leaves no permission request waiting", fun
 			return { status = "ok", width = 2, height = 2 }
 		end))
 		check("a capture that finishes gives up on nothing", abandons == 1, abandons)
+		-- Withdrawing approval, switching tab or camera, and unloading all cancel.
+		Preview.cancel("approval was withdrawn in the panel")
+		check("cancelling gives up on a waiting permission request at once", abandons == 2, abandons)
+		Preview.sweep()
+		check("so does an unload", abandons == 3, abandons)
 	end)
 	Capture.abandon = original
 	check("the case ran", ok, problem)

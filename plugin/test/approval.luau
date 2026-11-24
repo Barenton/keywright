@@ -73,6 +73,8 @@ local function buildPlace()
 	camera.Parent = root
 	local lighting = Instance.new("Folder")
 	lighting.Name = "Lighting"
+	local materials = Instance.new("Folder")
+	materials.Name = "MaterialService"
 	local baseplate = Instance.new("Part")
 	baseplate.Name = E2Scene.BASEPLATE_NAME
 	baseplate.Size = Vector3.new(64, 1, 64)
@@ -104,7 +106,15 @@ local function buildPlace()
 	local animator = Instance.new("Animator")
 	animator.Parent = humanoid
 	rig.Parent = root
-	return { root = root, camera = camera, lighting = lighting, baseplate = baseplate, rig = rig, parts = parts }
+	return {
+		root = root,
+		camera = camera,
+		lighting = lighting,
+		materials = materials,
+		baseplate = baseplate,
+		rig = rig,
+		parts = parts,
+	}
 end
 
 -- The preview's copy of the rig as Preview shows it: the same shape, visible apart from
@@ -122,8 +132,14 @@ local function buildClone(place: any): any
 end
 
 local function inspect(place: any, clone: any?, overrides: { [string]: any }?): (any, string?)
-	local request: { [string]: any } =
-		{ root = place.root, camera = place.camera, lighting = place.lighting, rig = place.rig, clone = clone }
+	local request: { [string]: any } = {
+		root = place.root,
+		camera = place.camera,
+		lighting = place.lighting,
+		materials = place.materials,
+		rig = place.rig,
+		clone = clone,
+	}
 	for key, value in overrides or {} do
 		request[key] = if value == "<nil>" then nil else value
 	end
@@ -281,6 +297,17 @@ for label, change in
 			view.cframe = view.cframe * CFrame.Angles(0, 0, math.pi)
 			return view, SUBJECT, "upside down"
 		end,
+		["the camera points almost straight down, where tilt cannot be told from turning"] = function(view: any)
+			-- Pitched 89 degrees down and rolled 45: its sideways direction is still nearly level.
+			local above = SUBJECT.centre + Vector3.new(0, 16, 0)
+			view.cframe = CFrame.new(above) * CFrame.Angles(math.rad(-89), 0, 0) * CFrame.Angles(0, 0, math.rad(45))
+			return view, SUBJECT, "too steeply"
+		end,
+		["the camera points steeply up"] = function(view: any)
+			local below = SUBJECT.centre + Vector3.new(0, -16, 0)
+			view.cframe = CFrame.new(below) * CFrame.Angles(math.rad(75), 0, 0)
+			return view, SUBJECT, "too steeply"
+		end,
 		["the subject touches the camera's near limit"] = function(view: any)
 			-- A small sphere in the middle of the picture, closer than Studio draws.
 			local near = { centre = view.cframe.Position + view.cframe.LookVector * 0.6, radius = 0.1 }
@@ -408,6 +435,9 @@ case("the preview's copy is accepted only as the rig's shape, shown, and nothing
 	refusedAfter("a limb is under the baseplate", function(copy)
 		copy.RightHand.CFrame = CFrame.new(0, -10, 0)
 	end, "below the baseplate")
+	refusedAfter("a limb dips a hair into the baseplate", function(copy)
+		copy.LeftFoot.CFrame = CFrame.new(0, 0.59, 0)
+	end, "below the baseplate")
 end)
 
 case("the copy is measured where its pose puts it", function()
@@ -466,6 +496,29 @@ for label, alter in
 		["the lighting cannot be read"] = function(place: any)
 			place.lighting = nil
 			return "lighting could not be read"
+		end,
+		["the place has a custom material"] = function(place: any)
+			local variant = Instance.new("MaterialVariant")
+			variant.Name = "Glow"
+			variant.Parent = place.materials
+			return "custom material"
+		end,
+		["the materials cannot be read"] = function(place: any)
+			place.materials = nil
+			return "materials could not be read"
+		end,
+		["the baseplate is stood on its edge"] = function(place: any)
+			-- Same centre and size, turned so that it rises through the scene.
+			place.baseplate.CFrame = CFrame.new(0, -0.5, 0) * CFrame.Angles(0, 0, math.rad(80))
+			return "turned or tilted"
+		end,
+		["the baseplate is tilted a little"] = function(place: any)
+			place.baseplate.CFrame = CFrame.new(0, -0.5, 0) * CFrame.Angles(math.rad(2), 0, 0)
+			return "turned or tilted"
+		end,
+		["the baseplate is turned about its axis"] = function(place: any)
+			place.baseplate.CFrame = CFrame.new(0, -0.5, 0) * CFrame.Angles(0, math.rad(30), 0)
+			return "turned or tilted"
 		end,
 		["the rig is missing"] = function(place: any)
 			place.rig.Parent = nil
@@ -611,6 +664,7 @@ local function observe(session: any): any
 		root = place.root,
 		camera = session.camera,
 		lighting = place.lighting,
+		materials = place.materials,
 		rig = session.state.rig,
 		clone = if session.subject then session.subject.clone else nil,
 	} :: any)

@@ -137,18 +137,44 @@ export class BrokerClient {
 		return !this.closed && this.ws.readyState === WebSocket.OPEN;
 	}
 
-	request(method: string, params?: unknown, session?: string, timeoutMs?: number): Promise<unknown> {
+	/**
+	 * Sends a request and waits for its answer. If `signal` aborts first, the broker is told
+	 * that nobody is waiting, so that the work stops, and the promise rejects.
+	 */
+	request(method: string, params?: unknown, session?: string, timeoutMs?: number, signal?: AbortSignal): Promise<unknown> {
 		if (!this.isOpen) {
 			return Promise.reject(new BridgeError("BROKER_UNAVAILABLE", "The connection to the broker is closed."));
 		}
+		if (signal?.aborted) return Promise.reject(new BridgeError("CANCELLED", `"${method}" was cancelled before it was sent.`));
 		const id = `c${this.nextId++}`;
 		return new Promise<unknown>((resolve, reject) => {
+			const abandon = () => {
+				const waiter = this.waiters.get(id);
+				if (!waiter) return;
+				clearTimeout(waiter.timer);
+				this.waiters.delete(id);
+				if (this.isOpen) this.ws.send(JSON.stringify({ t: "cancel", id }));
+				reject(new BridgeError("CANCELLED", `"${method}" was cancelled by its caller.`));
+			};
+			const settle = () => signal?.removeEventListener("abort", abandon);
 			// The broker enforces the real timeout. This one only covers a broker that vanishes.
 			const timer = setTimeout(() => {
 				this.waiters.delete(id);
+				settle();
 				reject(new BridgeError("TIMEOUT", `No answer to "${method}" from the broker.`));
 			}, (timeoutMs ?? REQUEST_TIMEOUT_MS) + 2_000);
-			this.waiters.set(id, { resolve, reject, timer });
+			this.waiters.set(id, {
+				resolve: (value) => {
+					settle();
+					resolve(value);
+				},
+				reject: (error) => {
+					settle();
+					reject(error);
+				},
+				timer,
+			});
+			signal?.addEventListener("abort", abandon, { once: true });
 			this.ws.send(JSON.stringify({ t: "req", id, method, session, params, timeoutMs }));
 		});
 	}

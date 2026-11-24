@@ -23,7 +23,7 @@ E2Scene.MAX_PART_EDGE = 4
 E2Scene.POSE_ALLOWANCE = 1.5
 -- How far below the top of the baseplate a part may reach before it counts as sunk into
 -- it, where it could not be seen.
-E2Scene.FLOOR_TOLERANCE = 0.05
+E2Scene.FLOOR_TOLERANCE = 0.001
 
 local RIG_PARTS = {
 	"HumanoidRootPart",
@@ -78,6 +78,8 @@ export type Place = {
 	root: Instance,
 	camera: any,
 	lighting: Instance?,
+	-- The place's MaterialService, where custom materials that restyle parts live.
+	materials: Instance?,
 	-- The synthetic rig the probe built for this session. No other rig is accepted.
 	rig: any,
 	-- The preview's copy of that rig, if one is being shown.
@@ -208,6 +210,15 @@ function E2Scene.inspect(place: Place): (Scene?, string?)
 		return nil, `the place's lighting contains "{extra.Name}" ({extra.ClassName}), which changes the picture`
 	end
 
+	local materials: any = place.materials
+	if materials == nil then
+		return nil, "the place's materials could not be read"
+	end
+	local custom = materials:GetChildren()[1]
+	if custom then
+		return nil, `the place has a custom material, "{custom.Name}", which changes the picture`
+	end
+
 	local baseplate: any, foundRig, foundCamera = nil, false, false
 	for _, child: any in place.root:GetChildren() do
 		if camera ~= nil and child == camera and child.ClassName == "Camera" then
@@ -245,6 +256,14 @@ function E2Scene.inspect(place: Place): (Scene?, string?)
 	then
 		return nil, "the baseplate is not the one the fixture was prepared with"
 	end
+	-- Lying flat, so that its top is one level floor and it cannot stand in the view.
+	if baseplate.CFrame.UpVector.Y < 0.99999 or baseplate.CFrame.RightVector.X < 0.99999 then
+		return nil, "the baseplate has been turned or tilted"
+	end
+	local variant = text(baseplate, "MaterialVariant")
+	if variant ~= "" and variant ~= "?" then
+		return nil, "the baseplate uses a custom material"
+	end
 	local floor = baseplate.CFrame.Position.Y + baseplate.Size.Y / 2
 
 	local parts, problem = rigParts(rig, false, "the rig")
@@ -255,7 +274,7 @@ function E2Scene.inspect(place: Place): (Scene?, string?)
 	-- Everything a later reading is compared against: the baseplate's look, the lighting,
 	-- and the whole of the rig.
 	local lines = {
-		`{describe(baseplate, baseplate.Name)}|{text(baseplate, "Color")}|{text(baseplate, "Material")}|{text(
+		`{describe(baseplate, baseplate.Name)}|{text(baseplate, "Color")}|{text(baseplate, "Material")}|{variant}|{text(
 			baseplate,
 			"Reflectance"
 		)}`,
@@ -304,6 +323,11 @@ function E2Scene.inspect(place: Place): (Scene?, string?)
 		for name, part in shown do
 			if tostring(part.Size) ~= tostring(parts[name].Size) then
 				return nil, `the preview's "{name}" is not the size of the rig's`
+			end
+			-- Shown or hidden by nothing but the transparency already checked.
+			local modifier = text(part, "LocalTransparencyModifier")
+			if modifier ~= "0" and modifier ~= "?" then
+				return nil, `the preview's "{name}" is hidden by a local modifier`
 			end
 			if part.CFrame.Position.Y - reachDown(part) < floor - E2Scene.FLOOR_TOLERANCE then
 				return nil, `the preview's "{name}" reaches below the baseplate`

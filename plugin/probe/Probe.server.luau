@@ -63,6 +63,7 @@ local withdraw: ((reason: string) -> ())? = nil
 
 if screenshotMode then
 	local Lighting = game:GetService("Lighting")
+	local MaterialService = game:GetService("MaterialService")
 	local Selection = game:GetService("Selection")
 	local Approval = require("./Approval")
 	local E2Scene = require("./E2Scene")
@@ -93,21 +94,30 @@ if screenshotMode then
 	-- A switch of camera or tab withdraws approval as it happens. If either cannot be
 	-- watched for, approval is never given.
 	local watching = false
+	-- Shows in the panel why there is no approval; set once the panel exists.
+	local show: (text: string) -> () = function() end
 	local function disarm(reason: string)
 		Approval.disarm(state, reason)
+		show(`Not approved: {reason}.`)
 	end
-	withdraw = disarm
+	-- Withdraws approval and stops whatever was running under it: a preview gives up its
+	-- screenshot, and a request to Studio for permission stops waiting.
+	local function stop(reason: string)
+		disarm(reason)
+		Preview.cancel(reason)
+	end
+	withdraw = stop
 	local watched = pcall(function()
 		table.insert(
 			signals,
 			workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
-				disarm("the camera was switched")
+				stop("the camera was switched")
 			end)
 		)
 		table.insert(
 			signals,
 			game:GetService("StudioService"):GetPropertyChangedSignal("ActiveScript"):Connect(function()
-				disarm("the active tab changed")
+				stop("the active tab changed")
 			end)
 		)
 	end)
@@ -140,6 +150,7 @@ if screenshotMode then
 			root = workspace,
 			camera = camera,
 			lighting = Lighting,
+			materials = MaterialService,
 			rig = rig,
 			clone = if subject then subject.clone else nil,
 		})
@@ -159,13 +170,17 @@ if screenshotMode then
 	end
 
 	Preview.setCaptureGate(function(capturing: boolean): string?
-		return Approval.refusal(state, look(), capturing)
+		local refusal = Approval.refusal(state, look(), capturing)
+		if refusal and state.approved == nil then
+			show(`Not approved: {state.withdrawn}.`)
+		end
+		return refusal
 	end, disarm)
 
 	-- The panel is the only way to approve. What is typed into it stays in memory.
 	local widget = plugin:CreateDockWidgetPluginGuiAsync(
 		"MotionBridgeProbeScreenshots",
-		DockWidgetPluginGuiInfo.new(Enum.InitialDockState.Float, true, true, 360, 190, 300, 170)
+		DockWidgetPluginGuiInfo.new(Enum.InitialDockState.Float, true, true, 360, 230, 300, 200)
 	)
 	widget.Title = "Motion Bridge probe: screenshots"
 	table.insert(owned, widget)
@@ -203,7 +218,11 @@ if screenshotMode then
 	input.ClearTextOnFocus = false
 	local approve = text("TextButton", 26, "Approve screenshots of this scene and camera")
 	local revoke = text("TextButton", 26, "Withdraw approval")
+	local describe = text("TextButton", 26, "Print what the probe sees (approves nothing)")
 	local status = text("TextLabel", 40, "Not approved.")
+	show = function(content: string)
+		status.Text = content
+	end
 
 	table.insert(
 		signals,
@@ -219,8 +238,29 @@ if screenshotMode then
 	table.insert(
 		signals,
 		revoke.MouseButton1Click:Connect(function()
-			disarm("approval was withdrawn in the panel")
-			status.Text = "Not approved."
+			stop("approval was withdrawn in the panel")
+		end)
+	)
+	-- For checking the probe's reading of Studio by hand. It reads and prints; it cannot
+	-- approve, and it takes no picture.
+	table.insert(
+		signals,
+		describe.MouseButton1Click:Connect(function()
+			local seen = look()
+			local view = seen.view
+			print("[MotionBridgeProbe] What the probe sees:")
+			print(`  fixture guard: {select(2, FixtureGuard.check(seen.guard))}`)
+			print(
+				`  3D viewport active: {tostring(seen.viewportActive)}; nothing selected: {tostring(seen.selectionEmpty)}`
+			)
+			print(`  terrain cells: {tostring(seen.terrainCells)}; switches watched: {tostring(seen.watching)}`)
+			print(
+				if view
+					then `  camera: {tostring(view.cframe.Position)} fov {view.fieldOfView} viewport {view.width}x{view.height}`
+					else "  camera: could not be read"
+			)
+			print(`  scene: {if seen.scene then "the fixture scene" else tostring(seen.sceneProblem)}`)
+			print(`  screenshots now: {Approval.refusal(state, seen, false) or "possible"}`)
 		end)
 	)
 	print("[MotionBridgeProbe] Screenshot mode. Approve in the probe's panel once the camera is framed.")

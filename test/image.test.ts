@@ -23,17 +23,22 @@ function chunk(type: string, body: Buffer): Buffer {
 
 const SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
-/** A real, complete greyscale PNG of the given size, optionally padded with an extra chunk. */
-function png(width: number, height: number, padding = 0): Buffer {
+/** A real, complete greyscale PNG of the given size. With `noise` its pixels do not compress. */
+function png(width: number, height: number, noise = false): Buffer {
 	const header = Buffer.alloc(13);
 	header.writeUInt32BE(width, 0);
 	header.writeUInt32BE(height, 4);
-	header[8] = 8;
-	const rows = Buffer.alloc((width + 1) * height);
-	const parts = [SIGNATURE, chunk("IHDR", header)];
-	if (padding > 0) parts.push(chunk("iCCP", Buffer.alloc(padding, 0x41)));
-	parts.push(chunk("IDAT", deflateSync(rows)), chunk("IEND", Buffer.alloc(0)));
-	return Buffer.concat(parts);
+	header[8] = noise ? 16 : 8;
+	const rowBytes = 1 + width * (noise ? 2 : 1);
+	const rows = Buffer.alloc(rowBytes * height);
+	if (noise) {
+		let state = 12345;
+		for (let i = 0; i < rows.length; i += 1) {
+			state = (Math.imul(state, 1103515245) + 12345) >>> 0;
+			rows[i] = i % rowBytes === 0 ? 0 : state >>> 24;
+		}
+	}
+	return Buffer.concat([SIGNATURE, chunk("IHDR", header), chunk("IDAT", deflateSync(rows)), chunk("IEND", Buffer.alloc(0))]);
 }
 
 /** What a well-behaved plugin returns for a successful screenshot of this image. */
@@ -118,7 +123,26 @@ test("a PNG passes only if its image data decodes to exactly the pixels its head
 	assert.throws(() => inspectPng(build(header(4, 3), still, chunk("fdAT", Buffer.alloc(8)))), /fdAT/);
 	assert.throws(() => inspectPng(build(header(4, 3), chunk("tEXt", Buffer.from("Comment\0hello")), still)), /tEXt/);
 	assert.throws(() => inspectPng(build(header(4, 3), chunk("prIV", Buffer.alloc(64)), still)), /prIV/);
-	assert.throws(() => inspectPng(build(header(4, 3), chunk("IDAT", packed.subarray(0, 5)), chunk("gAMA", Buffer.alloc(4)), chunk("IDAT", packed.subarray(5)))), /split apart/);
+	assert.throws(() => inspectPng(build(header(4, 3), chunk("iCCP", Buffer.alloc(40, 0x41)), still)), /iCCP/);
+	assert.throws(() => inspectPng(build(header(4, 3), chunk("IDAT", packed.subarray(0, 5)), chunk("gAMA", Buffer.alloc(4)), chunk("IDAT", packed.subarray(5)))), /after its image data/);
+	assert.throws(() => inspectPng(build(header(4, 3), still, chunk("sRGB", Buffer.alloc(1)))), /after its image data/);
+	// The few extra chunks a plain image may have, each once and in its exact form.
+	const extras = [chunk("sRGB", Buffer.alloc(1)), chunk("gAMA", Buffer.alloc(4)), chunk("pHYs", Buffer.alloc(9)), chunk("cHRM", Buffer.alloc(32))];
+	assert.deepEqual(inspectPng(build(header(4, 3), ...extras, still)), { width: 4, height: 3 });
+	assert.throws(() => inspectPng(build(header(4, 3), chunk("gAMA", Buffer.alloc(5)), still)), /gAMA chunk is malformed/);
+	assert.throws(() => inspectPng(build(header(4, 3), chunk("sRGB", Buffer.alloc(1)), chunk("sRGB", Buffer.alloc(1)), still)), /two sRGB/);
+	// A palette: required for an indexed image, well-formed, and not allowed for greyscale.
+	const indexed = chunk("IDAT", deflateSync(rows(4, 3)));
+	assert.throws(() => inspectPng(build(header(4, 3, 8, 3), indexed)), /uses a palette but has none/);
+	assert.deepEqual(inspectPng(build(header(4, 3, 8, 3), chunk("PLTE", Buffer.alloc(6)), indexed)), { width: 4, height: 3 });
+	assert.throws(() => inspectPng(build(header(4, 3, 8, 3), chunk("PLTE", Buffer.alloc(7)), indexed)), /palette is malformed/);
+	assert.throws(() => inspectPng(build(header(4, 3, 8, 3), chunk("PLTE", Buffer.alloc(0)), indexed)), /palette is malformed/);
+	assert.throws(() => inspectPng(build(header(4, 3, 8, 3), chunk("PLTE", Buffer.alloc(771)), indexed)), /palette is malformed/);
+	assert.throws(() => inspectPng(build(header(4, 3), chunk("PLTE", Buffer.alloc(6)), still)), /palette its colour type does not allow/);
+	// Image data that decodes to the right pixels but carries something extra after them.
+	const trailing = Buffer.concat([packed, Buffer.from("extra bytes after the image")]);
+	assert.throws(() => inspectPng(build(header(4, 3), chunk("IDAT", trailing))), /bytes left over/);
+	assert.throws(() => inspectPng(build(header(4, 3), chunk("IDAT", Buffer.concat([packed, Buffer.from([0])])))), /bytes left over/);
 	assert.throws(() => inspectPng(build(header(4, 3, 8, 0, 1), still)), /interlaced/);
 	assert.throws(() => inspectPng(build(header(4, 3, 3, 0), still)), /header is malformed/);
 	assert.throws(() => inspectPng(build(header(4, 3, 8, 5), still)), /header is malformed/);
@@ -152,6 +176,14 @@ test("nothing image-like is passed on as text, at any depth and from any method"
 	// A claim of success from another method is not passed on either.
 	const claim = screenResult("read_animation", { capture: true }, { capture: { status: "ok", width: 4 } }).payload as { capture: { status: string } };
 	assert.equal(claim.capture.status, "unavailable");
+
+	// An image carried in the name of a field, not its value.
+	for (const method of ["get_workspace", IMAGE_METHOD]) {
+		const keyed = screenResult(method, {}, { rigs: { [text]: 1, [`data:image/png;base64,${text}`]: { ok: true }, name: "Dummy" } });
+		assert.doesNotMatch(JSON.stringify(keyed.payload), /iVBORw0KGgo|data:image/, method);
+		assert.deepEqual((keyed.payload as { rigs: unknown }).rigs, { name: "Dummy" });
+	}
+	assert.equal(scrub({ [text]: "x" }).removed, true);
 
 	assert.deepEqual(scrub({ a: [1, { b: "c" }], d: null }), { value: { a: [1, { b: "c" }], d: null }, removed: false });
 	assert.deepEqual(scrub("plain text"), { value: "plain text", removed: false });
@@ -221,10 +253,10 @@ test("an image larger than was asked for, or over the limits, is rejected", () =
 	assert.notEqual(screenResult(IMAGE_METHOD, { ...ASKED, max_edge: 1536 }, answer(png(1536, 4), 1536, 4)).image, undefined);
 	rejected(screenResult(IMAGE_METHOD, { ...ASKED, max_edge: 1536 }, answer(png(1537, 4), 1537, 4)), /over the 1536 asked for/);
 
-	const heavy = png(8, 8, MAX_IMAGE_BYTES);
-	assert.ok(heavy.length > MAX_IMAGE_BYTES);
-	assert.deepEqual(inspectPng(heavy), { width: 8, height: 8 });
-	rejected(screenResult(IMAGE_METHOD, ASKED, answer(heavy, 8, 8)), /over the size limit/);
+	// A real image, valid in every respect, that is simply too large.
+	const heavy = png(1536, 1536, true);
+	assert.ok(heavy.length > MAX_IMAGE_BYTES, String(heavy.length));
+	rejected(screenResult(IMAGE_METHOD, { ...ASKED, max_edge: 1536 }, answer(heavy, 1536, 1536)), /over the size limit/);
 });
 
 test("a malformed or cut-short image is rejected", () => {

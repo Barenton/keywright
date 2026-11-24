@@ -88,6 +88,8 @@ function Preview.cancel(reason: string?)
 		active.cancelled = why
 	end
 	Capture.revoke(why)
+	-- A request for permission that is still waiting is given up on at once.
+	Capture.abandon()
 end
 
 -- The rig being previewed for a screenshot right now and the clone standing in for it,

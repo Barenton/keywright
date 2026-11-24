@@ -284,7 +284,75 @@ case("a screenshot is scaled to the requested edge and returned as a checked PNG
 	check("no format or other option can be passed to Studio", start.extra == 0, start.extra)
 	check("permission was asked for once", studio.permissionRequests == 1)
 	check("the gate was asked as for a capture", table.find(studio.gateCalls, true) ~= nil)
+	check(
+		"a screenshot that succeeds leaves the approval standing",
+		#studio.revoked == 0,
+		table.concat(studio.revoked, "; ")
+	)
 end)
+
+-- An approval is good for attempts that succeed. Once Studio has been asked for anything
+-- and the attempt fails, the approval is withdrawn, so the next attempt needs a person.
+for label, configure in
+	{
+		["permission is not answered in time"] = function(studio: any)
+			studio.permission = "never"
+			return true
+		end,
+		["permission is denied"] = function(studio: any)
+			studio.permission = "deny"
+			return true
+		end,
+		["the image does not arrive in time"] = function(studio: any)
+			studio.readyAfter = math.huge
+			return true
+		end,
+		["the image is ready only after the deadline"] = function(studio: any)
+			studio.readyAfter = 1
+			studio.waitStep = Capture.BUFFER_TIMEOUT + 1
+			return true
+		end,
+		["Studio reports the capture failed"] = function(studio: any)
+			studio.bufferError = true
+			return true
+		end,
+		["the image is not what was asked for"] = function(studio: any)
+			studio.data = png(100, 100)
+			return true
+		end,
+		["the image is not a PNG"] = function(studio: any)
+			studio.data = buffer.create(2048)
+			return true
+		end,
+		-- Nothing was asked of Studio in these, so there is nothing to withdraw.
+		["the requested size is not valid"] = function(studio: any)
+			studio.badSize = true
+			return false
+		end,
+		["the caller has no guard"] = function(studio: any)
+			studio.noGuard = true
+			return false
+		end,
+	} :: { [string]: (studio: any) -> boolean }
+do
+	case(`approval after a failed attempt: {label}`, function()
+		local studio = newStudio()
+		studio.data = png(768, 432)
+		local expectWithdrawn = configure(studio)
+		local result = Capture.capture(
+			if (studio :: any).badSize then -1 else 768,
+			nil,
+			if (studio :: any).noGuard then nil else allow
+		)
+		check("no image", result.status == "unavailable" and result.png == nil, result.status)
+		if expectWithdrawn then
+			check("the approval was withdrawn", #studio.revoked == 1, #studio.revoked)
+			check("with the reason the attempt failed", studio.revoked[1] == result.reason, studio.revoked[1])
+		else
+			check("the approval stands", #studio.revoked == 0, table.concat(studio.revoked, "; "))
+		end
+	end)
+end
 
 case("a requested edge above the limit is brought down to the limit", function()
 	local studio = newStudio()

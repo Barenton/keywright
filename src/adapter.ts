@@ -3,7 +3,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import type { BrokerClient } from "./client.js";
-import { screenResult } from "./image.js";
+import { screenResult, scrub } from "./image.js";
 import { ensureBroker } from "./launcher.js";
 import { BridgeError, type SessionInfo } from "./protocol.js";
 
@@ -39,7 +39,8 @@ function fail(error: unknown): CallToolResult {
 		error instanceof BridgeError
 			? error.toWire()
 			: { code: "INTERNAL", message: error instanceof Error ? error.message : String(error) };
-	return { isError: true, content: [{ type: "text", text: JSON.stringify({ error: wire }) }] };
+	// Errors are passed on as text, so they get the same screening as any other text.
+	return { isError: true, content: [{ type: "text", text: JSON.stringify({ error: scrub(wire).value }) }] };
 }
 
 export interface AdapterOptions {
@@ -55,9 +56,11 @@ export function createAdapter(options: AdapterOptions): McpServer {
 		if (!client?.isOpen) client = await ensureBroker(options);
 		return client;
 	};
-	const call = async (method: string, session: string, params: unknown, timeoutMs?: number) => {
+	// `signal` is the MCP client's own cancellation of the tool call. It is passed on, so
+	// that a call nobody is waiting for stops in Studio too.
+	const call = async (method: string, session: string, params: unknown, signal?: AbortSignal, timeoutMs?: number) => {
 		try {
-			return ok(method, params, await (await broker()).request(method, params, session, timeoutMs));
+			return ok(method, params, await (await broker()).request(method, params, session, timeoutMs, signal));
 		} catch (error) {
 			return fail(error);
 		}
@@ -104,7 +107,7 @@ export function createAdapter(options: AdapterOptions): McpServer {
 			},
 			annotations: { readOnlyHint: true },
 		},
-		async ({ session_id, ...params }) => call("inspect_rig", session_id, params),
+		async ({ session_id, ...params }, extra) => call("inspect_rig", session_id, params, extra.signal),
 	);
 
 	server.registerTool(
@@ -122,7 +125,7 @@ export function createAdapter(options: AdapterOptions): McpServer {
 					.describe('Omit for a blank clip. "selection" copies the KeyframeSequence selected in the Explorer.'),
 			},
 		},
-		async ({ session_id, ...params }) => call("open_animation", session_id, params),
+		async ({ session_id, ...params }, extra) => call("open_animation", session_id, params, extra.signal),
 	);
 
 	server.registerTool(
@@ -139,7 +142,7 @@ export function createAdapter(options: AdapterOptions): McpServer {
 			},
 			annotations: { readOnlyHint: true },
 		},
-		async ({ session_id, ...params }) => call("read_animation", session_id, params),
+		async ({ session_id, ...params }, extra) => call("read_animation", session_id, params, extra.signal),
 	);
 
 	server.registerTool(
@@ -154,7 +157,7 @@ export function createAdapter(options: AdapterOptions): McpServer {
 				operations: z.array(z.discriminatedUnion("type", [setPose, restoreSource])).min(1).max(256),
 			},
 		},
-		async ({ session_id, ...params }) => call("edit_animation", session_id, params),
+		async ({ session_id, ...params }, extra) => call("edit_animation", session_id, params, extra.signal),
 	);
 
 	server.registerTool(
@@ -172,7 +175,7 @@ export function createAdapter(options: AdapterOptions): McpServer {
 			},
 			annotations: { readOnlyHint: true },
 		},
-		async ({ session_id, ...params }) => call("preview_animation", session_id, params, 60_000),
+		async ({ session_id, ...params }, extra) => call("preview_animation", session_id, params, extra.signal, 60_000),
 	);
 
 	return server;

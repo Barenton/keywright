@@ -27,7 +27,7 @@ describe("MCP adapter over stdio", () => {
 		const admin = await connectAdapter(port, loadOrCreateSecret(temp.home));
 		await admin.request("broker.pair_register", { code: "ADAPTERTEST" });
 		admin.close();
-		plugin = await FakePlugin.pair(port, "ADAPTERTEST", SESSION, (method, params) => {
+		plugin = await FakePlugin.pair(port, "ADAPTERTEST", SESSION, async (method, params) => {
 			const input = params as Record<string, unknown>;
 			if (method === "get_workspace") {
 				// A plugin that volunteers an image where none belongs.
@@ -44,8 +44,14 @@ describe("MCP adapter over stdio", () => {
 				revision += 1;
 				return { revision: `r${revision}`, changed: { poses: 1 } };
 			}
+			if (method === "open_animation" && input.rig_id === "rig_leaky") {
+				// A plugin that tries to pass an image along in the text of an error.
+				throw new PluginError({ code: "UNSUPPORTED_RIG", message: `see ${PNG}`, hint: `data:image/png;base64,${PNG}` });
+			}
 			if (method === "preview_animation") {
 				// This plugin always sends an image, asked or not, so the relay's checks are what is tested.
+				// "clip_slow" takes long enough for the caller to give up on it.
+				if (input.clip_id === "clip_slow") await new Promise((resolve) => setTimeout(resolve, 400));
 				// For "clip_cut" the image is cut off at the end, and reported with the size it then has.
 				const whole = Buffer.from(PNG, "base64");
 				const data = input.clip_id === "clip_cut" ? whole.subarray(0, whole.length - 12) : whole;
@@ -155,6 +161,37 @@ describe("MCP adapter over stdio", () => {
 		assert.equal(content.length, 1);
 		assert.equal(json.capture.status, "unavailable");
 		assert.match(json.capture.reason, /relay rejected the screenshot: it is cut short/);
+	});
+
+	test("a tool call the client cancels is cancelled in Studio", async () => {
+		const before = plugin.cancelled.length;
+		const controller = new AbortController();
+		const pending = mcp
+			.callTool({ name: "preview_animation", arguments: { session_id: SESSION, clip_id: "clip_slow", time: 0.5, capture: true } }, undefined, {
+				signal: controller.signal,
+			})
+			.then(
+				() => "answered",
+				() => "cancelled",
+			);
+		await new Promise((resolve) => setTimeout(resolve, 100));
+		assert.equal(plugin.cancelled.length, before);
+		controller.abort();
+		assert.equal(await pending, "cancelled");
+		await new Promise((resolve) => setTimeout(resolve, 100));
+		assert.equal(plugin.cancelled.length, before + 1);
+		assert.equal(plugin.cancelled.at(-1), plugin.requestIds.at(-1));
+		// The adapter is still usable after the late answer has come and gone.
+		await new Promise((resolve) => setTimeout(resolve, 350));
+		const { json } = await callTool("read_animation", { session_id: SESSION, clip_id: "clip_1" });
+		assert.equal(json.method, "read_animation");
+	});
+
+	test("an image carried in an error message never reaches the client", async () => {
+		const { isError, content } = await callTool("open_animation", { session_id: SESSION, rig_id: "rig_leaky" });
+		assert.equal(isError, true);
+		assert.doesNotMatch(content[0]?.text ?? "", /iVBORw0KGgo|data:image/);
+		assert.match(content[0]?.text ?? "", /UNSUPPORTED_RIG/);
 	});
 
 	test("a screenshot is returned as an MCP image block, not as text", async () => {

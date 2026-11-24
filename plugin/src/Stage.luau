@@ -36,6 +36,9 @@ Stage.MIN_EDGE = 64
 Stage.MAX_EDGE = 8192
 -- Largest sideways tilt allowed, as the vertical part of the camera's right-hand direction.
 Stage.MAX_ROLL = 0.02
+-- Steepest the camera may point up or down, as the vertical part of its direction (about
+-- 60 degrees). Beyond this, sideways tilt can no longer be told from turning.
+Stage.MAX_PITCH = 0.87
 -- Furthest the camera may be from the subject, in studs.
 Stage.MAX_DISTANCE = 200
 -- Nearest any part of a subject may come to the camera, in studs, to stay beyond the
@@ -74,6 +77,8 @@ function Stage.usable(view: View): string?
 	local right = view.cframe.RightVector
 	if not finite(right.Y) or not finite(view.cframe.Position.Magnitude) then
 		return "the camera's position cannot be read"
+	elseif not (math.abs(view.cframe.LookVector.Y) <= Stage.MAX_PITCH) then
+		return "the camera is pointed too steeply up or down"
 	elseif math.abs(right.Y) > Stage.MAX_ROLL then
 		return "the camera is tilted sideways"
 	elseif view.cframe.UpVector.Y <= 0 then

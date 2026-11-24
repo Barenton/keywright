@@ -351,11 +351,9 @@ local function unavailable(reason: string?): Result
 	return { status = "unavailable", reason = reason }
 end
 
--- Takes one PNG screenshot of the viewport, scaled so its longest edge is at most
--- `maxEdge`. `format` exists only so that older callers fail closed: anything but nil is
--- refused. `guard` is asked immediately before the screenshot is requested and again
--- before the image is returned; if it gives a reason either time, no image is returned.
-function Capture.capture(maxEdge: number, format: any?, guard: Guard?): Result
+-- One attempt at a screenshot. `progress.asked` is set once Studio has been asked for
+-- anything, permission included.
+local function take(progress: { asked: boolean }, maxEdge: number, format: any?, guard: Guard?): Result
 	local closed = Capture.refusal(true)
 	if closed then
 		return unavailable(closed)
@@ -373,6 +371,7 @@ function Capture.capture(maxEdge: number, format: any?, guard: Guard?): Result
 	end
 	maxEdge = math.min(math.floor(maxEdge), Capture.MAX_EDGE)
 
+	progress.asked = true
 	local granted, reason = Capture.requestPermission()
 	if not granted then
 		return unavailable(reason)
@@ -468,6 +467,24 @@ function Capture.capture(maxEdge: number, format: any?, guard: Guard?): Result
 		milliseconds = math.round((engine.clock() - started) * 1000),
 		png = data,
 	}
+end
+
+-- Takes one PNG screenshot of the viewport, scaled so its longest edge is at most
+-- `maxEdge`. `format` exists only so that older callers fail closed: anything but nil is
+-- refused. `guard` is asked immediately before the screenshot is requested and again
+-- before the image is returned; if it gives a reason either time, no image is returned.
+--
+-- An approval behind the gate is good for attempts that succeed. If an attempt fails
+-- after Studio was asked for anything (a prompt left unanswered, an image that came late
+-- or was not what was asked for), the approval is withdrawn, so the next attempt needs a
+-- person again.
+function Capture.capture(maxEdge: number, format: any?, guard: Guard?): Result
+	local progress = { asked = false }
+	local result = take(progress, maxEdge, format, guard)
+	if result.status ~= "ok" and progress.asked then
+		Capture.revoke(result.reason or "the capture failed")
+	end
+	return result
 end
 
 return Capture
