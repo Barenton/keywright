@@ -13,6 +13,7 @@ interface MeasureModule {
 	largestDifference(first: Record<string, Sampled>, second: Record<string, Sampled>): { degrees: number; studs: number; compared: number };
 	largestPartDifference(first: Placed[], second: Placed[]): { degrees: number; studs: number; compared: number };
 	largeRotation(keyframe: number, joint: number): number[];
+	referenceOperations(keyframes: number): Array<{ type: string; joint: string; time: number; rotation: number[] }>;
 	nineDigits(value: number): string;
 	eulerRotation(degrees: number[]): number[];
 	composedRotation(rotations: number[][]): number[];
@@ -174,4 +175,16 @@ test("every recorded Studio vector hashes to the fingerprint Studio gave", () =>
 		const exact = measure.composedRotation(vector.steps.map((step) => step.rotation));
 		vector.studio.slice(3).forEach((value, index) => assert.ok(Math.abs(value - (exact[index] as number)) < 1e-6, vector.name));
 	}
+});
+
+test("the reference clips have the sizes the requirements give them", () => {
+	const small = measure.referenceOperations(31);
+	const long = measure.referenceOperations(301);
+	assert.equal(small.length, 465);
+	assert.equal(long.length, 4515);
+	assert.equal(new Set(small.map((operation) => operation.joint)).size, 15);
+	assert.equal(Math.max(...small.map((operation) => operation.time)), 3);
+	assert.equal(Math.max(...long.map((operation) => operation.time)), 30);
+	// The same every time: a fixture, not a random clip.
+	assert.deepEqual(measure.referenceOperations(31), small);
 });

@@ -196,6 +196,21 @@ export const VECTORS = [
 	{ name: "three axes on top of three axes", steps: [{ rotation: [10, 20, 30] }, { rotation: [-40, 15, 70] }] },
 ];
 
+/**
+ * The operations that build a reference clip (PRD section 15): every one of the fifteen
+ * joints posed at each keyframe, a tenth of a second apart. 31 keyframes make Ref-S
+ * (3 s, 465 poses), 301 make Ref-L (30 s, 4,515 poses). The same numbers every time.
+ */
+export function referenceOperations(keyframes) {
+	const operations = [];
+	for (let keyframe = 0; keyframe < keyframes; keyframe += 1) {
+		R15.forEach((joint, index) => {
+			operations.push({ type: "set_pose", joint, time: keyframe / 10, rotation: largeRotation(keyframe, index) });
+		});
+	}
+	return operations;
+}
+
 /** Turns a measured value into a result line with a verdict against its limit. */
 export function judge(id, question, measured, limit, unit, detail = "") {
 	const passed = typeof measured === "number" && Number.isFinite(measured) && measured <= limit;
@@ -734,7 +749,8 @@ async function main() {
 			results.push(outdated ? skipped("Edits", question, "The plugin in Studio predates these operations. Reinstall it and run again.") : judge("Edits", question, failed.length, 0, "failed steps", failed.join("; ")));
 		}
 
-		// Timings against the targets in the requirements, on this small clip.
+		// Timings against the targets in the requirements (section 15), on the two reference
+		// clips. The times are taken here, where an adapter would take them.
 		{
 			const samples = 30;
 			const measure = async (label, target, run) => {
@@ -742,22 +758,52 @@ async function main() {
 				for (let index = 0; index < samples; index += 1) times.push(await run(index));
 				results.push(judge("Timing", `${label}, 95th percentile of ${samples}`, Math.round(percentile(times, 0.95)), target, "ms"));
 			};
+			const build = async (name, keyframes) => {
+				const opened = await call("open_animation", { rig_id: main.rig.rig_id, name: `Measure ${stamp} ${name}` });
+				const operations = referenceOperations(keyframes);
+				let revision = opened.revision;
+				for (let first = 0; first < operations.length; first += 255) {
+					revision = (await call("edit_animation", { clip_id: opened.clip_id, expected_revision: revision, operations: operations.slice(first, first + 255) }, 60000)).revision;
+				}
+				return { clipId: opened.clip_id, revision };
+			};
+			const small = await build("Ref-S", 31);
+			const long = await build("Ref-L", 301);
+
 			await measure("inspect_rig summary", 300, async () => (await timed("inspect_rig", { rig_id: main.rig.rig_id })).ms);
-			await measure("read_animation summary", 500, async () => (await timed("read_animation", { clip_id: main.clipId })).ms);
-			let revision = (await call("read_animation", { clip_id: main.clipId })).revision;
-			await measure("edit_animation, one joint at one keyframe", 1000, async (index) => {
-				const { result, ms } = await timed("edit_animation", {
-					clip_id: main.clipId,
-					expected_revision: revision,
-					operations: [{ type: "set_pose", joint: "Head", time: 1, rotation: [0, 20 + (index % 5), 0] }],
-				});
-				revision = result.revision;
+			await measure("edit_animation, a batch of 50 operations on Ref-S", 1000, async (index) => {
+				const operations = Array.from({ length: 50 }, (_, step) => ({ type: "set_pose", joint: R15[step % 15], time: ((index + step) % 31) / 10, rotation: [0, (index + step) % 60, 0] }));
+				const { result, ms } = await timed("edit_animation", { clip_id: small.clipId, expected_revision: small.revision, operations });
+				small.revision = result.revision;
 				return ms;
 			});
-			await measure("sample one time and draw a pose picture", 1000, async () => {
+			await measure("edit_animation, one joint at one keyframe on Ref-L", 1000, async (index) => {
+				const { result, ms } = await timed("edit_animation", {
+					clip_id: long.clipId,
+					expected_revision: long.revision,
+					operations: [{ type: "set_pose", joint: "Head", time: 15, rotation: [0, 20 + (index % 5), 0] }],
+				});
+				long.revision = result.revision;
+				return ms;
+			});
+			let summaryBytes = 0;
+			await measure("read_animation summary on Ref-L", 500, async () => {
+				const { result, ms } = await timed("read_animation", { clip_id: long.clipId });
+				summaryBytes = Buffer.byteLength(JSON.stringify(result));
+				return ms;
+			});
+			results.push(judge("Timing", "read_animation summary on Ref-L, size", summaryBytes, 16384, "bytes"));
+			await measure("sample one time of Ref-L and draw a pose picture", 1000, async () => {
 				const started = performance.now();
-				const sampled = await call("preview_animation", { clip_id: main.clipId, time: 0.5, render: true }, 60000);
+				const sampled = await call("preview_animation", { clip_id: long.clipId, time: 15.05, render: true }, 60000);
 				render.renderPose(render.parsePose(sampled.pose), ["three_quarter"], 384);
+				return performance.now() - started;
+			});
+			await measure("validate_animation on Ref-L", 1000, async () => (await timed("validate_animation", { clip_id: long.clipId })).ms);
+			await measure("a filmstrip of eight frames of Ref-S with a comparison", 3000, async () => {
+				const started = performance.now();
+				const strip = await call("preview_animation", { clip_id: small.clipId, times: [0, 0.4, 0.8, 1.2, 1.6, 2, 2.4, 2.8], render: true, compare_with: long.clipId, track: ["LeftFoot"] }, 60000);
+				render.renderComparison(strip.pose.frames.map((parts) => render.parsePose({ parts })), strip.pose.compare.map((parts) => render.parsePose({ parts })), "right", 192, render.parsePose({ parts: strip.pose.rest }));
 				return performance.now() - started;
 			});
 		}
