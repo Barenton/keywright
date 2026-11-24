@@ -49,6 +49,74 @@ function Pose.place(scan: Rig.Scan, transforms: { [string]: CFrame }, identity: 
 	return placed
 end
 
+Pose.TURNS_NOTE =
+	"For each joint: where the far end of its part moves when the pose's rotation about X, then Y, then Z, is positive, in the rig's own directions. \"twist\" means the part turns about its own length. A negative rotation goes the other way."
+
+local function direction(move: Vector3, length: number): string
+	if move.Magnitude < 0.3 * length then
+		return "twist"
+	end
+	local x, y, z = math.abs(move.X), math.abs(move.Y), math.abs(move.Z)
+	if x >= y and x >= z then
+		return if move.X > 0 then "right" else "left"
+	elseif y >= z then
+		return if move.Y > 0 then "up" else "down"
+	end
+	-- A rig faces along negative Z.
+	return if move.Z > 0 then "back" else "forward"
+end
+
+-- For each joint, which way the far end of its part moves under a positive rotation about
+-- each of the pose's axes, worked out from the rig's rest pose. A list of three words per
+-- joint, for X, Y and Z.
+function Pose.turns(scan: Rig.Scan, identity: CFrame): { [string]: { string } }
+	local resting: { [string]: CFrame } = {}
+	for name in scan.joints do
+		resting[name] = identity
+	end
+	local placed = Pose.place(scan, resting, identity)
+	placed[Rig.ROOT] = identity
+	local turns: { [string]: { string } } = {}
+	for name, joint in scan.joints do
+		local parent = placed[Rig.R15_PARENTS[name]]
+		local part = placed[name]
+		if not parent or not part then
+			continue
+		end
+		-- The joint turns about the point where it sits on the parent, in that frame.
+		local pivot = parent * (Rig.rest(joint))
+		-- The far end is where the next joint down sits, if there is one: for the lower
+		-- torso that is the waist, with the whole upper body on it, whichever side of the
+		-- joint the lower torso's own middle happens to be. Otherwise it is the part's middle.
+		local far = part.Position
+		for _, other in Rig.R15_ORDER do
+			local child = scan.joints[other]
+			if child and Rig.R15_PARENTS[other] == name then
+				far = (part * (Rig.rest(child))).Position
+				break
+			end
+		end
+		local reach = far - pivot.Position
+		-- A joint often sits at a corner of its part, as a shoulder does, so the far end
+		-- is rarely straight out from it. What matters is which way the part extends:
+		-- the one of its own three directions that the far end lies furthest along.
+		local best: Vector3 = part.UpVector
+		for _, axis in { part.RightVector, part.LookVector } do
+			if math.abs(reach:Dot(axis)) > math.abs(reach:Dot(best)) then
+				best = axis
+			end
+		end
+		reach = best * reach:Dot(best)
+		local length = math.max(reach.Magnitude, 1e-6)
+		turns[name] = {
+			direction(pivot.RightVector:Cross(reach), length),
+			direction(pivot.UpVector:Cross(reach), length),
+			direction((-pivot.LookVector):Cross(reach), length),
+		}
+	end
+	return turns
+end
+
 export type Difference = {
 	-- How many parts were compared.
 	parts: number,

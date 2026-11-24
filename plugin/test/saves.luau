@@ -324,8 +324,10 @@ case("only clips are listed, and no more than the limit", function()
 		clip.Name = string.format("Clip %02d", index)
 		clip.Parent = place.container
 	end
-	local names = Saves.names(place.rig, place.storage)
+	local names, total = Saves.names(place.rig, place.storage)
 	check("the list is capped", #names == Saves.MAX_LISTED, #names)
+	-- Sixty added here, and the one the place already had.
+	check("and how many there are in all is given", total == 61, total)
 	check("things that are not clips are left out", names[1] == "Clip 01", names[1])
 end)
 

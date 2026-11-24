@@ -98,13 +98,16 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 		for _, child in workspace:GetChildren() do
 			if child:IsA("Model") and child:FindFirstChildOfClass("Humanoid") then
 				local description = Rig.describe(child)
+				local saved, savedTotal = Saves.names(child, ServerStorage)
 				table.insert(rigs, {
 					rig_id = register(registry, child),
 					name = child.Name,
 					supported = description.supported,
 					joint_classes = description.joint_classes,
 					-- Clips saved for this rig, as the Animation Editor lists them.
-					saved_clips = Saves.names(child, ServerStorage),
+					saved_clips = saved,
+					-- Present only when the list above is not all of them.
+					saved_clips_total = if savedTotal > #saved then savedTotal else nil,
 				})
 			end
 		end
@@ -142,9 +145,15 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 
 	methods.inspect_rig = function(params: any): any
 		local model, rigId = rigModel(params)
-		local description = Rig.describe(model, params.detail == true) :: any
-		description.rig_id = rigId
-		return description
+		local description, scan = Rig.describe(model, params.detail == true)
+		local result = description :: any
+		result.rig_id = rigId
+		if description.supported then
+			-- Which way each joint turns, so that a pose need not be found by trial.
+			result.turns = Pose.turns(scan, CFrame.new())
+			result.turns_note = Pose.TURNS_NOTE
+		end
+		return result
 	end
 
 	methods.open_animation = function(params: any): any
@@ -369,7 +378,7 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 		return {
 			clip_id = working.id,
 			revision = current,
-			saved = { name = name, rig = model.Name, saved_clips = Saves.names(model, ServerStorage) },
+			saved = { name = name, rig = model.Name, saved_clips = (Saves.names(model, ServerStorage)) },
 		}
 	end
 

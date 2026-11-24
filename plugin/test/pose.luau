@@ -275,6 +275,31 @@ case("where parts are is compared with where they should be", function()
 	check("a part missing from one side is not compared", Pose.compare(expected, fewer).parts == 14)
 end)
 
+case("which way each joint turns is worked out from the rest pose", function()
+	local turns = Pose.turns(Rig.scan(buildRig()), CFrame.new())
+	local function of(name: string): string
+		return table.concat(turns[name], " ")
+	end
+	-- An arm hangs down from the shoulder. Turning it about the axis that points back
+	-- swings the hand out to the side: to the rig's right for the right arm.
+	check("the right arm", of("RightUpperArm") == "forward twist right", of("RightUpperArm"))
+	check(
+		"the left arm turns the same way about each axis",
+		of("LeftUpperArm") == "forward twist right",
+		of("LeftUpperArm")
+	)
+	check("a leg, hanging like an arm", of("LeftUpperLeg") == "forward twist right", of("LeftUpperLeg"))
+	-- The head stands up from the neck, so the same rotations move its top the other way.
+	check("the head", of("Head") == "back twist left", of("Head"))
+	check("the upper torso, standing on the waist", of("UpperTorso") == "back twist left", of("UpperTorso"))
+	local named = 0
+	for _ in turns do
+		named += 1
+	end
+	check("every joint is covered", named == 15, named)
+	check("the note says how to read it", string.find(Pose.TURNS_NOTE, "X, then Y, then Z") ~= nil)
+end)
+
 print(`{count - failures}/{count} pose checks passed`)
 if failures > 0 then
 	process.exit(1)

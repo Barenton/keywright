@@ -76,9 +76,10 @@ function Saves.ensure(model: Instance, storage: Instance, create: (className: st
 end
 
 -- Names of the clips saved for a rig, in order. Empty when the rig has no usable storage.
-function Saves.names(model: Instance, storage: Instance): { string }
+function Saves.names(model: Instance, storage: Instance): ({ string }, number)
 	local container = Saves.container(model, storage)
 	local names: { string } = {}
+	local total = 0
 	if container then
 		for _, child in container:GetChildren() do
 			if child:IsA("KeyframeSequence") or child:IsA("CurveAnimation") then
@@ -86,11 +87,13 @@ function Saves.names(model: Instance, storage: Instance): { string }
 			end
 		end
 		table.sort(names)
+		total = #names
 		while #names > Saves.MAX_LISTED do
 			table.remove(names)
 		end
 	end
-	return names
+	-- The second value is how many there are in all, for saying when the list was cut.
+	return names, total
 end
 
 -- Returns nil when a clip may be saved under this name, or the reason it may not. Without
