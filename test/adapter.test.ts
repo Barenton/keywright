@@ -68,6 +68,8 @@ describe("MCP adapter over stdio", () => {
 					time: input.time,
 					capture,
 					images: [{ png_base64: data.toString("base64") }],
+					// As Studio encodes an empty table.
+					joints: [],
 					...(input.render === true ? { pose } : {}),
 				};
 			}
@@ -101,7 +103,7 @@ describe("MCP adapter over stdio", () => {
 		const { tools } = await mcp.listTools();
 		assert.deepEqual(
 			tools.map((tool) => tool.name).sort(),
-			["edit_animation", "get_workspace", "inspect_rig", "open_animation", "preview_animation", "read_animation", "save_animation"],
+			["discard_animation", "edit_animation", "get_workspace", "inspect_rig", "open_animation", "preview_animation", "read_animation", "save_animation"],
 		);
 		// A picture and a save are both asked for through documented inputs.
 		const properties = (name: string) => Object.keys((tools.find((tool) => tool.name === name)?.inputSchema.properties ?? {}) as object);
@@ -237,6 +239,8 @@ describe("MCP adapter over stdio", () => {
 		// Without asking, no picture is drawn and no pose data is passed on.
 		const plain = await callTool("preview_animation", { session_id: SESSION, clip_id: "clip_1", time: 0.5 });
 		assert.equal(plain.content.length, 1);
+		// An empty set of joints reaches the client as an object, whatever Studio sent.
+		assert.deepEqual(plain.json.joints, {});
 		assert.equal(plain.json.render, undefined);
 		assert.equal(plain.json.pose, undefined);
 

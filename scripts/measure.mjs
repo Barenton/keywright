@@ -4,9 +4,9 @@
 //
 // It talks only to the local broker, the way the MCP adapter does. It does not start,
 // stop or attach to Studio, install anything, or touch a file outside build/. It does
-// change the place the session has open: it makes working copies and, for the
-// round-trip check, saved clips, all named "Measure ...". Because of that it must be
-// told the id of the place, and refuses any other.
+// change the place the session has open: it makes working copies, which it discards
+// again at the end, and saved clips, which stay, all named "Measure ...". Because of
+// that it must be told the id of the place, and refuses any other.
 //
 // Usage: node scripts/measure.mjs --place-id <id> [--rounds 10000]
 
@@ -93,6 +93,8 @@ async function main() {
 	const render = await import(pathToFileURL(join(ROOT, "dist/src/render.js")).href);
 	const broker = await connectAdapter(state.configuredPort(), state.loadOrCreateSecret(state.stateDir()));
 	const results = [];
+	const made = [];
+	let saved = 0;
 	const stamp = new Date().toISOString().replace(/[-:]/g, "").slice(0, 15);
 
 	try {
@@ -101,7 +103,12 @@ async function main() {
 		if (!session) {
 			throw new Error(`No connected Studio session has place id ${options.placeId}. Connected: ${sessions.map((s) => s.placeId).join(", ") || "none"}.`);
 		}
-		const call = (method, params, timeoutMs) => broker.request(method, params, session.id, timeoutMs);
+		const call = async (method, params, timeoutMs) => {
+			const result = await broker.request(method, params, session.id, timeoutMs);
+			// Every working copy this run opens is noted, to be discarded at the end.
+			if (method === "open_animation") made.push(result.clip_id);
+			return result;
+		};
 		const timed = async (method, params, timeoutMs) => {
 			const started = performance.now();
 			const result = await call(method, params, timeoutMs);
@@ -221,6 +228,7 @@ async function main() {
 				for (const lap of ["a", "b"]) {
 					const name = `Measure ${stamp} ${lap}`;
 					await call("save_animation", { clip_id: source.clipId, expected_revision: source.revision, name });
+					saved += 1;
 					const reopened = await call("open_animation", { rig_id: main.rig.rig_id, source: `saved:${name}` });
 					const after = await call("read_animation", { clip_id: reopened.clip_id, hash: true });
 					if (after.content_hash !== before.content_hash) changed += 1;
@@ -229,6 +237,70 @@ async function main() {
 				results.push(judge("E5", "Two round trips through saving and opening leave the clip's fingerprint unchanged", changed, 0, "changed"));
 				results.push(skipped("E5", "Opening a clip the Animation Editor saved, and the editor saving ours", "Needs a person in the Animation Editor."));
 			}
+		}
+
+		// The Phase 0 walk-through on each rig: inspect, open, edit one keyframe, preview it,
+		// get a picture, have a stale write from a second client refused, and put the clip
+		// back as it was. Reverting by Studio's own undo needs a person and is not done here.
+		for (const jointClass of available) {
+			const { rig, clipId } = clips[jointClass];
+			const failed = [];
+			const step = (name, passed) => {
+				if (!passed) failed.push(name);
+			};
+			try {
+				const inspected = await call("inspect_rig", { rig_id: rig.rig_id });
+				step("inspect", inspected.supported === true && inspected.joint_count === 15 && inspected.joint_classes?.[jointClass] === 15);
+
+				const name = `Measure ${stamp} demo ${jointClass}`;
+				const current = await call("read_animation", { clip_id: clipId });
+				await call("save_animation", { clip_id: clipId, expected_revision: current.revision, name });
+				saved += 1;
+				const working = await call("open_animation", { rig_id: rig.rig_id, source: `saved:${name}` });
+				const before = await call("read_animation", { clip_id: working.clip_id, hash: true });
+				step("open", typeof before.content_hash === "string" && before.keyframe_count === TIMES.length);
+
+				const turn = [{ type: "set_pose", joint: "Head", time: 1, rotation: [0, 60, 0] }];
+				const edited = await call("edit_animation", { clip_id: working.clip_id, expected_revision: before.revision, operations: turn });
+				const changed = await call("read_animation", { clip_id: working.clip_id, hash: true });
+				step("edit", changed.content_hash !== before.content_hash && changed.revision === edited.revision);
+
+				const preview = await call("preview_animation", { clip_id: working.clip_id, time: 1, joints: ["Head"], render: true }, 60000);
+				step("preview", angleBetween(preview.joints.Head.rotation[1], 60) <= 0.01);
+				const picture = render.renderPose(render.parsePose(preview.pose), ["front", "three_quarter"], 256);
+				step("picture", picture.width === 512 && picture.png.length > 500);
+
+				// A second client that still holds the revision from before the edit.
+				const other = await connectAdapter(state.configuredPort(), state.loadOrCreateSecret(state.stateDir()));
+				try {
+					const refusal = await other
+						.request("edit_animation", { clip_id: working.clip_id, expected_revision: before.revision, operations: turn }, session.id)
+						.then(
+							() => "accepted",
+							(error) => error.code,
+						);
+					const untouched = await call("read_animation", { clip_id: working.clip_id, hash: true });
+					step("stale write refused", refusal === "REVISION_CONFLICT" && untouched.content_hash === changed.content_hash);
+				} finally {
+					other.close();
+				}
+
+				await call("edit_animation", { clip_id: working.clip_id, expected_revision: edited.revision, operations: [{ type: "restore_source" }] });
+				const restored = await call("read_animation", { clip_id: working.clip_id, hash: true });
+				step("source restored", restored.content_hash === before.content_hash);
+			} catch (error) {
+				failed.push(`stopped: ${error instanceof Error ? error.message : String(error)}`);
+			}
+			results.push(
+				judge(
+					"Demo",
+					`The walk-through on the ${jointClass} rig: inspect, open, edit, preview, picture, stale write from a second client refused, source restored`,
+					failed.length,
+					0,
+					"failed steps",
+					failed.join("; "),
+				),
+			);
 		}
 
 		// Timings against the targets in the requirements, on this small clip.
@@ -258,6 +330,26 @@ async function main() {
 				return performance.now() - started;
 			});
 		}
+
+		// Leave the place as tidy as the tools allow: working copies go, saved clips stay.
+		let discarded = 0;
+		let leftover = "";
+		for (const clipId of made) {
+			try {
+				const current = await call("read_animation", { clip_id: clipId });
+				await call("discard_animation", { clip_id: clipId, expected_revision: current.revision });
+				discarded += 1;
+			} catch (error) {
+				leftover = error instanceof Error ? error.message : String(error);
+			}
+		}
+		results.push(
+			skipped(
+				"Tidy",
+				`Discarded ${discarded} of the ${made.length} working copies this run made; ${saved} saved clips named "Measure ${stamp} ..." remain`,
+				leftover ? `Not all could be discarded: ${leftover}` : "",
+			),
+		);
 
 		results.push(skipped("E6", "Undo", "Needs a person to press Ctrl+Z."));
 		results.push(skipped("E2", "Screenshots", "The capture path is gated off."));

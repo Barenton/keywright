@@ -33,6 +33,11 @@ const restoreSource = z.object({
 function ok(method: string, params: unknown, result: unknown): CallToolResult {
 	const screened = screenResult(method, params, result);
 	const drawn = method === IMAGE_METHOD ? renderResult(params, screened.payload) : { payload: screened.payload };
+	// Studio writes an empty set of joints as an empty list; clients are promised an object.
+	const shaped = drawn.payload as { joints?: unknown } | null;
+	if (method === IMAGE_METHOD && shaped !== null && typeof shaped === "object" && Array.isArray(shaped.joints) && shaped.joints.length === 0) {
+		shaped.joints = {};
+	}
 	const content: CallToolResult["content"] = [{ type: "text", text: JSON.stringify(drawn.payload) }];
 	for (const image of [drawn.image, screened.image]) {
 		if (image !== undefined) content.push({ type: "image", data: image, mimeType: "image/png" });
@@ -186,6 +191,20 @@ export function createAdapter(options: AdapterOptions): McpServer {
 			},
 		},
 		async ({ session_id, ...params }, extra) => call("save_animation", session_id, params, extra.signal),
+	);
+
+	server.registerTool(
+		"discard_animation",
+		{
+			description:
+				"Remove a working copy that is no longer needed. Saved clips are not affected. One Studio undo brings the working copy back.",
+			inputSchema: {
+				session_id: sessionId,
+				clip_id: clipId,
+				expected_revision: z.string().describe("Revision from the last read or edit of this clip."),
+			},
+		},
+		async ({ session_id, ...params }, extra) => call("discard_animation", session_id, params, extra.signal),
 	);
 
 	server.registerTool(

@@ -262,6 +262,44 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry)
 		}
 	end
 
+	-- Removes a working copy. Saved clips are not touched. One undo brings it back, and
+	-- it is then picked up again as a working copy of its rig.
+	methods.discard_animation = function(params: any): any
+		requireEdit()
+		local working = Clips.get(requireString(params, "clip_id"))
+		local current = Clips.revisionOf(working)
+		if params.expected_revision ~= current then
+			Errors.throw(
+				"REVISION_CONFLICT",
+				`Expected revision {tostring(params.expected_revision)}, but the clip is at {current}.`,
+				"Read the clip again, then discard the revision you have seen."
+			)
+		end
+		local recording =
+			ChangeHistoryService:TryBeginRecording("MotionBridgeDiscard", "Motion Bridge discard animation")
+		if not recording then
+			Errors.throw(
+				"STUDIO_NOT_IN_EDIT_MODE",
+				"Studio could not start an undo recording.",
+				"Close the Animation Editor if it is open, stop any playtest, and retry."
+			)
+		end
+		local name = working.instance.Name
+		local ok, problem = pcall(function()
+			-- Taken out of the place, not destroyed, so that undo can put it back.
+			working.instance.Parent = nil
+		end)
+		ChangeHistoryService:FinishRecording(
+			recording :: string,
+			if ok then Enum.FinishRecordingOperation.Commit else Enum.FinishRecordingOperation.Cancel
+		)
+		if not ok then
+			error(problem, 0)
+		end
+		Clips.close(working)
+		return { discarded = { clip_id = working.id, name = name } }
+	end
+
 	methods.preview_animation = function(params: any): any
 		requireEdit()
 		local working = Clips.get(requireString(params, "clip_id"))
@@ -301,6 +339,13 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry)
 		end
 		local revision = Clips.revisionOf(working)
 		local maxEdge = if type(params.max_edge) == "number" then math.clamp(params.max_edge, 64, 1536) else 768
+		-- A clip has nothing after its last keyframe, so a later time is held there, and
+		-- the result says which time it shows.
+		local duration = 0
+		for _, keyframe in Clips.sortedKeyframes(working.instance) do
+			duration = math.max(duration, keyframe.Time)
+		end
+		local sampledTime = math.min(time, duration)
 
 		local preview = Preview.run({
 			model = model,
@@ -331,7 +376,8 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry)
 		local response: any = {
 			clip_id = working.id,
 			revision = revision,
-			time = time,
+			time = sampledTime,
+			requested_time = if sampledTime ~= time then time else nil,
 			camera = "current",
 			joints = sampled,
 		}

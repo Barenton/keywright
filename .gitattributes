@@ -1,0 +1,6 @@
+# Text files are stored and checked out with LF line endings on every platform, so that
+# file contents, and the hashes of review copies, do not depend on the machine.
+* text=auto eol=lf
+*.rbxm binary
+*.rbxl binary
+*.png binary
