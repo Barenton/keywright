@@ -1,0 +1,15 @@
+{
+  "name": "MotionBridgeFault",
+  "tree": {
+    "$className": "Folder",
+    "Main": {
+      "$path": "Main.server.luau"
+    },
+    "src": {
+      "$path": "src"
+    },
+    "Fault": {
+      "$path": "fault/Fault.luau"
+    }
+  }
+}

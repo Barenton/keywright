@@ -54,10 +54,15 @@ npm install
 npm test                # build, then run the TypeScript tests
 npm run test:luau       # headless tests for the Luau modules that only compute
 npm run build:plugin    # build/MotionBridge.rbxm
+npm run build:fault     # build/MotionBridgeFault.rbxm, a test build (see below)
 npm run measure -- --place-id <id>   # measure against a connected Studio session
 ```
 
 `npm run measure` drives the tools above against a Studio session that a person has already connected, and writes its results to `build/measurements/`. It reaches Studio only through the local broker. It makes working copies and saved clips named "Measure ..." in the open place, so it must be given that place's id and refuses any other. Use a place you can throw away.
+
+### Test build
+
+`npm run build:fault` builds the plugin with one extra module, `plugin/fault/Fault.luau`, which makes an edit fail or stop after its first operation. It exists to check in Studio what happens to a half-finished batch: that a failed batch leaves nothing behind, and that an undo recording left open is cancelled when the plugin unloads. Which fault happens is chosen by the name of the working copy being edited ("Fault fail", "Fault stall", "Fault stall raw"); other working copies behave as usual. A session from this build reports its version with `+fault`, and the panel says it is a test build. Install it in place of the normal plugin, never beside it, and only in a place you can throw away: "Fault stall raw" leaves Studio refusing undo recordings in that window until Studio is restarted.
 
 ### Studio fixture
 

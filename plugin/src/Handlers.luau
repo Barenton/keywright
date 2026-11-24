@@ -2,7 +2,6 @@
 -- The methods a Studio session answers. Each takes decoded parameters and returns a
 -- plain table, or throws a structured error.
 
-local ChangeHistoryService = game:GetService("ChangeHistoryService")
 local RunService = game:GetService("RunService")
 local Selection = game:GetService("Selection")
 local ServerStorage = game:GetService("ServerStorage")
@@ -15,6 +14,7 @@ local Edit = require("./Edit")
 local Errors = require("./Errors")
 local Pose = require("./Pose")
 local Preview = require("./Preview")
+local Recording = require("./Recording")
 local Rig = require("./Rig")
 local Saves = require("./Saves")
 
@@ -179,19 +179,9 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry)
 			elseif source then source.Name
 			else "Untitled"
 
-		local recording = ChangeHistoryService:TryBeginRecording("MotionBridgeOpen", "Motion Bridge open animation")
-		if not recording then
-			Errors.throw(
-				"STUDIO_NOT_IN_EDIT_MODE",
-				"Studio could not start an undo recording.",
-				"Close the Animation Editor if it is open, stop any playtest, and retry."
-			)
-		end
+		local recording = Recording.begin("MotionBridgeOpen", "Motion Bridge open animation")
 		local ok, result = pcall(Clips.open, rigId, name, source, model)
-		ChangeHistoryService:FinishRecording(
-			recording :: string,
-			if ok then Enum.FinishRecordingOperation.Commit else Enum.FinishRecordingOperation.Cancel
-		)
+		Recording.finish(recording, ok)
 		if not ok then
 			error(result, 0)
 		end
@@ -237,21 +227,11 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry)
 		end
 		local name = if type(params.name) == "string" and params.name ~= "" then params.name else working.instance.Name
 
-		local recording = ChangeHistoryService:TryBeginRecording("MotionBridgeSave", "Motion Bridge save animation")
-		if not recording then
-			Errors.throw(
-				"STUDIO_NOT_IN_EDIT_MODE",
-				"Studio could not start an undo recording.",
-				"Close the Animation Editor if it is open, stop any playtest, and retry."
-			)
-		end
+		local recording = Recording.begin("MotionBridgeSave", "Motion Bridge save animation")
 		local ok, result = pcall(Saves.save, working.instance, model, ServerStorage, name, function(className: string)
 			return Instance.new(className)
 		end)
-		ChangeHistoryService:FinishRecording(
-			recording :: string,
-			if ok then Enum.FinishRecordingOperation.Commit else Enum.FinishRecordingOperation.Cancel
-		)
+		Recording.finish(recording, ok)
 		if not ok then
 			error(result, 0)
 		end
@@ -275,24 +255,13 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry)
 				"Read the clip again, then discard the revision you have seen."
 			)
 		end
-		local recording =
-			ChangeHistoryService:TryBeginRecording("MotionBridgeDiscard", "Motion Bridge discard animation")
-		if not recording then
-			Errors.throw(
-				"STUDIO_NOT_IN_EDIT_MODE",
-				"Studio could not start an undo recording.",
-				"Close the Animation Editor if it is open, stop any playtest, and retry."
-			)
-		end
+		local recording = Recording.begin("MotionBridgeDiscard", "Motion Bridge discard animation")
 		local name = working.instance.Name
 		local ok, problem = pcall(function()
 			-- Taken out of the place, not destroyed, so that undo can put it back.
 			working.instance.Parent = nil
 		end)
-		ChangeHistoryService:FinishRecording(
-			recording :: string,
-			if ok then Enum.FinishRecordingOperation.Commit else Enum.FinishRecordingOperation.Cancel
-		)
+		Recording.finish(recording, ok)
 		if not ok then
 			error(problem, 0)
 		end

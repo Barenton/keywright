@@ -14,8 +14,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test --test-concurrency=1 \"dist/test/**/*.test.js\"",
-    "test:luau": "lune run plugin/test/run.luau && lune run plugin/test/preview.luau && lune run plugin/test/capture.luau && lune run plugin/test/approval.luau && lune run plugin/test/pose.luau && lune run plugin/test/saves.luau && lune run plugin/test/workingstore.luau && lune run plugin/test/digest.luau",
+    "test:luau": "lune run plugin/test/run.luau && lune run plugin/test/preview.luau && lune run plugin/test/capture.luau && lune run plugin/test/approval.luau && lune run plugin/test/pose.luau && lune run plugin/test/saves.luau && lune run plugin/test/workingstore.luau && lune run plugin/test/digest.luau && lune run plugin/test/recording.luau",
     "build:plugin": "rojo build plugin/default.project.json -o build/MotionBridge.rbxm",
+    "build:fault": "rojo build plugin/fault.project.json -o build/MotionBridgeFault.rbxm",
     "probe:wsl": "npm run build && node scripts/wsl-loopback-check.mjs",
     "format:check": "stylua --check plugin",
     "prepare:fixture": "node scripts/prepare-studio-fixture.mjs",

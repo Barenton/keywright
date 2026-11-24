@@ -2,11 +2,11 @@
 -- Atomic edit batches. Every operation is validated before anything is written, the
 -- batch is one undo recording, and a failure cancels the recording so nothing remains.
 
-local ChangeHistoryService = game:GetService("ChangeHistoryService")
 local RunService = game:GetService("RunService")
 
 local Clips = require("./Clips")
 local Errors = require("./Errors")
+local Recording = require("./Recording")
 local Rig = require("./Rig")
 
 local Edit = {}
@@ -16,8 +16,10 @@ Edit.MAX_TIME = 300
 Edit.MAX_POSITION = 1000
 Edit.MAX_KEYFRAMES = 2000
 
--- Test hook: when set, the batch fails after this many operations have been applied.
-Edit.failAfter = nil :: number?
+-- Test hook: when set, called inside the undo recording before each operation is applied,
+-- with the number of that operation. Nothing in the plugin sets it; a test build does, to
+-- make a batch fail or stop partway.
+Edit.fault = nil :: ((working: Clips.Working, index: number) -> ())?
 
 local function isFiniteNumber(value: any): boolean
 	return type(value) == "number" and value == value and math.abs(value) ~= math.huge
@@ -143,28 +145,18 @@ function Edit.apply(
 	end
 	validate(operations, joints)
 
-	local recording = ChangeHistoryService:TryBeginRecording("MotionBridgeEdit", "Motion Bridge edit")
-	if not recording then
-		Errors.throw(
-			"STUDIO_NOT_IN_EDIT_MODE",
-			"Studio could not start an undo recording.",
-			"Close the Animation Editor if it is open, stop any playtest, and retry."
-		)
-	end
+	local recording = Recording.begin("MotionBridgeEdit", "Motion Bridge edit")
 
 	local changed = { keyframes_created = 0, poses_created = 0, poses_changed = 0, restored = 0 }
 	Clips.mutate(working, function()
 		for index, operation in operations do
-			if Edit.failAfter and index > Edit.failAfter then
-				error("injected failure", 0)
+			if Edit.fault then
+				Edit.fault(working, index)
 			end
 			apply(working, operation, changed)
 		end
 	end, function(ok)
-		ChangeHistoryService:FinishRecording(
-			recording :: string,
-			if ok then Enum.FinishRecordingOperation.Commit else Enum.FinishRecordingOperation.Cancel
-		)
+		Recording.finish(recording, ok)
 	end)
 
 	return { revision = Clips.revisionOf(working), changed = changed }

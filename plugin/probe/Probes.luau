@@ -603,13 +603,17 @@ function Probes.create(
 
 			-- A batch that fails part-way must leave no change, no revision bump and no undo entry.
 			local revisionBeforeFailure = Clips.revisionOf(working)
-			Edit.failAfter = 2
+			Edit.fault = function(_working: any, index: number)
+				if index > 2 then
+					error("injected failure", 0)
+				end
+			end
 			local failedOk, failedError = pcall(Edit.apply, working, joints, revisionBeforeFailure, {
 				{ type = "set_pose", joint = "Head", time = 3, rotation = { 0, 0, 10 } },
 				{ type = "set_pose", joint = "Head", time = 3.5, rotation = { 0, 0, 20 } },
 				{ type = "set_pose", joint = "Head", time = 4, rotation = { 0, 0, 30 } },
 			})
-			Edit.failAfter = nil
+			Edit.fault = nil
 			frames(3)
 			local unchangedAfterFailure = state() == afterSecond
 			local revisionUnchanged = Clips.revisionOf(working) == revisionBeforeFailure

@@ -6,8 +6,10 @@ local RunService = game:GetService("RunService")
 
 local Access = require("./src/Access")
 local Connection = require("./src/Connection")
+local Edit = require("./src/Edit")
 local Handlers = require("./src/Handlers")
 local Preview = require("./src/Preview")
+local Recording = require("./src/Recording")
 
 local PLUGIN_VERSION = "0.0.0"
 local DEFAULT_PORT = 47318
@@ -121,6 +123,17 @@ toggle.Parent = frame
 local status = label("Agent access is off.")
 local pairing = label("")
 
+-- A test build carries one more module, which makes chosen edits fail on purpose so that
+-- what Studio does then can be checked. The plugin as released has no such module. A
+-- session from a test build says so in its version, and so does the panel.
+local version = PLUGIN_VERSION
+local fault = script.Parent:FindFirstChild("Fault")
+if fault and fault:IsA("ModuleScript") then
+	(require(fault) :: any).install(Edit, Recording)
+	version ..= "+fault"
+	label("Test build: some edits fail on purpose.")
+end
+
 local sessionId = string.lower((string.gsub(HttpService:GenerateGUID(false), "[^%x]", "")))
 local methods = Handlers.create()
 local connection: any = nil
@@ -136,7 +149,7 @@ local function start()
 			id = sessionId,
 			placeName = game.Name,
 			placeId = game.PlaceId,
-			pluginVersion = PLUGIN_VERSION,
+			pluginVersion = version,
 		},
 		credential = credential,
 		pairingCode = code,
@@ -229,6 +242,9 @@ if Access.remembered(rememberedPlaces(), game.PlaceId) then
 end
 
 plugin.Unloading:Connect(function()
+	-- An undo recording still open now would never be finished, and Studio would refuse
+	-- every later one.
+	pcall(Recording.abandon)
 	if connection then
 		connection.stop()
 	end
