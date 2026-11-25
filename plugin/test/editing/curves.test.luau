@@ -774,6 +774,175 @@ case("clear_keys removes a range's keys, so a pin can be redone over another ran
 	)
 end)
 
+-- A clip where each side moves its own way, and the middle turns and moves sideways.
+local function lopsided(): any
+	local clip = blank()
+	local function keys(joint: string, a: { number }, b: { number }, c: { number })
+		return {
+			{ type = "set_key", joint = joint, time = 0, rotation = a },
+			{ type = "set_key", joint = joint, time = 0.5, rotation = b },
+			{ type = "set_key", joint = joint, time = 1, rotation = c },
+		}
+	end
+	local operations = {
+		{ type = "set_key", joint = "LowerTorso", time = 0, position = { 0, 0, 0 } },
+		{ type = "set_key", joint = "LowerTorso", time = 0.5, position = { 0.3, -0.2, 0.1 } },
+		{ type = "set_key", joint = "LowerTorso", time = 1, position = { 0, 0, 0 } },
+	}
+	for _, list in
+		{
+			keys("LowerTorso", { 0, 0, 0 }, { 10, 25, -15 }, { 0, 0, 0 }),
+			keys("UpperTorso", { 0, 0, 0 }, { -20, 30, 10 }, { 0, 0, 0 }),
+			keys("LeftUpperArm", { 0, 0, 0 }, { 70, 20, -40 }, { 10, 0, 0 }),
+			keys("LeftLowerArm", { 0, 0, 0 }, { 60, 0, 0 }, { 0, 0, 0 }),
+			keys("RightUpperLeg", { 0, 0, 0 }, { -30, 10, 15 }, { 0, 0, 0 }),
+		}
+	do
+		for _, operation in list do
+			table.insert(operations, operation)
+		end
+	end
+	table.insert(operations, { type = "auto_tangents", time_from = 0, time_to = 1 })
+	realRun(clip, operations)
+	return clip
+end
+
+local function mirrorName(name: string): string
+	if string.sub(name, 1, 4) == "Left" then
+		return "Right" .. string.sub(name, 5)
+	elseif string.sub(name, 1, 5) == "Right" then
+		return "Left" .. string.sub(name, 6)
+	end
+	return name
+end
+
+-- A frame seen in a mirror across the rig's middle, worked out by reflecting its axes.
+local function inMirror(cframe: any): any
+	local flip = roblox.Vector3.new(-1, 1, 1)
+	local position = cframe.Position * flip
+	-- A reflected frame is left-handed; reflecting the whole frame and then turning its X
+	-- axis round gives the right-handed frame a mirrored part has.
+	local right = -(cframe.RightVector * flip)
+	local up = cframe.UpVector * flip
+	local back = -(cframe.LookVector * flip)
+	return roblox.CFrame.fromMatrix(position, right, up, back)
+end
+
+case("mirror flip turns the whole clip into its mirror image", function()
+	local clip = lopsided()
+	local times = { 0, 0.1, 0.25, 0.5, 0.73, 1 }
+	local before = {}
+	for _, time in times do
+		before[time] = placedAt(clip, time)
+	end
+	local changed = realRun(clip, { { type = "mirror", mode = "flip" } })
+	check("every joint was mirrored", changed.joints_mirrored == 15, changed.joints_mirrored)
+	local studs, degrees = 0, 0
+	for _, time in times do
+		local after = placedAt(clip, time)
+		for name, cframe in before[time] do
+			local wanted = inMirror(cframe)
+			local got = after[mirrorName(name)]
+			studs = math.max(studs, (got.Position - wanted.Position).Magnitude)
+			degrees = math.max(degrees, turnBetween(got, wanted))
+		end
+	end
+	check("every part is where its mirror image was", studs < 1e-4, studs)
+	check("turned as its mirror image was", degrees < 0.01, degrees)
+	local keysBefore = #keysOf(lopsided(), "LeftUpperArm", "rotation.y")
+	check("with the keys it had, not one a frame", #keysOf(clip, "RightUpperArm", "rotation.y") == keysBefore)
+	realRun(clip, { { type = "mirror", mode = "flip" } })
+	local back = 0
+	for _, time in times do
+		local after = placedAt(clip, time)
+		for name, cframe in before[time] do
+			back = math.max(back, (after[name].Position - cframe.Position).Magnitude)
+		end
+	end
+	check("flipping twice gives the clip back", back < 1e-6, back)
+end)
+
+case("mirror copies one side onto the other, leaving the middle", function()
+	local clip = lopsided()
+	local middleBefore = placedAt(clip, 0.5).Head
+	realRun(clip, { { type = "mirror", mode = "left_to_right" } })
+	local function at(joint: string, channel: string, time: number): number
+		return Curves.evaluate(keysOf(clip, joint, channel), time)
+	end
+	local worst = 0
+	for _, time in { 0.1, 0.3, 0.5, 0.8 } do
+		for _, joint in { "UpperArm", "LowerArm" } do
+			worst = math.max(
+				worst,
+				math.abs(at(`Right{joint}`, "rotation.x", time) - at(`Left{joint}`, "rotation.x", time)),
+				math.abs(at(`Right{joint}`, "rotation.y", time) + at(`Left{joint}`, "rotation.y", time)),
+				math.abs(at(`Right{joint}`, "rotation.z", time) + at(`Left{joint}`, "rotation.z", time))
+			)
+		end
+	end
+	check("the right arm moves as the left arm's mirror image", worst < 1e-9, worst)
+	check(
+		"the right leg, copied from a left leg that does not move, no longer moves",
+		math.abs(at("RightUpperLeg", "rotation.x", 0.5)) < 1e-9
+	)
+	check("the middle is as it was", (placedAt(clip, 0.5).Head.Position - middleBefore.Position).Magnitude < 1e-9)
+end)
+
+case("mirror with an offset has one side trail the other in a loop", function()
+	local clip = blank()
+	realRun(clip, {
+		{ type = "set_key", joint = "LeftUpperLeg", time = 0, rotation = { 30, 5, 0 } },
+		{ type = "set_key", joint = "LeftUpperLeg", time = 0.4, rotation = { -30, 0, -5 } },
+		{ type = "set_key", joint = "LeftUpperLeg", time = 1.2, rotation = { 30, 5, 0 } },
+		{ type = "set_properties", loop = true },
+		{ type = "auto_tangents", time_from = 0, time_to = 1.2 },
+	})
+	realRun(clip, { { type = "mirror", mode = "left_to_right", offset = 0.6 } })
+	local left = keysOf(clip, "LeftUpperLeg", "rotation.x")
+	local right = keysOf(clip, "RightUpperLeg", "rotation.x")
+	local leftY = keysOf(clip, "LeftUpperLeg", "rotation.y")
+	local rightY = keysOf(clip, "RightUpperLeg", "rotation.y")
+	local worst = 0
+	for step = 0, 120 do
+		local time = step / 100
+		local earlier = (time - 0.6) % 1.2
+		worst = math.max(
+			worst,
+			math.abs(Curves.evaluate(right, time) - Curves.evaluate(left, earlier)),
+			math.abs(Curves.evaluate(rightY, time) + Curves.evaluate(leftY, earlier))
+		)
+	end
+	check("the right leg does at each moment what the left did half a cycle before", worst < 1e-4, worst)
+	check("the clip is as long as it was", math.abs(Curves.duration(clip) - 1.2) < 1e-9, Curves.duration(clip))
+end)
+
+case("mirrors that cannot be done are refused", function()
+	local clip = lopsided()
+	local function refused(operation: any, joints: any?): any
+		local ok, problem = pcall(function()
+			Curves.check({ operation }, joints or REAL)
+			Curves.run(clip, { operation }, { joints = joints or REAL })
+		end)
+		return if ok then nil else problem
+	end
+	check("an unknown mode", refused({ type = "mirror", mode = "sideways" }) ~= nil)
+	check("an offset with flip", refused({ type = "mirror", mode = "flip", offset = 0.5 }) ~= nil)
+	local once = refused({ type = "mirror", mode = "left_to_right", offset = 0.5 })
+	check(
+		"an offset in a clip that does not loop",
+		once and string.find(once.message, "looping", 1, true),
+		once and once.message
+	)
+	local model = BlockRig.build()
+	model.LeftUpperArm.LeftShoulder.C0 = roblox.CFrame.new(-1.2, 0.5, 0)
+	local crooked = refused({ type = "mirror", mode = "flip" }, Rig.scan(model).joints)
+	check(
+		"a rig whose sides differ",
+		crooked and string.find(crooked.message, "mirror images", 1, true),
+		crooked and crooked.message
+	)
+end)
+
 -- The lowest point of the parts the floor is measured by, at a time.
 local MEASURED = {}
 for _, name in Rig.R15_ORDER do

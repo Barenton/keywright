@@ -218,6 +218,25 @@ const operations = [
 	}),
 	z.object({
 		type: z
+			.literal("mirror")
+			.describe(
+				"Curve clips only. Mirror motion across the rig's middle, from its left side to its right. flip turns the whole clip into its mirror image: a punch with the right hand becomes the same punch with the left, the hips' and chest's turns and sideways moves reversed. left_to_right and right_to_left copy one side's motion onto the other side, mirrored, and leave the middle and the side copied from as they are. The keys themselves are mirrored, tangents included, so the result is exact and keeps the keys it had, editable in the Curve Editor. A joint copied from that does not move leaves its mirror not moving. Refused on a rig whose sides are not mirror images of each other.",
+			),
+		mode: z.enum(["flip", "left_to_right", "right_to_left"]),
+		joints: z
+			.array(z.string())
+			.min(1)
+			.max(32)
+			.optional()
+			.describe("Only these joints and their counterparts on the other side, for example LeftUpperLeg, LeftLowerLeg and LeftFoot for one leg. Default: every joint."),
+		offset: z
+			.number()
+			.finite()
+			.optional()
+			.describe("With left_to_right or right_to_left in a looping clip: seconds later that the copied side does what the other side did, carried round from the end to the start. Half the clip's length makes a walk or run cycle from one leg and one arm."),
+	}),
+	z.object({
+		type: z
 			.literal("clear_keys")
 			.describe(
 				"Curve clips only. Remove every key in a time range, ends included, from the joints and channels named; the curves then run straight from the last key before the range to the first after it. A curve holds its first key's value back to the start, so clearing from 0 changes the start too. To redo a pin or place_on_floor over another range, clear the keys they wrote first: the old range with its blends, on the limb's three joints (rotation) or the hips (position). Never an error when the range holds no key; the result counts keys_removed.",
@@ -475,7 +494,7 @@ export function createAdapter(options: AdapterOptions): McpServer {
 		"edit_animation",
 		{
 			description:
-				"Apply a batch of operations to a working copy atomically. A keyframe clip takes poses, easing, keyframes, retiming and smoothing; a curve clip takes keys, tangents, auto_tangents, clear_keys, pin and place_on_floor. Both take markers, the clip's settings and restore_source; each operation's description says which clips it is for. The operations apply in the order given, each to the clip as the ones before it leave it. The whole batch is tried first; if any operation cannot be done, nothing changes and the error names it by its place in the list. Requires the current revision. One Studio undo reverts the whole batch. Only what an operation names is changed.",
+				"Apply a batch of operations to a working copy atomically. A keyframe clip takes poses, easing, keyframes, retiming and smoothing; a curve clip takes keys, tangents, auto_tangents, clear_keys, mirror, pin and place_on_floor. Both take markers, the clip's settings and restore_source; each operation's description says which clips it is for. The operations apply in the order given, each to the clip as the ones before it leave it. The whole batch is tried first; if any operation cannot be done, nothing changes and the error names it by its place in the list. Requires the current revision. One Studio undo reverts the whole batch. Only what an operation names is changed.",
 			inputSchema: {
 				studio_session: studioSession,
 				clip_id: clipId,

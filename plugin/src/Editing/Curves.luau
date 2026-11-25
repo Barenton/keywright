@@ -50,6 +50,7 @@ Curves.MAX_MARKER_VALUE = 200
 Curves.MAX_BLEND = 2
 Curves.HOLDS = { "full", "position" }
 Curves.FLOOR_MODES = { "lift", "touch" }
+Curves.MIRROR_MODES = { "flip", "left_to_right", "right_to_left" }
 Curves.MAX_LISTED = 500
 Curves.DEFAULT_KEYS = 400
 Curves.MAX_PAGE = 20000
@@ -502,6 +503,18 @@ local checks: { [string]: Check } = {
 		needText(where, operation.name, "name", Curves.MAX_NAME)
 	end,
 	restore_source = function() end,
+	mirror = function(where, operation, joints)
+		needOneOf(where, operation.mode, "mode", Curves.MIRROR_MODES)
+		needJoints(where, operation.joints, joints)
+		if operation.offset ~= nil then
+			if not isFinite(operation.offset) or math.abs(operation.offset) > Curves.MAX_TIME then
+				refuse(where, "offset must be a number of seconds.")
+			end
+			if operation.mode == "flip" and operation.offset ~= 0 then
+				refuse(where, "offset is for copying one side onto the other, not for flip.")
+			end
+		end
+	end,
 	clear_keys = function(where, operation, joints)
 		needRange(where, operation)
 		needJoints(where, operation.joints, joints)
@@ -851,6 +864,121 @@ local function markerCurve(clip: Instance, name: string, create: boolean): Insta
 	return made
 end
 
+-- ---------------------------------------------------------------------------------------
+-- Mirroring, across the rig's own plane between its left and right sides
+--
+-- Seen in a mirror, a turn about the rig's X axis (across it) is the same turn, and turns
+-- about Y and Z go the other way; a move along X goes the other way. When each joint's rest
+-- offsets on one side are the mirror image of the other side's, as on an R15 rig, this
+-- holds joint by joint for the angles a curve clip keys: rotation (x, y, z) mirrors to
+-- (x, -y, -z) and position (x, y, z) to (-x, y, z). So a mirrored clip is made by
+-- mirroring its keys, tangents included, and is exact, with the keys a person can still
+-- edit, rather than a pose baked at every frame.
+
+-- The name of a joint's counterpart on the other side, or its own name in the middle.
+local function counterpart(name: string): string
+	if string.sub(name, 1, 4) == "Left" then
+		return "Right" .. string.sub(name, 5)
+	elseif string.sub(name, 1, 5) == "Right" then
+		return "Left" .. string.sub(name, 6)
+	end
+	return name
+end
+
+local MIRROR_SIGN = {
+	["rotation.x"] = 1,
+	["rotation.y"] = -1,
+	["rotation.z"] = -1,
+	["position.x"] = -1,
+	["position.y"] = 1,
+	["position.z"] = 1,
+}
+
+-- A frame seen in the mirror.
+local function reflected(cframe: CFrame): CFrame
+	local x, y, z, r00, r01, r02, r10, r11, r12, r20, r21, r22 = cframe:GetComponents()
+	return Roblox.CFrame.new(-x, y, z, r00, -r01, -r02, -r10, r11, r12, -r20, r21, r22)
+end
+
+-- Why the rig's sides are not mirror images of each other, or nil when they are. Joints
+-- in the middle must be their own mirror image.
+local function asymmetry(joints: { [string]: any }): string?
+	for _, name in Rig.R15_ORDER do
+		local other = counterpart(name)
+		local c0, c1 = Rig.rest(joints[name])
+		local d0, d1 = Rig.rest(joints[other])
+		for _, pair in { { reflected(c0), d0 }, { reflected(c1), d1 } } do
+			local a, b = pair[1], pair[2]
+			local studs = (a.Position - b.Position).Magnitude
+			local turn = (a.RightVector - b.RightVector).Magnitude + (a.UpVector - b.UpVector).Magnitude
+			if studs > 0.01 or turn > 0.02 then
+				return if other == name
+					then `"{name}" is not centred between the rig's sides ({rounded(studs, 3)} studs off).`
+					else `"{name}" and "{other}" are not mirror images of each other ({rounded(studs, 3)} studs apart).`
+			end
+		end
+	end
+	return nil
+end
+
+-- A channel's keys moved later by `offset` within a looping clip of length `duration`,
+-- those carried past the end coming round to the start. The curve is cut where the clip
+-- now starts, with a key there and at the end on the curve, at its slope, so that the
+-- motion is the same, only later.
+local function wrapped(keys: { Key }, offset: number, duration: number): { Key }
+	local tolerance = Curves.TIME_TOLERANCE
+	if #keys <= 1 or duration <= tolerance then
+		local out = {}
+		for _, key in keys do
+			local copy = table.clone(key)
+			copy.time = 0
+			table.insert(out, copy)
+		end
+		return out
+	end
+	local shift = offset % duration
+	local out: { Key } = {}
+	for _, key in keys do
+		if key.time < duration - tolerance then
+			local copy = table.clone(key)
+			copy.time = (key.time + shift) % duration
+			table.insert(out, copy)
+		end
+	end
+	-- What used to be played at `cut` is now played at the start, and again at the end.
+	local cut = (duration - shift) % duration
+	local function edge(time: number): Key
+		local h = 1e-4
+		local slope = (Curves.evaluate(keys, math.min(cut + h, duration)) - Curves.evaluate(keys, math.max(cut - h, 0)))
+			/ (math.min(cut + h, duration) - math.max(cut - h, 0))
+		local mode = keys[1].interpolation
+		for _, key in keys do
+			if key.time <= cut + tolerance then
+				mode = key.interpolation
+			end
+		end
+		return {
+			time = time,
+			value = Curves.evaluate(keys, cut),
+			interpolation = mode,
+			left = slope,
+			right = if mode == "Cubic" then slope else nil,
+		}
+	end
+	local hasStart = false
+	for _, key in out do
+		if key.time < tolerance then
+			hasStart = true
+		end
+	end
+	if not hasStart then
+		table.insert(out, edge(0))
+	end
+	table.insert(out, edge(duration))
+	sortKeys(out)
+	return out
+end
+
 type Apply = (where: string, clip: Instance, operation: any, context: Context, changed: Changed) -> ()
 
 local appliers: { [string]: Apply } = {
@@ -1135,6 +1263,87 @@ local appliers: { [string]: Apply } = {
 			changed.out_of_reach_from = math.min(changed.out_of_reach_from or math.huge, milliseconds(missedFrom))
 			changed.out_of_reach_to = math.max(changed.out_of_reach_to or -math.huge, milliseconds(missedTo))
 		end
+	end,
+
+	mirror = function(where, clip, operation, context, changed)
+		local joints = context.joints
+		if not hasGeometry(joints, Rig.R15_ORDER) then
+			refuse(where, "this rig's joints could not be measured, so it cannot be mirrored.")
+		end
+		local problem = asymmetry(joints)
+		if problem then
+			refuse(where, `this rig's sides are not mirror images, so a mirror would not be exact: {problem}`)
+		end
+		local offset = operation.offset or 0
+		local duration = Curves.duration(clip)
+		if offset ~= 0 and not (clip :: any).Loop then
+			refuse(where, "an offset carries motion round from the end to the start, so it needs a looping clip.")
+		end
+		local mode = operation.mode
+		local only: { [string]: boolean }? = nil
+		if operation.joints then
+			only = {}
+			for _, name in operation.joints do
+				(only :: { [string]: boolean })[name] = true
+				(only :: { [string]: boolean })[counterpart(name)] = true
+			end
+		end
+		-- Which joint each joint's new curves come from.
+		local plan: { { to: string, from: string } } = {}
+		for _, name in Rig.R15_ORDER do
+			if only and not only[name] then
+				continue
+			end
+			local other = counterpart(name)
+			local side = string.sub(name, 1, 4) == "Left"
+			if mode == "flip" then
+				table.insert(plan, { to = name, from = other })
+			elseif mode == "left_to_right" and side then
+				table.insert(plan, { to = other, from = name })
+			elseif mode == "right_to_left" and other ~= name and not side then
+				table.insert(plan, { to = other, from = name })
+			end
+		end
+		-- Everything is read before anything is written: in a flip, each side is read
+		-- before it is replaced by the other.
+		local channels = readChannels(clip)
+		local written = {}
+		for _, pair in plan do
+			local own = channels[pair.from] or {}
+			for _, channel in Curves.CHANNELS do
+				local source = own[channel]
+				local target = Curves.channel(clip, pair.to, channel, false)
+				if not source or #source == 0 then
+					-- The joint copied from does not move here, so neither does its mirror.
+					if target and #Curves.keys(target) > 0 then
+						table.insert(written, { joint = pair.to, channel = channel, keys = {} })
+					end
+					continue
+				end
+				local sign = MIRROR_SIGN[channel]
+				local keys: { Key } = {}
+				for _, key in source do
+					table.insert(keys, {
+						time = key.time,
+						value = key.value * sign,
+						interpolation = key.interpolation,
+						left = if key.left then key.left * sign else nil,
+						right = if key.right then key.right * sign else nil,
+					})
+				end
+				if offset ~= 0 then
+					keys = wrapped(keys, offset, duration)
+				end
+				table.insert(written, { joint = pair.to, channel = channel, keys = keys })
+			end
+		end
+		local total = 0
+		for _, entry in written do
+			Curves.setKeys(Curves.channel(clip, entry.joint, entry.channel, true) :: Instance, entry.keys)
+			total += #entry.keys
+		end
+		count(changed, "keys_written", total)
+		count(changed, "joints_mirrored", #plan)
 	end,
 
 	clear_keys = function(_where, clip, operation, _context, changed)
