@@ -111,6 +111,10 @@ const operations = [
 		time_from: rangeFrom,
 		time_to: rangeTo,
 		offset: z.number().finite().describe("Seconds to move by; negative moves earlier."),
+		wrap: z
+			.boolean()
+			.optional()
+			.describe("Curve clips that loop, over the whole clip only: start the loop somewhere else. Everything moves on by the offset and what goes past the end comes round to the start, the curves cut exactly where the loop now begins; the loop should close (end in the pose it begins with, as copy_pose makes it). For room before a moment at the start, as a step eased into a heel strike at 0. Use whole frames."),
 	}),
 	z.object({
 		type: z

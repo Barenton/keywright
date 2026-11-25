@@ -1240,6 +1240,34 @@ case("a curve clip is retimed: shifted, scaled with or without ripple, and rever
 	check("a reversed range plays the motion backward", back < 1e-6, back)
 end)
 
+case("a looping clip can be started somewhere else with shift_time and wrap", function()
+	-- A loop that closes: it ends in the pose it begins with.
+	local function closed(): any
+		local clip = lopsided()
+		realRun(clip, { { type = "set_properties", loop = true }, { type = "copy_pose", from = 0, to = 1 } })
+		return clip
+	end
+	local original = closed()
+	local clip = closed()
+	realRun(clip, { { type = "shift_time", time_from = 0, time_to = 1, offset = 0.25, wrap = true } })
+	local worst = 0
+	for step = 0, 40 do
+		local time = step / 40
+		worst = math.max(worst, difference(sampleAll(clip, time), sampleAll(original, (time - 0.25) % 1)))
+	end
+	check("each moment comes a quarter later, carried round", worst < 1e-4, worst)
+	check("the clip is as long as it was", math.abs(Curves.duration(clip) - 1) < 1e-9, Curves.duration(clip))
+	local plain = lopsided()
+	check(
+		"not in a clip that does not loop",
+		refusal(plain, { { type = "shift_time", time_from = 0, time_to = 1, offset = 0.25, wrap = true } }) ~= nil
+	)
+	check(
+		"nor over part of a clip",
+		refusal(clip, { { type = "shift_time", time_from = 0, time_to = 0.5, offset = 0.25, wrap = true } }) ~= nil
+	)
+end)
+
 case("squeezing keys onto fewer frames joins them, and says so", function()
 	local clip = squat(0.5)
 	realRun(clip, { { type = "pin", part = "LeftFoot", time_from = 0, time_to = 1 } })

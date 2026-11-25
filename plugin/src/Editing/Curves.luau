@@ -534,6 +534,9 @@ local checks: { [string]: Check } = {
 		if not isFinite(operation.offset) or operation.offset == 0 then
 			refuse(where, "offset must be a number of seconds other than 0.")
 		end
+		if operation.wrap ~= nil and type(operation.wrap) ~= "boolean" then
+			refuse(where, "wrap must be true or false.")
+		end
 	end,
 	scale_time = function(where, operation)
 		needRange(where, operation)
@@ -1913,6 +1916,38 @@ local appliers: { [string]: Apply } = {
 	end,
 
 	shift_time = function(where, clip, operation, _context, changed)
+		if operation.wrap then
+			-- A loop started elsewhere: everything moves on by the offset, and what goes past
+			-- the end comes round to the start, the curves cut where the loop now begins.
+			local duration = Curves.duration(clip)
+			if not (clip :: any).Loop then
+				refuse(where, "wrap carries motion round from the end to the start, so it needs a looping clip.")
+			end
+			if not (near(operation.time_from, 0) and near(operation.time_to, duration)) then
+				refuse(where, `with wrap, the range must be the whole clip, 0 to {milliseconds(duration)} seconds.`)
+			end
+			local moved = 0
+			for _, track in Curves.tracks(clip) do
+				local keys = Curves.keys(track.curve)
+				if #keys > 0 then
+					local out = wrapped(keys, operation.offset, duration)
+					Curves.setKeys(track.curve, out)
+					moved += #keys
+				end
+			end
+			for _, curve in Curves.markerCurves(clip) do
+				local markers = backend().markers(curve)
+				for _, marker in markers do
+					marker.time = (marker.time + operation.offset) % duration
+				end
+				table.sort(markers, function(a, b)
+					return a.time < b.time
+				end)
+				backend().setMarkers(curve, markers)
+			end
+			count(changed, "keys_moved", moved)
+			return
+		end
 		retimeCurves(where, clip, operation.time_from, operation.time_to, function(time)
 			return time + operation.offset
 		end, function()

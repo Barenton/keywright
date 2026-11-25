@@ -277,6 +277,9 @@ local checks: { [string]: Check } = {
 		if not isFinite(operation.offset) or operation.offset == 0 then
 			refuse(where, "offset must be a number of seconds other than 0.")
 		end
+		if operation.wrap then
+			refuse(where, "wrap is for curve clips.")
+		end
 	end,
 	scale_time = function(where, operation)
 		needRange(where, operation)
