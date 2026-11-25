@@ -1,5 +1,6 @@
 --!strict
--- Editing helpers shared by the operations: counting changes, making and finding keyframes, dropping poses, easing, and moving keyframes in time.
+-- Editing helpers shared by the operations: counting changes, making and finding
+-- keyframes, dropping poses, easing, and moving keyframes in time.
 
 local Errors = require("../../Core/Errors")
 local Need = require("./Need")

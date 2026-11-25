@@ -1,5 +1,7 @@
 --!strict
--- Writing a range of a channel frame by frame, exactly at its ends, and reducing it again; ranges, blends and the clip read once, shared by the operations that work frame by frame.
+-- Writing a range of a channel frame by frame, exactly at its ends, and reducing it again;
+-- ranges, blends and the clip read once, shared by the operations that work frame by
+-- frame.
 
 local Errors = require("../../Core/Errors")
 local Need = require("./Need")

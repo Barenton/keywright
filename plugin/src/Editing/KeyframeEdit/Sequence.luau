@@ -1,5 +1,6 @@
 --!strict
--- Keyframe clips as stored: the limits and names used throughout, and finding a clip's keyframes and poses.
+-- Keyframe clips as stored: the limits and names used throughout, and finding a clip's
+-- keyframes and poses.
 
 local Rig = require("../../Rigs/Rig")
 local Roblox = require("../../Core/Roblox")

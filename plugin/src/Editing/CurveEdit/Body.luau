@@ -1,5 +1,6 @@
 --!strict
--- The rig's body as the operations need it: whether it can be measured, the floor, the parts measured against it, and the mirror image of a side.
+-- The rig's body as the operations need it: whether it can be measured, the floor, the
+-- parts measured against it, and the mirror image of a side.
 
 local Need = require("./Need")
 local Pose = require("../../Rigs/Pose")
