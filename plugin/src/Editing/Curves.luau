@@ -3038,6 +3038,12 @@ end
 -- goes below it is in the ground. A foot that rests on it for a few frames is planted,
 -- and should not slide while it is.
 
+-- A foot touches the floor when its lowest point is within this share of the floor
+-- limit of it; and moving faster than this across the floor while it touches, in studs a
+-- second, it scuffs.
+local TOUCH = 0.4
+local SCUFF_SPEED = 1.5
+
 local function contacts(
 	clip: Instance,
 	joints: { [string]: any },
@@ -3110,22 +3116,92 @@ local function contacts(
 		end
 	end
 
-	-- A foot is planted while its lowest point is within the floor limit of the floor, for
-	-- three frames or more. In a looping clip a foot that moves back steadily while
-	-- planted is a cycle made on the spot, as a walk or run usually is, and is left alone.
+	-- A foot touches the floor while its lowest point is within a share of the floor limit
+	-- of it (TOUCH): one passing a little above it, as a swing does, is not on it. While
+	-- it touches, it should not move across the floor: a foot that moves fast while it
+	-- touches is scuffing, as a swinging foot that drags or a planted one that skates; one
+	-- that creeps for three frames or more is sliding. In a looping clip a foot that moves
+	-- back steadily while it touches is a cycle made on the spot, as a walk or run usually
+	-- is, and is neither.
+	local touch = TOUCH * thresholds.floor_studs
 	for _, foot in { "LeftFoot", "RightFoot" } do
 		local list = feet[foot]
+		-- How fast the middle of the foot moves across the floor at each frame.
+		local speeds: { number } = {}
+		for step = 1, #list do
+			local before = list[math.max(step - 1, 1)].position
+			local after = list[math.min(step + 1, #list)].position
+			local apart = math.min(step + 1, #list) - math.max(step - 1, 1)
+			speeds[step] = if apart > 0
+				then math.sqrt((after[1] - before[1]) ^ 2 + (after[3] - before[3]) ^ 2) * rate / apart
+				else 0
+		end
+		-- Touching: no further above the floor than the touch, and no deeper into it than
+		-- the floor limit; deeper is reported as below the floor instead.
+		local function touching(step: number): boolean
+			local height = list[step].lowest - floor
+			return height <= touch and height >= -thresholds.floor_studs
+		end
 		local index = 1
 		while index <= #list do
-			if math.abs(list[index].lowest - floor) > thresholds.floor_studs then
+			if not touching(index) then
 				index += 1
 				continue
 			end
 			local finish = index
-			while finish + 1 <= #list and math.abs(list[finish + 1].lowest - floor) <= thresholds.floor_studs do
+			while finish + 1 <= #list and touching(finish + 1) do
 				finish += 1
 			end
-			if finish - index >= 2 then
+			-- Each frame's step across the floor, at each point of the sole.
+			local steps: { { number } } = {}
+			for step = index + 1, finish do
+				local each = {}
+				for point = 1, 3 do
+					local here, there = list[step].sole[point], list[step - 1].sole[point]
+					each[point] = math.sqrt((here[1] - there[1]) ^ 2 + (here[2] - there[2]) ^ 2)
+				end
+				table.insert(steps, each)
+			end
+			-- Steady: at every frame some point of the sole moves back by about the same
+			-- step, as the heel does while the foot rolls onto it and the toe while it
+			-- rolls off.
+			local steady = false
+			if (clip :: any).Loop == true and #steps > 0 then
+				local mean = 0
+				for _, each in steps do
+					mean += each[3] / #steps
+				end
+				steady = mean * rate > 0.5
+				for _, each in steps do
+					local close = false
+					for point = 1, 3 do
+						close = close or math.abs(each[point] - mean) <= 0.35 * mean
+					end
+					steady = steady and close
+				end
+			end
+			local speed, nearest = 0, math.huge
+			for step = index, finish do
+				speed += speeds[step] / (finish - index + 1)
+				nearest = math.min(nearest, list[step].lowest - floor)
+			end
+			local from, to = (index - 1) / rate, (finish - 1) / rate
+			if not steady and speed > SCUFF_SPEED then
+				report({
+					code = "FOOT_SCUFF",
+					severity = "warning",
+					message = `"{foot}" touches the floor from {milliseconds(from)} to {milliseconds(to)} seconds while moving {rounded(
+						speed,
+						2
+					)} studs a second across it, coming within {rounded(nearest, 3)} studs of it: a swinging foot that drags, or a planted one that skates. Lift a swing with clear_floor; plant a foot with pin.`,
+					joints = { foot },
+					time_from = milliseconds(from),
+					time_to = milliseconds(to),
+					measured = rounded(speed, 2),
+					threshold = SCUFF_SPEED,
+					unit = "studs per second",
+				})
+			elseif not steady and finish - index >= 2 then
 				-- How far it slides: as far as the point of its sole that moves least, so a
 				-- foot rolling over its toe or heel, which stays put, is not sliding.
 				local drift = math.huge
@@ -3138,36 +3214,7 @@ local function contacts(
 					end
 					drift = math.min(drift, furthest)
 				end
-				-- Each frame's step across the floor, at each point of the sole.
-				local steps: { { number } } = {}
-				for step = index + 1, finish do
-					local each = {}
-					for point = 1, 3 do
-						local here, there = list[step].sole[point], list[step - 1].sole[point]
-						each[point] = math.sqrt((here[1] - there[1]) ^ 2 + (here[2] - there[2]) ^ 2)
-					end
-					table.insert(steps, each)
-				end
-				-- Steady: at every frame some point of the sole moves back by about the same
-				-- step, as the heel does while the foot rolls onto it and the toe while it
-				-- rolls off.
-				local steady = false
-				if (clip :: any).Loop == true and #steps > 0 then
-					local mean = 0
-					for _, each in steps do
-						mean += each[3] / #steps
-					end
-					steady = mean * rate > 0.5
-					for _, each in steps do
-						local close = false
-						for point = 1, 3 do
-							close = close or math.abs(each[point] - mean) <= 0.35 * mean
-						end
-						steady = steady and close
-					end
-				end
-				if drift > thresholds.slide_studs and not steady then
-					local from, to = (index - 1) / rate, (finish - 1) / rate
+				if drift > thresholds.slide_studs then
 					report({
 						code = "FOOT_SLIDE",
 						severity = "warning",

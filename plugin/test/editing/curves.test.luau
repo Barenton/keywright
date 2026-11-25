@@ -1785,6 +1785,35 @@ case("contact with the floor is checked in a curve clip", function()
 		{ type = "set_key", joint = "LowerTorso", time = 1, position = { 0, 0, 1.5 }, interpolation = "Linear" },
 		{ type = "set_properties", loop = true },
 	})
+	-- A leg swinging through: with the hips where they are the foot brushes the floor as
+	-- it passes under; raised a little, it passes over it.
+	local function swing(raised: number): any
+		local clip = blank()
+		realRun(clip, {
+			{ type = "set_key", joint = "LowerTorso", time = 0, position = { 0, raised, 0 } },
+			{ type = "set_key", joint = "LowerTorso", time = 0.4, position = { 0, raised, 0 } },
+			{ type = "set_key", joint = "LeftUpperLeg", time = 0, rotation = { -40, 0, 0 }, interpolation = "Linear" },
+			{ type = "set_key", joint = "LeftUpperLeg", time = 0.4, rotation = { 40, 0, 0 }, interpolation = "Linear" },
+			-- The foot kept level, so only its sole comes near the floor.
+			{ type = "set_key", joint = "LeftFoot", time = 0, rotation = { 40, 0, 0 }, interpolation = "Linear" },
+			{ type = "set_key", joint = "LeftFoot", time = 0.4, rotation = { -40, 0, 0 }, interpolation = "Linear" },
+		})
+		return clip
+	end
+	local function codes(found: any, foot: string): { [string]: number }
+		local seen = {}
+		for _, issue in found.issues do
+			if issue.joints and issue.joints[1] == foot then
+				seen[issue.code] = (seen[issue.code] or 0) + 1
+			end
+		end
+		return seen
+	end
+	local brushed = codes(validate(swing(0)), "LeftFoot")
+	check("a swinging foot that touches the floor scuffs", brushed.FOOT_SCUFF == 1, brushed.FOOT_SCUFF)
+	check("and is not called a slide", brushed.FOOT_SLIDE == nil, brushed.FOOT_SLIDE)
+	local passed = codes(validate(swing(0.06)), "LeftFoot")
+	check("one passing just over the floor is neither", passed.FOOT_SCUFF == nil and passed.FOOT_SLIDE == nil)
 	local onTheSpot = validate(cycle)
 	-- A foot on a moving floor that lands on its heel and pushes off its toe, in a loop.
 	local stepping = blank()
