@@ -330,7 +330,7 @@ const operations = [
 			.min(1)
 			.max(15)
 			.optional()
-			.describe("The parts that rest on the floor. Default: every part but the lower legs. Parts are measured as boxes, so for a body lying down, name the torso: the head's box is deeper than the torso and would hold the back off the floor."),
+			.describe("The parts that rest on the floor. Default: every part but the lower legs. Parts are measured as boxes of their size with rounded corners, so for a body lying down, name the torso: the head's box is deeper than the torso and would hold the back off the floor."),
 		blend_in: z.number().finite().min(0).max(2).optional().describe("Seconds before time_from over which the move eases in. Default 0."),
 		blend_out: z.number().finite().min(0).max(2).optional().describe("Seconds after time_to over which it eases out. Default 0."),
 	}),
@@ -582,7 +582,7 @@ export function createAdapter(options: AdapterOptions): McpServer {
 		"validate_animation",
 		{
 			description:
-				"Check a working copy. Errors mean the clip is not structurally sound and cannot be saved: a pose for a joint the rig lacks, two keyframes at one time, two poses for one joint in a keyframe, numbers that are not finite or out of range. Warnings are measurements to look at and never stop a save: a looping clip whose last keyframe does not match its first, a joint moving faster than a limit between two keyframes, a joint driven through forces, content that is kept but not understood. In a curve clip, contact with the floor is also measured at every frame, the floor being the rig's lowest point at rest: a part below it (BELOW_FLOOR; parts are measured as boxes, so the lower legs, whose boxes dip below the floor in a crouch while the shins do not, are left out), and a foot on it for three frames or more that slides along it (FOOT_SLIDE; not reported in a looping clip when the foot moves back steadily, as in a cycle made on the spot). Each finding has a code, the joints and times, the measured value and the limit. At most 50 are listed, with counts of all of them. These are measurements, not a judgement of how the motion looks.",
+				"Check a working copy. Errors mean the clip is not structurally sound and cannot be saved: a pose for a joint the rig lacks, two keyframes at one time, two poses for one joint in a keyframe, numbers that are not finite or out of range. Warnings are measurements to look at and never stop a save: a looping clip whose last keyframe does not match its first, a joint moving faster than a limit between two keyframes, a joint driven through forces, content that is kept but not understood. In a curve clip, contact with the floor is also measured at every frame, the floor being the rig's lowest point at rest: a part below it (BELOW_FLOOR; parts are measured as boxes of their size with the corners rounded, as an R15 part's mesh is, and the lower legs, whose boxes reach down beside the ankle in a crouch, are left out), and a foot on it for three frames or more that slides along it (FOOT_SLIDE; not reported in a looping clip when the foot moves back steadily, as in a cycle made on the spot). Each finding has a code, the joints and times, the measured value and the limit. At most 50 are listed, with counts of all of them. These are measurements, not a judgement of how the motion looks.",
 			inputSchema: {
 				studio_session: studioSession,
 				clip_id: clipId,
@@ -688,7 +688,7 @@ export function createAdapter(options: AdapterOptions): McpServer {
 					.max(15)
 					.optional()
 					.describe(
-						"Parts whose place in the rig to report as numbers, for example LeftFoot and RightFoot. Each gets position (x toward the rig's right, y up, z toward its back; forward is negative z), in studs from the root part, and lowest, the height of its lowest point. With times, each frame after the first also has velocity (studs per second along x, y, z since the frame before) and speed, and the result has ranges: for each part, the least, greatest and difference of x, y, z and lowest over the frames. A foot that is planted keeps the same lowest; in a cycle made on the spot it moves steadily backward while planted.",
+						"Parts whose place in the rig to report as numbers, for example LeftFoot and RightFoot. Each gets position (x toward the rig's right, y up, z toward its back; forward is negative z), in studs from the root part, and lowest, the height of its lowest point, measured as validate_animation does: a box of the part's size with its corners rounded. With times, each frame after the first also has velocity (studs per second along x, y, z since the frame before) and speed, and the result has ranges: for each part, the least, greatest and difference of x, y, z and lowest over the frames. A foot that is planted keeps the same lowest; in a cycle made on the spot it moves steadily backward while planted.",
 					),
 				check_placement: z
 					.boolean()

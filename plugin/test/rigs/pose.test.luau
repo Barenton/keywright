@@ -322,6 +322,19 @@ case("parts are tracked as numbers, with the height of their lowest point", func
 		swung.LeftFoot.lowest
 	)
 
+	-- Tipped an eighth of a turn forward: a box would reach down to its corner, but the
+	-- part's corners are rounded by 0.4 of its smallest side, so it reaches less far.
+	local tipped = rest()
+	tipped.Head = CFrame.Angles(math.rad(45), 0, 0)
+	local head = Pose.track(scan, tipped, CFrame.new(), { "Head" }).Head
+	local size = scan.joints.Head.part1.Size
+	local round = 0.4 * math.min(size.X, size.Y, size.Z)
+	local diagonal = math.sqrt(0.5)
+	local wanted = head.position[2] - ((size.Y / 2 - round) * diagonal + (size.Z / 2 - round) * diagonal + round)
+	check("a tilted part's corner is rounded", near(head.lowest, wanted), `{head.lowest} against {wanted}`)
+	local boxCorner = head.position[2] - (size.Y / 2 * diagonal + size.Z / 2 * diagonal)
+	check("so it reaches less low than a box would", head.lowest > boxCorner + 0.05)
+
 	local ranges = Pose.ranges({ at, swung })
 	check(
 		"the range of each coordinate",

@@ -1194,13 +1194,22 @@ local function lowestAt(clip: any, time: number, parts: { string }?): number
 	local placed = placedAt(clip, time)
 	local lowest = math.huge
 	for _, name in parts or MEASURED do
+		-- The lowest point of a box whose corners are rounded by 0.4 of its smallest side:
+		-- the lowest of the rounding's centres, less the rounding.
 		local cframe, size = placed[name], REAL[name].part1.Size
-		local drop = (
-			math.abs(cframe.RightVector.Y) * size.X
-			+ math.abs(cframe.UpVector.Y) * size.Y
-			+ math.abs(cframe.LookVector.Y) * size.Z
-		) / 2
-		lowest = math.min(lowest, cframe.Position.Y - drop)
+		local round = 0.4 * math.min(size.X, size.Y, size.Z)
+		local inner = size / 2 - roblox.Vector3.new(round, round, round)
+		local deepest = math.huge
+		for _, sx in { -1, 1 } do
+			for _, sy in { -1, 1 } do
+				for _, sz in { -1, 1 } do
+					local corner =
+						cframe:PointToWorldSpace(roblox.Vector3.new(sx * inner.X, sy * inner.Y, sz * inner.Z))
+					deepest = math.min(deepest, corner.Y - round)
+				end
+			end
+		end
+		lowest = math.min(lowest, deepest)
 	end
 	return lowest
 end

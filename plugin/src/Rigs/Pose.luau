@@ -117,11 +117,17 @@ function Pose.turns(scan: Rig.Scan, identity: CFrame): { [string]: { string } }
 	return turns
 end
 
+-- How rounded a part's corners are taken to be, as a share of its smallest side. An R15
+-- part's mesh is rounded at the corners where its box is not, so a tilted box dips a corner
+-- below the floor that the part itself does not reach (seen in Studio with the shins,
+-- 2026-11-25). A part lying square to the floor measures the same either way.
+Pose.ROUNDING = 0.4
+
 export type Tracked = {
 	-- The middle of the part: x toward the rig's right, y up, z toward its back, in studs
 	-- from the root part.
 	position: { number },
-	-- The height of the part's lowest point: what touches the ground first.
+	-- The height of the part's lowest point, corners rounded: what touches the ground first.
 	lowest: number,
 }
 
@@ -145,12 +151,14 @@ function Pose.track(
 			continue
 		end
 		local size = joint.part1.Size
-		-- How far the box reaches below its middle, whichever way it is turned.
-		local drop = (
-			math.abs(cframe.RightVector.Y) * size.X
-			+ math.abs(cframe.UpVector.Y) * size.Y
-			+ math.abs(cframe.LookVector.Y) * size.Z
-		) / 2
+		-- How far the part reaches below its middle, whichever way it is turned, measured
+		-- as a box with rounded corners (see Pose.ROUNDING): the box shrunk by the rounding
+		-- on every side, then that much again downward.
+		local round = Pose.ROUNDING * math.min(size.X, size.Y, size.Z)
+		local drop = math.abs(cframe.RightVector.Y) * (size.X / 2 - round)
+			+ math.abs(cframe.UpVector.Y) * (size.Y / 2 - round)
+			+ math.abs(cframe.LookVector.Y) * (size.Z / 2 - round)
+			+ round
 		local position = cframe.Position
 		tracked[name] = {
 			position = { thousandths(position.X), thousandths(position.Y), thousandths(position.Z) },
