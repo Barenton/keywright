@@ -45,6 +45,8 @@ describe("MCP adapter over stdio", () => {
 					});
 				}
 				revision += 1;
+				// Studio writes an empty table as an empty list, as for counts that found nothing.
+				if (input.validate === true) return { revision: `r${revision}`, changed: { poses: 1 }, validation: { valid: true, counts: [], issues: [] } };
 				return { revision: `r${revision}`, changed: { poses: 1 } };
 			}
 			if (method === "open_animation" && input.rig_id === "rig_leaky") {
@@ -158,6 +160,21 @@ describe("MCP adapter over stdio", () => {
 		assert.deepEqual(published, applied);
 		// Which way each easing direction goes is spelt out where a client will read it.
 		assert.match(JSON.stringify(edit?.inputSchema), /In starts slowly and ends fast; Out starts fast and ends slowly/);
+	});
+
+	test("an edit checked in the same call gives its counts as an object", async () => {
+		const result = await mcp.callTool({
+			name: "edit_animation",
+			arguments: {
+				studio_session: SESSION,
+				clip_id: "clip_1",
+				expected_revision: `r${revision}`,
+				validate: true,
+				operations: [{ type: "set_key", joint: "Head", time: 0, rotation: [0, 0, 0] }],
+			},
+		});
+		const payload = JSON.parse((result.content as Array<{ text: string }>)[0]?.text ?? "{}") as { validation?: { counts?: unknown } };
+		assert.deepEqual(payload.validation?.counts, {});
 	});
 
 	test("edit_animation refuses an operation it does not publish, before Studio hears of it", async () => {

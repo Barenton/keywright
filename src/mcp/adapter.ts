@@ -347,10 +347,12 @@ function ok(method: string, params: unknown, result: unknown): CallToolResult {
 	if (method === IMAGE_METHOD && shaped !== null && typeof shaped === "object" && Array.isArray(shaped.joints) && shaped.joints.length === 0) {
 		shaped.joints = {};
 	}
-	// The same for the counts of a validation that found nothing.
-	const counted = drawn.payload as { counts?: unknown } | null;
-	if (method === "validate_animation" && counted !== null && typeof counted === "object" && Array.isArray(counted.counts) && counted.counts.length === 0) {
-		counted.counts = {};
+	// The same for the counts of a validation that found nothing, whether it was asked for
+	// on its own or with an edit.
+	const payload = drawn.payload as { counts?: unknown; validation?: { counts?: unknown } } | null;
+	const validation = method === "validate_animation" ? payload : method === "edit_animation" ? payload?.validation : undefined;
+	if (validation !== null && typeof validation === "object" && Array.isArray(validation.counts) && validation.counts.length === 0) {
+		validation.counts = {};
 	}
 	const content: CallToolResult["content"] = [{ type: "text", text: JSON.stringify(drawn.payload) }];
 	for (const image of [drawn.image, screened.image]) {
