@@ -26,7 +26,9 @@
 -- the plugin and a stand-in in the offline tests.
 
 local Errors = require("../Core/Errors")
+local Limb = require("../Rigs/Limb")
 local Operations = require("./Operations")
+local Pose = require("../Rigs/Pose")
 local Rig = require("../Rigs/Rig")
 local Roblox = require("../Core/Roblox")
 local Smooth = require("./Smooth")
@@ -44,6 +46,9 @@ Curves.MAX_SNAPS = 16
 Curves.MAX_JOINTS = 32
 Curves.MAX_NAME = 100
 Curves.MAX_MARKER_VALUE = 200
+-- The longest a pin may take to blend in or out, in seconds.
+Curves.MAX_BLEND = 2
+Curves.HOLDS = { "full", "position" }
 Curves.MAX_LISTED = 500
 Curves.DEFAULT_KEYS = 400
 Curves.MAX_PAGE = 20000
@@ -344,6 +349,15 @@ local function isFinite(value: any): boolean
 	return type(value) == "number" and value == value and math.abs(value) ~= math.huge
 end
 
+local function milliseconds(time: number): number
+	return math.round(time * 1000) / 1000
+end
+
+local function rounded(value: number, places: number): number
+	local scale = 10 ^ places
+	return math.round(value * scale) / scale
+end
+
 local function refuse(where: string, message: string, hint: string?): never
 	return Errors.throw("INVALID_ARGUMENT", `{where}: {message}`, hint)
 end
@@ -487,6 +501,30 @@ local checks: { [string]: Check } = {
 		needText(where, operation.name, "name", Curves.MAX_NAME)
 	end,
 	restore_source = function() end,
+	pin = function(where, operation, joints)
+		local chain = if type(operation.part) == "string" then Limb.CHAINS[operation.part] else nil
+		if not chain then
+			refuse(where, "part must be LeftFoot, RightFoot, LeftHand or RightHand.")
+		end
+		for _, name in chain :: { string } do
+			needJoint(where, name, joints)
+		end
+		needRange(where, operation)
+		if operation.at ~= nil then
+			needTime(where, operation.at, "at")
+		end
+		needVector(where, operation.position, "position", Curves.MAX_POSITION)
+		needVector(where, operation.pole, "pole", Curves.MAX_POSITION)
+		if operation.hold ~= nil then
+			needOneOf(where, operation.hold, "hold", Curves.HOLDS)
+		end
+		for _, field in { "blend_in", "blend_out" } do
+			local value = operation[field]
+			if value ~= nil and (not isFinite(value) or value < 0 or value > Curves.MAX_BLEND) then
+				refuse(where, `{field} must be from 0 to {Curves.MAX_BLEND} seconds.`)
+			end
+		end
+	end,
 }
 
 function Curves.types(): { string }
@@ -609,6 +647,70 @@ local function smoothChannel(curve: Instance, from: number, to: number, snapTime
 	end
 	Curves.setKeys(curve, keys)
 	return written
+end
+
+-- Every rotation has two sets of Euler angles that give it, and each angle can be taken a
+-- whole turn either way. The set nearest the angles a curve is at already is the one it
+-- should run to, or it would swing the long way round.
+local function nearestAngles(x: number, y: number, z: number, previous: { number }): { number }
+	local function placed(angles: { number }): ({ number }, number)
+		local out, distance = {}, 0
+		for index = 1, 3 do
+			local angle, before = angles[index], previous[index]
+			angle = before + ((angle - before + math.pi) % (2 * math.pi)) - math.pi
+			out[index] = angle
+			distance += math.abs(angle - before)
+		end
+		return out, distance
+	end
+	local first, firstDistance = placed({ x, y, z })
+	local second, secondDistance = placed({ x + math.pi, math.pi - y, z + math.pi })
+	return if secondDistance < firstDistance then second else first
+end
+
+-- The keys of every channel of a clip, read once, by joint and then by channel.
+type Channels = { [string]: { [string]: { Key } } }
+
+local function readChannels(clip: Instance): Channels
+	local channels: Channels = {}
+	for _, track in Curves.tracks(clip) do
+		channels[track.joint] = channels[track.joint] or {}
+		channels[track.joint][track.channel] = Curves.keys(track.curve)
+	end
+	return channels
+end
+
+-- The transform of every joint of the rig at a time, as the channels give it.
+local function transformsAt(channels: Channels, time: number): { [string]: CFrame }
+	local transforms: { [string]: CFrame } = {}
+	for _, joint in Rig.R15_ORDER do
+		local values = {}
+		local own = channels[joint]
+		for index, channel in Curves.CHANNELS do
+			local keys = own and own[channel]
+			values[index] = if keys then Curves.evaluate(keys, time) else 0
+		end
+		transforms[joint] = Roblox.CFrame.new(values[1], values[2], values[3])
+			* Roblox.CFrame.fromEulerAnglesXYZ(values[4], values[5], values[6])
+	end
+	return transforms
+end
+
+-- Whether the joints given are the rig's own, with its parts, and not only their names.
+local function hasGeometry(joints: { [string]: any }, names: { string }): boolean
+	for _, name in names do
+		local joint = joints[name]
+		if type(joint) ~= "table" or joint.part1 == nil or joint.instance == nil then
+			return false
+		end
+	end
+	return true
+end
+
+-- Rounds a smooth step from 0 to 1 as `t` goes from 0 to 1.
+local function smoothstep(t: number): number
+	t = math.clamp(t, 0, 1)
+	return t * t * (3 - 2 * t)
 end
 
 local function markerCurve(clip: Instance, name: string, create: boolean): Instance?
@@ -780,6 +882,154 @@ local appliers: { [string]: Apply } = {
 		count(changed, "markers_removed", #markers - #kept)
 	end,
 
+	pin = function(where, clip, operation, context, changed)
+		local chain = Limb.CHAINS[operation.part]
+		local joints = context.joints
+		if not hasGeometry(joints, chain) then
+			refuse(where, "this rig's limb could not be measured, so nothing can be pinned on it.")
+		end
+		local duration = Curves.duration(clip)
+		if operation.time_to > duration + Curves.TIME_TOLERANCE then
+			refuse(
+				where,
+				`the clip ends at {milliseconds(duration)} seconds, before time_to.`,
+				"Key the clip out to its full length first."
+			)
+		end
+		local from, to = operation.time_from, operation.time_to
+		local first = math.max(0, from - (operation.blend_in or 0))
+		local last = math.min(duration, to + (operation.blend_out or 0))
+		local rate = Curves.FRAME_RATE
+		local firstFrame = math.ceil(first * rate - 1e-6)
+		local lastFrame = math.floor(last * rate + 1e-6)
+		if lastFrame < firstFrame then
+			refuse(where, "the range holds no whole frame; Studio shows a curve clip only at whole frames.")
+		end
+
+		-- Everything is worked out from the clip as it is, before anything is written.
+		local channels = readChannels(clip)
+		local scan = { joints = joints } :: any
+		local identity = Roblox.CFrame.new()
+		local limb = { joints[chain[1]], joints[chain[2]], joints[chain[3]] }
+		local reference = Pose.place(scan, transformsAt(channels, operation.at or from), identity)
+		local tip = reference[chain[3]]
+		if operation.position then
+			local p = operation.position
+			tip = Roblox.CFrame.new(p[1], p[2], p[3]) * (tip - tip.Position)
+		end
+		local full = (operation.hold or "full") == "full"
+		local pivot = Limb.pivotOf(limb[3], tip)
+		local pole = if operation.pole
+			then Roblox.Vector3.new(operation.pole[1], operation.pole[2], operation.pole[3])
+			else nil
+
+		local frames: { { time: number, transforms: { CFrame } } } = {}
+		local missed, worst = 0, 0
+		for frame = firstFrame, lastFrame do
+			local time = frame / rate
+			local transforms = transformsAt(channels, time)
+			local placed = Pose.place(scan, transforms, identity)
+			local current = { transforms[chain[1]], transforms[chain[2]], transforms[chain[3]] }
+			local solution = Limb.solve({
+				parent = placed[Rig.R15_PARENTS[chain[1]]],
+				joints = limb,
+				current = current,
+				pivot = pivot,
+				tip = if full then tip else nil,
+				bend = Limb.BEND[operation.part],
+				pole = pole,
+			})
+			local weight = 1
+			if time < from - Curves.TIME_TOLERANCE then
+				weight = smoothstep((time - first) / math.max(from - first, 1e-6))
+			elseif time > to + Curves.TIME_TOLERANCE then
+				weight = smoothstep((last - time) / math.max(last - to, 1e-6))
+			end
+			local result = {}
+			for index = 1, 3 do
+				result[index] = current[index]:Lerp(solution.transforms[index], weight)
+			end
+			if weight >= 1 and solution.miss > 0.001 then
+				missed += 1
+				worst = math.max(worst, solution.miss)
+			end
+			table.insert(frames, { time = time, transforms = result })
+		end
+
+		-- The three joints' rotation keys in the range are replaced by one key a frame.
+		local startTime, endTime = firstFrame / rate, lastFrame / rate
+		for index, joint in chain do
+			local own = channels[joint] or {}
+			local before: { number } = {}
+			for axis, letter in { "x", "y", "z" } do
+				local keys = own[`rotation.{letter}`]
+				before[axis] = if keys then Curves.evaluate(keys, startTime) else 0
+			end
+			local angles: { { number } } = {}
+			local previous = before
+			for _, entry in frames do
+				local x, y, z = entry.transforms[index]:ToEulerAnglesXYZ()
+				previous = nearestAngles(x, y, z, previous)
+				table.insert(angles, previous)
+			end
+			for axis, letter in { "x", "y", "z" } do
+				local channel = `rotation.{letter}`
+				local original = own[channel] or {}
+				local kept: { Key } = {}
+				local earlier, later = false, false
+				for _, key in original do
+					if key.time < startTime - Curves.TIME_TOLERANCE then
+						earlier = true
+						table.insert(kept, table.clone(key))
+					elseif key.time > endTime + Curves.TIME_TOLERANCE then
+						later = true
+						table.insert(kept, table.clone(key))
+					end
+				end
+				-- Where the channel had no key on one side of the range, the motion there
+				-- is held with a key a frame away, so that it stays as it was.
+				local guards: { number } = {}
+				if not earlier and firstFrame > 0 then
+					table.insert(guards, (firstFrame - 1) / rate)
+				end
+				if not later and lastFrame / rate < duration - Curves.TIME_TOLERANCE then
+					table.insert(guards, (lastFrame + 1) / rate)
+				end
+				for _, time in guards do
+					table.insert(kept, {
+						time = time,
+						value = Curves.evaluate(original, time),
+						interpolation = "Cubic",
+						left = 0,
+						right = 0,
+					})
+				end
+				for frame, entry in frames do
+					table.insert(kept, {
+						time = entry.time,
+						value = angles[frame][axis],
+						interpolation = "Cubic",
+						left = 0,
+						right = 0,
+					})
+				end
+				if #kept > Curves.MAX_KEYS then
+					Errors.throw("LIMIT_EXCEEDED", `A curve holds at most {Curves.MAX_KEYS} keys.`)
+				end
+				local curve = Curves.channel(clip, joint, channel, true) :: Instance
+				Curves.setKeys(curve, kept)
+				local spanFrom = if #guards > 0 then math.min(startTime, guards[1]) else startTime
+				smoothChannel(curve, spanFrom, math.max(endTime, guards[#guards] or endTime), {}, false)
+				count(changed, "keys_written", #frames + #guards)
+			end
+		end
+		count(changed, "frames_pinned", #frames)
+		if missed > 0 then
+			count(changed, "frames_out_of_reach", missed)
+			changed.largest_miss_studs = math.max(changed.largest_miss_studs or 0, rounded(worst, 3))
+		end
+	end,
+
 	restore_source = function(_where, clip, _operation, context, changed)
 		for _, child in clip:GetChildren() do
 			child.Parent = nil
@@ -836,22 +1086,8 @@ function Curves.fromKeyframes(
 				local values = { position.X, position.Y, position.Z, x, y, z }
 				local before = samples[#samples]
 				if before then
-					-- Every rotation has two sets of angles that give it, and each angle can
-					-- be taken a whole turn either way. The set nearest the key before is
-					-- the one the curve should run to, or it would swing the long way round.
-					local function nearest(angles: { number }): ({ number }, number)
-						local placed, distance = {}, 0
-						for index = 1, 3 do
-							local angle, previous = angles[index], before.values[index + 3]
-							angle = previous + ((angle - previous + math.pi) % (2 * math.pi)) - math.pi
-							placed[index] = angle
-							distance += math.abs(angle - previous)
-						end
-						return placed, distance
-					end
-					local first, firstDistance = nearest({ x, y, z })
-					local second, secondDistance = nearest({ x + math.pi, math.pi - y, z + math.pi })
-					local chosen = if secondDistance < firstDistance then second else first
+					-- The angles nearest the key before, so the curve takes the short way.
+					local chosen = nearestAngles(x, y, z, { before.values[4], before.values[5], before.values[6] })
 					values[4], values[5], values[6] = chosen[1], chosen[2], chosen[3]
 				end
 				table.insert(samples, { time = keyframe.Time, values = values })
@@ -899,15 +1135,6 @@ end
 
 -- ---------------------------------------------------------------------------------------
 -- Reading
-
-local function milliseconds(time: number): number
-	return math.round(time * 1000) / 1000
-end
-
-local function rounded(value: number, places: number): number
-	local scale = 10 ^ places
-	return math.round(value * scale) / scale
-end
 
 export type ReadOptions = {
 	joints: { string }?,
@@ -1060,6 +1287,148 @@ local function turn(a: CFrame, b: CFrame): number
 	return math.deg(2 * math.asin(math.min(1, math.sqrt(squares / 8))))
 end
 
+-- Contact with the ground, measured as Studio shows the clip: at every whole frame. The
+-- floor is where the rig's lowest point is in its rest pose, which for a character is
+-- the soles of its feet. A part that goes below it is in the ground. A foot that rests on
+-- it for a few frames is planted, and should not slide while it is.
+--
+-- Parts are measured as boxes of their size. A lower leg's box reaches down beside the
+-- ankle, so in a deep crouch, with the shin tilted forward, the box's back corner dips
+-- below the floor while the shin itself, which is slimmer there, stays above it (seen in
+-- Studio, 2026-11-25). The lower legs are left out of the check for that reason.
+local NOT_FLOORED = { LeftLowerLeg = true, RightLowerLeg = true }
+
+local function contacts(
+	clip: Instance,
+	joints: { [string]: any },
+	thresholds: { [string]: number },
+	report: (issue: any) -> ()
+)
+	if not hasGeometry(joints, Rig.R15_ORDER) then
+		return
+	end
+	local duration = Curves.duration(clip)
+	local rate = Curves.FRAME_RATE
+	local scan = { joints = joints } :: any
+	local identity = Roblox.CFrame.new()
+	local rest: { [string]: CFrame } = {}
+	for _, name in Rig.R15_ORDER do
+		rest[name] = identity
+	end
+	local floor = math.huge
+	for _, part in Pose.track(scan, rest, identity, Rig.R15_ORDER) do
+		floor = math.min(floor, part.lowest)
+	end
+	local channels = readChannels(clip)
+	local frames = math.floor(duration * rate + 1e-6)
+	type Below = { deepest: number, at: number, first: number, last: number }
+	local below: { [string]: Below } = {}
+	local feet: { [string]: { Pose.Tracked } } = { LeftFoot = {}, RightFoot = {} }
+	for frame = 0, frames do
+		local time = frame / rate
+		local tracked = Pose.track(scan, transformsAt(channels, time), identity, Rig.R15_ORDER)
+		for name, part in tracked do
+			local depth = floor - part.lowest
+			if depth > thresholds.floor_studs and not NOT_FLOORED[name] then
+				local entry = below[name]
+				if not entry then
+					below[name] = { deepest = depth, at = time, first = time, last = time }
+				else
+					entry.last = time
+					if depth > entry.deepest then
+						entry.deepest, entry.at = depth, time
+					end
+				end
+			end
+		end
+		for foot, list in feet do
+			list[frame + 1] = tracked[foot]
+		end
+	end
+	for _, name in Rig.R15_ORDER do
+		local entry = below[name]
+		if entry then
+			report({
+				code = "BELOW_FLOOR",
+				severity = "warning",
+				message = `"{name}" goes {rounded(entry.deepest, 3)} studs into the floor around {milliseconds(
+					entry.at
+				)} seconds, between {milliseconds(entry.first)} and {milliseconds(entry.last)} seconds. The floor is the rig's lowest point at rest, {rounded(
+					-floor,
+					3
+				)} studs below the root part.`,
+				joints = { name },
+				time = milliseconds(entry.at),
+				time_from = milliseconds(entry.first),
+				time_to = milliseconds(entry.last),
+				measured = rounded(entry.deepest, 3),
+				threshold = thresholds.floor_studs,
+				unit = "studs",
+			})
+		end
+	end
+
+	-- A foot is planted while its lowest point is within the floor limit of the floor, for
+	-- three frames or more. In a looping clip a foot that moves back steadily while
+	-- planted is a cycle made on the spot, as a walk or run usually is, and is left alone.
+	for _, foot in { "LeftFoot", "RightFoot" } do
+		local list = feet[foot]
+		local index = 1
+		while index <= #list do
+			if math.abs(list[index].lowest - floor) > thresholds.floor_studs then
+				index += 1
+				continue
+			end
+			local finish = index
+			while finish + 1 <= #list and math.abs(list[finish + 1].lowest - floor) <= thresholds.floor_studs do
+				finish += 1
+			end
+			if finish - index >= 2 then
+				local start = list[index].position
+				local drift = 0
+				local steps: { number } = {}
+				for step = index, finish do
+					local here = list[step].position
+					drift = math.max(drift, math.sqrt((here[1] - start[1]) ^ 2 + (here[3] - start[3]) ^ 2))
+					if step > index then
+						local there = list[step - 1].position
+						table.insert(steps, math.sqrt((here[1] - there[1]) ^ 2 + (here[3] - there[3]) ^ 2))
+					end
+				end
+				local steady = false
+				if (clip :: any).Loop == true and #steps > 0 then
+					local mean = 0
+					for _, length in steps do
+						mean += length / #steps
+					end
+					steady = mean * rate > 0.5
+					for _, length in steps do
+						steady = steady and math.abs(length - mean) <= 0.35 * mean
+					end
+				end
+				if drift > thresholds.slide_studs and not steady then
+					local from, to = (index - 1) / rate, (finish - 1) / rate
+					report({
+						code = "FOOT_SLIDE",
+						severity = "warning",
+						message = `"{foot}" is on the floor from {milliseconds(from)} to {milliseconds(to)} seconds but slides {rounded(
+							drift,
+							3
+						)} studs along it. Pin it with the pin operation to keep it in place.`,
+						joints = { foot },
+						time_from = milliseconds(from),
+						time_to = milliseconds(to),
+						measured = rounded(drift, 3),
+						threshold = thresholds.slide_studs,
+						unit = "studs",
+					})
+				end
+			end
+			index = finish + 1
+		end
+	end
+end
+
 -- Findings for a curve clip, in the same form as Validate's. `report` takes each one.
 function Curves.validate(
 	clip: Instance,
@@ -1208,6 +1577,8 @@ function Curves.validate(
 			end
 		end
 	end
+
+	contacts(clip, joints, thresholds, report)
 end
 
 return Curves

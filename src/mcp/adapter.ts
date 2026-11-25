@@ -191,6 +191,27 @@ const operations = [
 		loop: z.boolean().optional().describe("Carry speed across from the last key to the first. Default: true when the clip loops and the range is the whole clip."),
 	}),
 	z.object({
+		type: z
+			.literal("pin")
+			.describe(
+				"Curve clips only. Hold a foot or hand in place over a time range, or put it somewhere and hold it there, by turning the limb's three joints at every frame: a planted foot stays put while the hips move, a hand stays on a wall while the body leans. The knee or elbow bends the way it bends and keeps pointing as it was animated unless pole is given. The hips and everything else are left as they are. The limb's rotation keys in the range are replaced by one key a frame, with smooth tangents; outside the range the clip is unchanged. The result counts frames_pinned and, if the hips went too far for the limb to reach, frames_out_of_reach and largest_miss_studs. For a landing, hold the pose the foot settles in (at the end of the range), not the one it touches down in, or it is held where it first touched, often still in the air. End the range, and any blend_out, where the foot leaves the floor: easing out while it is still down lets it slide.",
+			),
+		part: z.enum(["LeftFoot", "RightFoot", "LeftHand", "RightHand"]).describe("The end of the limb to hold."),
+		time_from: time("Start of the range in seconds."),
+		time_to: time("End of the range in seconds. Must not be past the end of the clip."),
+		at: time("The time whose pose is held: the part stays where it is then. Default time_from.").optional(),
+		position: vec3
+			.optional()
+			.describe("Where the part's middle is to be instead, in studs from the root part: x toward the rig's right, y up, z toward its back."),
+		hold: z
+			.enum(["full", "position"])
+			.optional()
+			.describe("full (default) holds the part's position and rotation, as a foot flat on the ground. position holds only where the ankle or wrist is, and the foot or hand keeps its own animated turn."),
+		pole: vec3.optional().describe("A point the knee or elbow is to point toward, in the same space as position."),
+		blend_in: z.number().finite().min(0).max(2).optional().describe("Seconds before time_from over which the limb eases from its own motion into the hold. Default 0."),
+		blend_out: z.number().finite().min(0).max(2).optional().describe("Seconds after time_to over which it eases back out. Default 0."),
+	}),
+	z.object({
 		type: z.literal("restore_source").describe("Reset the working copy to the clip it was opened from."),
 	}),
 ] as const;
@@ -417,7 +438,7 @@ export function createAdapter(options: AdapterOptions): McpServer {
 		"edit_animation",
 		{
 			description:
-				"Apply a batch of operations to a working copy atomically. A keyframe clip takes poses, easing, keyframes, retiming and smoothing; a curve clip takes keys, tangents and auto_tangents. Both take markers, the clip's settings and restore_source; each operation's description says which clips it is for. The operations apply in the order given, each to the clip as the ones before it leave it. The whole batch is tried first; if any operation cannot be done, nothing changes and the error names it by its place in the list. Requires the current revision. One Studio undo reverts the whole batch. Only what an operation names is changed.",
+				"Apply a batch of operations to a working copy atomically. A keyframe clip takes poses, easing, keyframes, retiming and smoothing; a curve clip takes keys, tangents, auto_tangents and pin. Both take markers, the clip's settings and restore_source; each operation's description says which clips it is for. The operations apply in the order given, each to the clip as the ones before it leave it. The whole batch is tried first; if any operation cannot be done, nothing changes and the error names it by its place in the list. Requires the current revision. One Studio undo reverts the whole batch. Only what an operation names is changed.",
 			inputSchema: {
 				studio_session: studioSession,
 				clip_id: clipId,
@@ -432,7 +453,7 @@ export function createAdapter(options: AdapterOptions): McpServer {
 		"validate_animation",
 		{
 			description:
-				"Check a working copy. Errors mean the clip is not structurally sound and cannot be saved: a pose for a joint the rig lacks, two keyframes at one time, two poses for one joint in a keyframe, numbers that are not finite or out of range. Warnings are measurements to look at and never stop a save: a looping clip whose last keyframe does not match its first, a joint moving faster than a limit between two keyframes, a joint driven through forces, content that is kept but not understood. Each finding has a code, the joints and times, the measured value and the limit. At most 50 are listed, with counts of all of them. These are measurements, not a judgement of how the motion looks.",
+				"Check a working copy. Errors mean the clip is not structurally sound and cannot be saved: a pose for a joint the rig lacks, two keyframes at one time, two poses for one joint in a keyframe, numbers that are not finite or out of range. Warnings are measurements to look at and never stop a save: a looping clip whose last keyframe does not match its first, a joint moving faster than a limit between two keyframes, a joint driven through forces, content that is kept but not understood. In a curve clip, contact with the floor is also measured at every frame, the floor being the rig's lowest point at rest: a part below it (BELOW_FLOOR; parts are measured as boxes, so the lower legs, whose boxes dip below the floor in a crouch while the shins do not, are left out), and a foot on it for three frames or more that slides along it (FOOT_SLIDE; not reported in a looping clip when the foot moves back steadily, as in a cycle made on the spot). Each finding has a code, the joints and times, the measured value and the limit. At most 50 are listed, with counts of all of them. These are measurements, not a judgement of how the motion looks.",
 			inputSchema: {
 				studio_session: studioSession,
 				clip_id: clipId,
@@ -442,6 +463,8 @@ export function createAdapter(options: AdapterOptions): McpServer {
 						loop_position_studs: z.number().positive().optional().describe("The same for position. Default 0.02."),
 						speed_degrees_per_second: z.number().positive().optional().describe("How fast a joint may turn between two keyframes. Default 2000."),
 						speed_studs_per_second: z.number().positive().optional().describe("How fast a joint may move between two keyframes. Default 40."),
+						floor_studs: z.number().positive().optional().describe("Curve clips: how far a part may go below the floor, and how close to it a foot counts as planted. Default 0.1."),
+						slide_studs: z.number().positive().optional().describe("Curve clips: how far a planted foot may slide. Default 0.1."),
 					})
 					.strict()
 					.optional()

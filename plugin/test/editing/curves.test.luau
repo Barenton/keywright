@@ -13,9 +13,12 @@ local serde = require("@lune/serde")
 local Roblox = require("../../src/Core/Roblox") :: any
 Roblox.Instance = roblox.Instance
 Roblox.CFrame = roblox.CFrame
+Roblox.Vector3 = roblox.Vector3
 Roblox.Enum = roblox.Enum
 
+local BlockRig = require("../rigs/blockrig")
 local Curves = require("../../src/Editing/Curves")
+local Pose = require("../../src/Rigs/Pose")
 local Digest = require("../../src/Inspection/Digest")
 local Operations = require("../../src/Editing/Operations")
 local Reading = require("../../src/Inspection/Reading")
@@ -443,6 +446,217 @@ case("a working copy converted from a keyframe clip is restored by converting ag
 	run(clip, { { type = "restore_source" } }, sequence)
 	check("back to the conversion", Digest.of(clip) == converted)
 	check("with no keyframes inside it", #clip:GetChildren() > 0 and clip:FindFirstChildOfClass("Keyframe") == nil)
+end)
+
+-- ---------------------------------------------------------------------------------------
+-- Pinning and contact, on a rig with real geometry
+
+local REAL = Rig.scan(BlockRig.build()).joints
+
+local function realRun(clip: any, operations: { any }): { [string]: number }
+	Curves.check(operations, REAL)
+	return Curves.run(clip, operations, { joints = REAL })
+end
+
+-- Where every part is at a time, as the clip's curves give it.
+local function placedAt(clip: any, time: number): { [string]: any }
+	local transforms = {}
+	for _, joint in Rig.R15_ORDER do
+		local values = {}
+		for index, channel in Curves.CHANNELS do
+			local curve = Curves.channel(clip, joint, channel, false)
+			values[index] = if curve then Curves.evaluate(Curves.keys(curve), time) else 0
+		end
+		transforms[joint] = roblox.CFrame.new(values[1], values[2], values[3])
+			* roblox.CFrame.fromEulerAnglesXYZ(values[4], values[5], values[6])
+	end
+	return Pose.place({ joints = REAL } :: any, transforms, roblox.CFrame.new())
+end
+
+local function turnBetween(a: any, b: any): number
+	local squares = (a.RightVector - b.RightVector).Magnitude ^ 2
+		+ (a.UpVector - b.UpVector).Magnitude ^ 2
+		+ (a.LookVector - b.LookVector).Magnitude ^ 2
+	return math.deg(2 * math.asin(math.min(1, math.sqrt(squares / 8))))
+end
+
+-- Hips that drop and come back up over a second, with nothing else keyed.
+local function squat(depth: number, sideways: number?): any
+	local clip = blank()
+	realRun(clip, {
+		{ type = "set_key", joint = "LowerTorso", time = 0, position = { 0, 0, 0 } },
+		{ type = "set_key", joint = "LowerTorso", time = 0.5, position = { sideways or 0, -depth, 0 } },
+		{ type = "set_key", joint = "LowerTorso", time = 1, position = { 0, 0, 0 } },
+		{ type = "auto_tangents", time_from = 0, time_to = 1 },
+	})
+	return clip
+end
+
+case("a pinned foot stays where it was while the hips drop", function()
+	local clip = squat(0.8)
+	local start = placedAt(clip, 0).LeftFoot
+	check(
+		"before pinning, the foot drops with the hips",
+		placedAt(clip, 0.5).LeftFoot.Position.Y < start.Position.Y - 0.7
+	)
+	local changed = realRun(clip, { { type = "pin", part = "LeftFoot", time_from = 0, time_to = 1 } })
+	check("every frame is pinned", changed.frames_pinned == 31, changed.frames_pinned)
+	check("nothing was out of reach", changed.frames_out_of_reach == nil, changed.largest_miss_studs)
+	local studs, degrees = 0, 0
+	for frame = 0, 30 do
+		local foot = placedAt(clip, frame / 30).LeftFoot
+		studs = math.max(studs, (foot.Position - start.Position).Magnitude)
+		degrees = math.max(degrees, turnBetween(foot, start))
+	end
+	check("the foot stays within a thousandth of a stud", studs < 0.001, studs)
+	check("and does not turn", degrees < 0.05, degrees)
+	local knee = Curves.keys(assert(Curves.channel(clip, "LeftLowerLeg", "rotation.x", false)))
+	check("the knee is keyed on every frame", #knee == 31, #knee)
+	local onFrames = true
+	for _, key in knee do
+		onFrames = onFrames and math.abs(key.time * 30 - math.round(key.time * 30)) < 1e-6
+	end
+	check("on whole frames", onFrames)
+	check("the knee bends forward at the bottom", knee[16].value < -0.3, knee[16].value)
+	check("the other foot is not touched", Curves.folder(clip, "RightUpperLeg", false) == nil)
+	check("and still drops", placedAt(clip, 0.5).RightFoot.Position.Y < start.Position.Y - 0.7)
+end)
+
+case("a foot that cannot stay is reached for, and the result says by how much it fell short", function()
+	local clip = squat(-1)
+	local changed = realRun(clip, { { type = "pin", part = "RightFoot", time_from = 0, time_to = 1 } })
+	check("some frames were out of reach", (changed.frames_out_of_reach or 0) > 0, changed.frames_out_of_reach)
+	check("with the worst shortfall", (changed.largest_miss_studs or 0) > 0.5, changed.largest_miss_studs)
+end)
+
+case("a pin over part of a clip leaves the rest of it as it was", function()
+	local clip = squat(0.8)
+	local outside = { 0.1, 0.2, 0.8, 0.9 }
+	local before = {}
+	for _, time in outside do
+		before[time] = placedAt(clip, time).LeftFoot
+	end
+	local pinnedAt = placedAt(clip, 0.4).LeftFoot
+	realRun(clip, { { type = "pin", part = "LeftFoot", time_from = 0.4, time_to = 0.6 } })
+	for _, time in outside do
+		local moved = (placedAt(clip, time).LeftFoot.Position - before[time].Position).Magnitude
+		check(`the foot at {time} seconds is where it was`, moved < 1e-4, moved)
+	end
+	local held = 0
+	for frame = 12, 18 do
+		held = math.max(held, (placedAt(clip, frame / 30).LeftFoot.Position - pinnedAt.Position).Magnitude)
+	end
+	check("and held inside the range", held < 0.001, held)
+end)
+
+case("a pin blends in and out over the time asked", function()
+	local clip = squat(0.8)
+	local free = {}
+	for frame = 0, 30 do
+		free[frame] = placedAt(clip, frame / 30).LeftFoot
+	end
+	realRun(clip, {
+		-- Held where it stands at the start, which the bent leg can reach.
+		{ type = "pin", part = "LeftFoot", time_from = 0.4, time_to = 0.6, at = 0, blend_in = 0.2, blend_out = 0.2 },
+	})
+	local pinned = free[0]
+	local function along(frame: number): number
+		-- How far from its free path toward the pinned point the foot is, from 0 to 1.
+		local gap = (free[frame].Position - pinned.Position).Magnitude
+		if gap < 1e-6 then
+			return 1
+		end
+		return 1 - (placedAt(clip, frame / 30).LeftFoot.Position - pinned.Position).Magnitude / gap
+	end
+	check("at the start of the blend the foot is free", along(6) < 0.01, along(6))
+	check("halfway in, it is partway", along(9) > 0.2 and along(9) < 0.8, along(9))
+	check("in the range, it is pinned", along(15) > 0.999, along(15))
+	check("halfway out, it is partway", along(21) > 0.2 and along(21) < 0.8, along(21))
+	check("at the end of the blend it is free again", along(24) < 0.01, along(24))
+end)
+
+case("a pin can put a hand somewhere new", function()
+	local clip = squat(0.4)
+	local target = { 0.6, 0.4, -1.4 }
+	realRun(clip, {
+		{ type = "pin", part = "RightHand", time_from = 0, time_to = 1, position = target },
+	})
+	local worst = 0
+	for frame = 0, 30 do
+		local hand = placedAt(clip, frame / 30).RightHand.Position
+		worst = math.max(worst, (hand - roblox.Vector3.new(target[1], target[2], target[3])).Magnitude)
+	end
+	check("the hand is held there through the squat", worst < 0.001, worst)
+end)
+
+case("pins that cannot be done are refused", function()
+	local clip = squat(0.5)
+	local function refusedReal(operation: any): any
+		local ok, problem = pcall(realRun, clip, { operation })
+		return if ok then nil else problem
+	end
+	check("an unknown limb", refusedReal({ type = "pin", part = "Head", time_from = 0, time_to = 1 }) ~= nil)
+	local late = refusedReal({ type = "pin", part = "LeftFoot", time_from = 0, time_to = 2 })
+	check("past the end of the clip", late and string.find(late.message, "ends at", 1, true), late and late.message)
+	check(
+		"an unknown hold",
+		refusedReal({ type = "pin", part = "LeftFoot", time_from = 0, time_to = 1, hold = "loose" }) ~= nil
+	)
+	check(
+		"too long a blend",
+		refusedReal({ type = "pin", part = "LeftFoot", time_from = 0, time_to = 1, blend_in = 5 }) ~= nil
+	)
+	local blind = refusal(clip, { { type = "pin", part = "LeftFoot", time_from = 0, time_to = 1 } })
+	check(
+		"a rig known only by its joint names",
+		blind and string.find(blind.message, "could not be measured", 1, true),
+		blind and blind.message
+	)
+end)
+
+case("contact with the floor is checked in a curve clip", function()
+	local function validate(clip: any): any
+		return Validate.run(clip, { joints = REAL }, assert(Validate.thresholds({})))
+	end
+	local standing = squat(0)
+	local still = validate(standing)
+	check("a rig standing still touches nothing wrong", still.warnings == 0, still.warnings)
+
+	local sunk = validate(squat(0.8))
+	check(
+		"hips dropping on straight legs sink the feet; the lower legs are not measured",
+		sunk.counts.BELOW_FLOOR == 2,
+		sunk.counts.BELOW_FLOOR
+	)
+	local deepest
+	for _, issue in sunk.issues do
+		if issue.joints[1] == "LeftFoot" then
+			deepest = issue
+		end
+	end
+	check("by how much", deepest and math.abs(deepest.measured - 0.8) < 0.02, deepest and deepest.measured)
+	check("and when", deepest and math.abs(deepest.time - 0.5) < 0.04, deepest and deepest.time)
+
+	local sliding = squat(0, 0.6)
+	local slid = validate(sliding)
+	check("feet on the floor that move with the hips slide", slid.counts.FOOT_SLIDE == 2, slid.counts.FOOT_SLIDE)
+	realRun(sliding, { { type = "pin", part = "LeftFoot", time_from = 0, time_to = 1 } })
+	local after = validate(sliding)
+	check("a pinned foot does not", after.counts.FOOT_SLIDE == 1, after.counts.FOOT_SLIDE)
+	check("the other still does", after.issues[1] and after.issues[1].joints[1] == "RightFoot")
+
+	local cycle = blank()
+	realRun(cycle, {
+		{ type = "set_key", joint = "LowerTorso", time = 0, position = { 0, 0, 0 }, interpolation = "Linear" },
+		{ type = "set_key", joint = "LowerTorso", time = 1, position = { 0, 0, 1.5 }, interpolation = "Linear" },
+		{ type = "set_properties", loop = true },
+	})
+	local onTheSpot = validate(cycle)
+	check(
+		"in a loop, feet moving back steadily are a cycle made on the spot",
+		onTheSpot.counts.FOOT_SLIDE == nil,
+		onTheSpot.counts.FOOT_SLIDE
+	)
 end)
 
 print(`{count - failures}/{count} curve checks passed`)

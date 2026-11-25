@@ -18,12 +18,15 @@ local Validate = {}
 Validate.MAX_ISSUES = 50
 
 -- Limits a caller may override. A loop is held to how far its last keyframe is from its
--- first; an abrupt change is a joint moving faster than this between two keyframes.
+-- first; an abrupt change is a joint moving faster than this between two keyframes. In a
+-- curve clip a part may go this far below the floor, and a planted foot slide this far.
 Validate.DEFAULTS = {
 	loop_rotation_degrees = 2,
 	loop_position_studs = 0.02,
 	speed_degrees_per_second = 2000,
 	speed_studs_per_second = 40,
+	floor_studs = 0.1,
+	slide_studs = 0.1,
 }
 
 export type Context = {

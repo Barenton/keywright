@@ -8,6 +8,7 @@
 local Roblox = {
 	Instance = Instance,
 	CFrame = CFrame,
+	Vector3 = Vector3,
 	Enum = Enum,
 	-- The place's Workspace: a rig must be somewhere under it.
 	Workspace = workspace :: Instance,
