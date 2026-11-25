@@ -765,6 +765,66 @@ case("a pin with travel holds the foot on a floor that moves steadily", function
 	)
 end)
 
+case("a pin with fit_hips lowers the hips just enough to reach, keeping other limbs still", function()
+	-- A foot put far forward on the floor: a lunge, out of reach with the hips where they are.
+	local function lunge(): any
+		local clip = blank()
+		realRun(clip, {
+			{ type = "set_key", joint = "LowerTorso", time = 0, position = { 0, 0, 0 } },
+			{ type = "set_key", joint = "LowerTorso", time = 1, position = { 0, 0, 0 } },
+		})
+		return clip
+	end
+	local far = { -0.5, -2.85, -1.3 }
+	local stiff = realRun(lunge(), { { type = "pin", part = "LeftFoot", time_from = 0, time_to = 1, position = far } })
+	check("without it, the foot cannot reach", (stiff.frames_out_of_reach or 0) > 0, stiff.frames_out_of_reach)
+
+	local clip = lunge()
+	local rightBefore = placedAt(clip, 0.5).RightFoot
+	local changed = realRun(clip, {
+		{
+			type = "pin",
+			part = "LeftFoot",
+			time_from = 0,
+			time_to = 1,
+			position = far,
+			fit_hips = true,
+			keep = { "RightFoot" },
+		},
+	})
+	check("with it, every frame is reached", changed.frames_out_of_reach == nil, changed.largest_miss_studs)
+	check("the hips were lowered", (changed.largest_hip_drop_studs or 0) > 0.1, changed.largest_hip_drop_studs)
+	local placed = placedAt(clip, 0.5)
+	local miss = (placed.LeftFoot.Position - roblox.Vector3.new(far[1], far[2], far[3])).Magnitude
+	check("the foot is where it was put", miss < 0.001, miss)
+	check(
+		"the hips went straight down",
+		math.abs(placed.LowerTorso.Position.X) < 1e-6 and math.abs(placed.LowerTorso.Position.Z) < 1e-6
+	)
+	local kept = (placed.RightFoot.Position - rightBefore.Position).Magnitude
+	check("the other foot kept where it was", kept < 0.001, kept)
+	check("and its turn", turnBetween(placed.RightFoot, rightBefore) < 0.05)
+
+	-- Only as far as needed: the leg is then exactly at full reach.
+	local upper = placed.LowerTorso:PointToWorldSpace(roblox.Vector3.new(-0.5, -0.2, 0))
+	local ankle = placed.LeftFoot:PointToWorldSpace(roblox.Vector3.new(0, 0.15, 0.25))
+	local stretched = placedAt(lunge(), 0)
+	local fullest = (
+		stretched.LowerTorso:PointToWorldSpace(roblox.Vector3.new(-0.5, -0.2, 0))
+		- stretched.LeftFoot:PointToWorldSpace(roblox.Vector3.new(0, 0.15, 0.25))
+	).Magnitude
+	check(
+		"no lower than needed",
+		(upper - ankle).Magnitude > fullest - 0.06,
+		`{(upper - ankle).Magnitude} against {fullest}`
+	)
+	check(
+		"keep is for fit_hips",
+		refusal(clip, { { type = "pin", part = "LeftFoot", time_from = 0, time_to = 1, keep = { "RightFoot" } } })
+			~= nil
+	)
+end)
+
 case("pins that cannot be done are refused", function()
 	local clip = squat(0.5)
 	local function refusedReal(operation: any): any

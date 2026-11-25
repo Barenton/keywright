@@ -284,6 +284,15 @@ const operations = [
 		travel: vec3
 			.optional()
 			.describe("Studs a second the held point moves, in the same space as position, starting from where it is at `at`: a foot planted on a floor that moves, as in a walk or run cycle made on the spot, where the planted foot moves back steadily under the body. For a cycle facing forward, a positive z (toward the back). The point moves on through blend_in and blend_out as well, so a foot eased in lands already moving with the floor, and one eased out leaves with it. A toe or heel pivot moves with it."),
+		fit_hips: z
+			.boolean()
+			.optional()
+			.describe("Where the held point is beyond the limb's reach (less soft), lower the hips straight down by just enough for it to be reached, at that frame only: a crouch to pick something up, a lunge, a long stride. The result counts frames_hips_lowered with largest_hip_drop_studs. Not with relative_to."),
+		keep: z
+			.array(z.enum(["LeftFoot", "RightFoot", "LeftHand", "RightHand"]))
+			.max(3)
+			.optional()
+			.describe("With fit_hips: the other hands or feet to keep exactly where they were while the hips move, as the other foot planted on the floor."),
 		soft: z
 			.number()
 			.min(0)

@@ -101,6 +101,29 @@ export type Request = {
 	soft: number?,
 }
 
+-- How far the end joint of a limb can be from its upper joint: with the middle joint as
+-- straight as it goes. `current` is the limb's three transforms, whose positions are kept.
+function Limb.fullest(joints: { Rig.Joint }, current: { CFrame }): number
+	local CFrame = Roblox.CFrame
+	local _, c1u = Rig.rest(joints[1])
+	local c0m, c1m = Rig.rest(joints[2])
+	local c0t = Rig.rest(joints[3])
+	local toMiddle = c1u:Inverse() * c0m * CFrame.new(current[2].Position)
+	local toEnd = c1m:Inverse() * c0t * CFrame.new(current[3].Position)
+	local u = toMiddle:Inverse().Position
+	local n = toEnd.Position
+	local p = u.Y * n.Y + u.Z * n.Z
+	local q = u.Z * n.Y - u.Y * n.Z
+	local size = math.sqrt(p * p + q * q)
+	return math.sqrt(math.max(0, n:Dot(n) + u:Dot(u) - 2 * u.X * n.X + 2 * size))
+end
+
+-- Where a limb's upper joint (the hip or shoulder) is, on its parent part placed at `parent`.
+function Limb.upperOf(parent: CFrame, joint: Rig.Joint, current: CFrame): Vector3
+	local c0 = Rig.rest(joint)
+	return (parent * c0 * Roblox.CFrame.new(current.Position)).Position
+end
+
 function Limb.solve(request: Request): Solution
 	local CFrame = Roblox.CFrame
 	local c0u, c1u = Rig.rest(request.joints[1])
@@ -126,9 +149,7 @@ function Limb.solve(request: Request): Solution
 	local p = u.Y * n.Y + u.Z * n.Z
 	local q = u.Z * n.Y - u.Y * n.Z
 	local size = math.sqrt(p * p + q * q)
-	-- The furthest the end joint can be from the upper one: with the middle joint as
-	-- straight as it goes.
-	local fullest = math.sqrt(math.max(0, n:Dot(n) + u:Dot(u) - 2 * u.X * n.X + 2 * size))
+	local fullest = Limb.fullest(request.joints, current)
 	local beyond = distance > fullest + 1e-6
 	local soft = request.soft or 0
 	if soft > 0 and distance > 1e-6 then

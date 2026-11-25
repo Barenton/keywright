@@ -719,6 +719,28 @@ local checks: { [string]: Check } = {
 			end
 		end
 		needVector(where, operation.travel, "travel", 100)
+		if operation.fit_hips ~= nil and type(operation.fit_hips) ~= "boolean" then
+			refuse(where, "fit_hips must be true or false.")
+		end
+		if operation.fit_hips and operation.relative_to ~= nil then
+			refuse(where, "fit_hips moves the hips, which a part held relative_to would move with.")
+		end
+		if operation.keep ~= nil then
+			if not operation.fit_hips then
+				refuse(where, "keep is for fit_hips: the limbs held still while the hips move.")
+			end
+			if type(operation.keep) ~= "table" then
+				refuse(where, "keep must list hands or feet.")
+			end
+			for _, name in operation.keep do
+				if type(name) ~= "string" or not Limb.CHAINS[name] or name == operation.part then
+					refuse(where, "keep must list other hands or feet: LeftFoot, RightFoot, LeftHand, RightHand.")
+				end
+				for _, joint in Limb.CHAINS[name] do
+					needJoint(where, joint, joints)
+				end
+			end
+		end
 		if operation.roll ~= nil then
 			if operation.pivot ~= "toe" and operation.pivot ~= "heel" then
 				refuse(where, "roll is for a toe or heel pivot.")
@@ -1827,6 +1849,23 @@ local appliers: { [string]: Apply } = {
 			then Roblox.Vector3.new(operation.pole[1], operation.pole[2], operation.pole[3])
 			else nil
 
+		-- For fit_hips: which way is up for the hips' position, the hips' drop at each
+		-- frame, and the limbs to keep where they are.
+		local rootC0 = Rig.rest(joints.LowerTorso)
+		local hipsUp = rootC0:VectorToObjectSpace(Roblox.Vector3.new(0, 1, 0))
+		local drops: { number } = {}
+		local hipsDropped, deepest = 0, 0
+		local keepChains: { { part: string, chain: { string }, limb: { any }, turns: { [string]: { CFrame } } } } = {}
+		for _, name in operation.keep or {} do
+			local other = Limb.CHAINS[name]
+			table.insert(keepChains, {
+				part = name,
+				chain = other,
+				limb = { joints[other[1]], joints[other[2]], joints[other[3]] },
+				turns = { [other[1]] = {}, [other[2]] = {}, [other[3]] = {} },
+			})
+		end
+
 		local frames: { { time: number, transforms: { CFrame } } } = {}
 		local missed, worst, softened = 0, 0, 0
 		local missedFrom, missedTo = math.huge, -math.huge
@@ -1868,6 +1907,51 @@ local appliers: { [string]: Apply } = {
 			if weight < 1 then
 				tip = free:Lerp(tip, weight)
 			end
+			-- Where the point is beyond the limb's reach, the hips go straight down by
+			-- just enough for it to be reached; the limbs named in keep are turned to stay
+			-- where they were.
+			local drop = 0
+			if operation.fit_hips and weight > 0 then
+				local upper = Limb.upperOf(placed[Rig.R15_PARENTS[chain[1]]], limb[1], current[1])
+				local reach = Limb.fullest(limb, current) * (1 - (operation.soft or 0)) - 1e-4
+				local away = upper - Limb.pivotOf(limb[3], tip)
+				if away.Magnitude > reach then
+					local room = away.Y * away.Y - away:Dot(away) + reach * reach
+					drop = math.max(0, if room >= 0 then away.Y - math.sqrt(room) else away.Y)
+				end
+				if drop > 0 then
+					local before = placed
+					transforms = table.clone(transforms)
+					transforms.LowerTorso = Roblox.CFrame.new(hipsUp * -drop) * transforms.LowerTorso
+					placed = Pose.place(scan, transforms, identity)
+					current = { transforms[chain[1]], transforms[chain[2]], transforms[chain[3]] }
+					for _, other in keepChains do
+						local held = Limb.solve({
+							parent = placed[Rig.R15_PARENTS[other.chain[1]]],
+							joints = other.limb,
+							current = {
+								transforms[other.chain[1]],
+								transforms[other.chain[2]],
+								transforms[other.chain[3]],
+							},
+							pivot = Limb.pivotOf(other.limb[3], before[other.chain[3]]),
+							tip = before[other.chain[3]],
+							bend = Limb.BEND[other.part],
+						})
+						for index, joint in other.chain do
+							transforms[joint] = held.transforms[index]
+						end
+					end
+					hipsDropped += 1
+					deepest = math.max(deepest, drop)
+				end
+			end
+			drops[frame - firstFrame + 1] = drop
+			for _, other in keepChains do
+				for _, joint in other.chain do
+					other.turns[joint][frame - firstFrame + 1] = transforms[joint]
+				end
+			end
 			local solution = if weight <= 0
 				then { transforms = current, miss = 0, beyond = false }
 				else Limb.solve({
@@ -1901,6 +1985,45 @@ local appliers: { [string]: Apply } = {
 				turns[frame] = entry.transforms[index]
 			end
 			writeTurns(clip, joint, channels[joint] or {}, firstFrame, lastFrame, turns, duration, changed, false)
+		end
+		if hipsDropped > 0 then
+			-- The hips' position, lowered where it had to be, and the limbs kept still.
+			local own = channels.LowerTorso or {}
+			for axis, letter in { "x", "y", "z" } do
+				local share = ({ hipsUp.X, hipsUp.Y, hipsUp.Z })[axis]
+				if math.abs(share) < 1e-9 then
+					continue
+				end
+				local channel = `position.{letter}`
+				local original = own[channel] or {}
+				local values = {}
+				for index, drop in drops do
+					values[index] = Curves.evaluate(original, (firstFrame + index - 1) / rate) - drop * share
+				end
+				writeFrames(clip, "LowerTorso", channel, original, {
+					first = firstFrame,
+					last = lastFrame,
+					values = values,
+					duration = duration,
+				}, changed)
+			end
+			for _, other in keepChains do
+				for _, joint in other.chain do
+					writeTurns(
+						clip,
+						joint,
+						channels[joint] or {},
+						firstFrame,
+						lastFrame,
+						other.turns[joint],
+						duration,
+						changed,
+						false
+					)
+				end
+			end
+			count(changed, "frames_hips_lowered", hipsDropped)
+			changed.largest_hip_drop_studs = math.max(changed.largest_hip_drop_studs or 0, rounded(deepest, 3))
 		end
 		count(changed, "frames_pinned", #frames)
 		if softened > 0 then
