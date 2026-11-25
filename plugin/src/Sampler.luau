@@ -14,6 +14,7 @@
 --
 -- Exact seek and immediate read-back have only been spot-checked in Studio by hand.
 
+local Curves = require("./Curves")
 local Errors = require("./Errors")
 local Rig = require("./Rig")
 
@@ -53,6 +54,8 @@ export type Handle = {
 Sampler.LOAD_BUDGET = 5
 -- Seconds after the only keyframe at which a clip without duration is padded.
 Sampler.PAD_SECONDS = 1
+-- The folder that pads a curve clip with no length. Named after no part of any rig.
+Sampler.PAD_NAME = "KeywrightPad"
 
 -- How the track is moved to a time. Phase 0 compares these in Studio.
 export type Strategy = "set_position" | "step_delta"
@@ -216,13 +219,32 @@ function Sampler.open(model: Model, joints: { [string]: Rig.Joint }, sequence: I
 		local animation = engine.newInstance("Animation")
 		table.insert(handle.owned, animation)
 		local played: any = sequence
-		if duration <= 0 and sequence:IsA("KeyframeSequence") then
+		if duration <= 0 then
 			-- A loaded track is recognised by its length, which this clip would never have.
+			-- A copy is played with something at a later time that moves nothing: an empty
+			-- keyframe, or for a clip made of curves, a curve that drives no joint.
 			played = sequence:Clone()
 			table.insert(handle.owned, played)
-			local pad = engine.newInstance("Keyframe")
-			pad.Time = Sampler.PAD_SECONDS
-			pad.Parent = played
+			if sequence:IsA("CurveAnimation") then
+				local folder = engine.newInstance("Folder")
+				folder.Name = Sampler.PAD_NAME
+				-- Laid out as a joint's rotation is, so that it counts toward the length.
+				local group = engine.newInstance("EulerRotationCurve")
+				group.Name = "Rotation"
+				group.Parent = folder
+				local curve = engine.newInstance("FloatCurve")
+				curve.Name = "X"
+				curve.Parent = group
+				Curves.setKeys(curve, {
+					{ time = 0, value = 0, interpolation = "Constant" },
+					{ time = Sampler.PAD_SECONDS, value = 0, interpolation = "Constant" },
+				})
+				folder.Parent = played
+			else
+				local pad = engine.newInstance("Keyframe")
+				pad.Time = Sampler.PAD_SECONDS
+				pad.Parent = played
+			end
 		end
 		animation.AnimationId = engine.registerClip(played)
 		local track = engine.loadTrack(handle.animator, animation)

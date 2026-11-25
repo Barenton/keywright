@@ -19,6 +19,7 @@ local roblox = require("@lune/roblox") :: any
 local task = require("@lune/task")
 
 local Capture = require("../src/Capture")
+local Curves = require("../src/Curves")
 local Preview = require("../src/Preview")
 local Sampler = require("../src/Sampler")
 
@@ -134,6 +135,9 @@ local function newWorld()
 				error("forced register failure")
 			end
 			local last = 0
+			if sequence:IsA("CurveAnimation") then
+				last = Curves.duration(sequence)
+			end
 			for _, child in sequence:GetChildren() do
 				if child:IsA("Keyframe") then
 					last = math.max(last, child.Time)
@@ -141,6 +145,7 @@ local function newWorld()
 			end
 			world.registered = sequence
 			world.registeredLength = last
+			world.registeredPadded = sequence:FindFirstChild(Sampler.PAD_NAME) ~= nil
 			return "rbxtemp://1"
 		end,
 		loadTrack = function(animator: any)
@@ -627,6 +632,49 @@ case("a clip that is still loading is sampled only once it has loaded", function
 	check("the sample is the clip's pose, not the rest pose", result.transforms.Head.X == 0.5, result.transforms.Head)
 	check("the preview waited for the clip", world.now >= 0.1, world.now)
 	checkUntouched(world, rig, before)
+end)
+
+case("a curve clip with no length is sampled through a copy padded by a curve that moves nothing", function()
+	-- Keys are kept in an attribute here, as in the curve tests; Studio keeps them itself.
+	local serde = require("@lune/serde")
+	local Roblox = require("../src/Roblox") :: any
+	Roblox.Instance, Roblox.CFrame, Roblox.Enum = roblox.Instance, roblox.CFrame, roblox.Enum
+	Curves.backend = {
+		keys = function(curve)
+			local text = curve:GetAttribute("Keys")
+			return if text then serde.decode("json", text) else {}
+		end,
+		setKeys = function(curve, keys)
+			curve:SetAttribute("Keys", serde.encode("json", keys))
+		end,
+		markers = function()
+			return {}
+		end,
+		setMarkers = function() end,
+	}
+	local world = newWorld()
+	local rig = buildRig(world)
+	local before = snapshot(rig.model)
+	for _, clip in { Instance.new("CurveAnimation"), Instance.new("CurveAnimation") } do
+		if #world.destroyed > 0 then
+			-- The second clip has keys, all at time zero.
+			Curves.setKeys(Curves.channel(clip, "Head", "rotation.y", true) :: any, {
+				{ time = 0, value = 0.5, interpolation = "Cubic", left = 0, right = 0 },
+			})
+		end
+		local result = Preview.run(request(rig, { sequence = clip, time = 0 }))
+		check("the sample is returned", result.transforms.Head ~= nil)
+		check("a copy was played, not the clip", world.registered ~= clip and world.registered ~= nil)
+		check("the copy had a length", world.registeredLength == Sampler.PAD_SECONDS, world.registeredLength)
+		check(
+			"padded by a folder named after no part",
+			world.registeredPadded and rig.model:FindFirstChild(Sampler.PAD_NAME, true) == nil
+		)
+		check("the clip itself was not changed", clip:FindFirstChild(Sampler.PAD_NAME) == nil)
+		check("the copy was destroyed", table.find(world.destroyed, world.registered) ~= nil)
+		checkUntouched(world, rig, before)
+	end
+	Curves.backend = nil
 end)
 
 case("a clip that never loads fails closed and cleans up", function()
