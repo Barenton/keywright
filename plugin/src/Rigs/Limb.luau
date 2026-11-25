@@ -43,6 +43,8 @@ export type Solution = {
 	transforms: { CFrame },
 	-- How far the end joint is from where it was wanted, in studs: 0 when it was reached.
 	miss: number,
+	-- Whether the point was beyond the limb's full reach, as against only softened.
+	beyond: boolean,
 }
 
 local function turnOf(cframe: CFrame): CFrame
@@ -93,6 +95,10 @@ export type Request = {
 	pole: Vector3?,
 	-- How much of the turn toward the pole to make, from 0 to 1. Default 1.
 	poleWeight: number?,
+	-- The last share of the limb's reach, from 0 to 0.5, over which a point is reached for
+	-- ever more slowly and never quite reached, so the limb never locks straight and its
+	-- middle joint does not snap through its last few degrees. Default 0: exact.
+	soft: number?,
 }
 
 function Limb.solve(request: Request): Solution
@@ -119,8 +125,22 @@ function Limb.solve(request: Request): Solution
 	local n = toEnd.Position
 	local p = u.Y * n.Y + u.Z * n.Z
 	local q = u.Z * n.Y - u.Y * n.Z
-	local c = (n:Dot(n) + u:Dot(u) - distance * distance) / 2 - u.X * n.X
 	local size = math.sqrt(p * p + q * q)
+	-- The furthest the end joint can be from the upper one: with the middle joint as
+	-- straight as it goes.
+	local fullest = math.sqrt(math.max(0, n:Dot(n) + u:Dot(u) - 2 * u.X * n.X + 2 * size))
+	local beyond = distance > fullest + 1e-6
+	local soft = request.soft or 0
+	if soft > 0 and distance > 1e-6 then
+		local start = (1 - soft) * fullest
+		if distance > start then
+			local room = fullest - start
+			local eased = start + room * (1 - math.exp(-(distance - start) / room))
+			wanted = wanted.Unit * eased
+			distance = eased
+		end
+	end
+	local c = (n:Dot(n) + u:Dot(u) - distance * distance) / 2 - u.X * n.X
 	local now = select(1, current[2]:ToEulerAnglesXYZ())
 	local angle = now
 	if size > 1e-9 then
@@ -171,6 +191,7 @@ function Limb.solve(request: Request): Solution
 			CFrame.new(current[3].Position) * tipTurn,
 		},
 		miss = (reached - request.pivot).Magnitude,
+		beyond = beyond,
 	}
 end
 

@@ -189,6 +189,42 @@ case("a pole sets which way the knee points", function()
 	end
 end)
 
+case("a soft reach never locks the limb straight, and says when it is beyond reach", function()
+	local pose = restPose()
+	local placed = Pose.place(scan, pose, identity)
+	local hip = (placed.LowerTorso * (Rig.rest(scan.joints.LeftUpperLeg))).Position
+	local chain = Limb.CHAINS.LeftFoot
+	local function knee(distance: number, soft: number?): (number, any)
+		local solution = Limb.solve({
+			parent = placed.LowerTorso,
+			joints = { scan.joints[chain[1]], scan.joints[chain[2]], scan.joints[chain[3]] },
+			current = { pose[chain[1]], pose[chain[2]], pose[chain[3]] },
+			pivot = hip + Vector3.new(0, -distance, 0),
+			bend = Limb.BEND.LeftFoot,
+			soft = soft,
+		})
+		return math.abs(math.deg(select(1, solution.transforms[2]:ToEulerAnglesXYZ()))), solution
+	end
+	-- How the knee angle changes over the last tenth of a stud before full reach, hard and soft.
+	local fullest = 0
+	for step = 0, 600 do
+		local distance = 1.6 + step * 0.002
+		local _, solution = knee(distance)
+		if not solution.beyond then
+			fullest = distance
+		end
+	end
+	local hardJump = knee(fullest - 0.01) - knee(fullest)
+	local softJump = knee(fullest - 0.01, 0.1) - knee(fullest, 0.1)
+	check("hard, the knee snaps through its last degrees", hardJump > 5, hardJump)
+	check("soft, it eases through them", softJump < hardJump / 3, `{softJump} against {hardJump}`)
+	local bent, solution = knee(fullest + 0.5, 0.1)
+	check("soft, even a point beyond reach leaves the knee bent", bent > 0.5, bent)
+	check("and the point is still known to be beyond reach", solution.beyond == true)
+	local _, near = knee(fullest - 0.05, 0.1)
+	check("a softened point within reach is short of it, but not beyond", not near.beyond and near.miss > 0)
+end)
+
 print(`{count - failures}/{count} limb checks passed`)
 if failures > 0 then
 	process.exit(1)

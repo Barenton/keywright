@@ -705,6 +705,27 @@ case("a range written to four decimals covers the frames it names", function()
 	check("a one-frame pin", changed.frames_pinned == 1, changed.frames_pinned)
 end)
 
+case("a soft pin does not lock the knee straight, and says how short it fell", function()
+	-- The hips drop from standing, where the leg is at full reach.
+	local function kneeSpeed(soft: number?): (number, any)
+		local clip = squat(0.4)
+		local changed = realRun(clip, { { type = "pin", part = "LeftFoot", time_from = 0, time_to = 1, soft = soft } })
+		local knee = keysOf(clip, "LeftLowerLeg", "rotation.x")
+		local fastest = 0
+		for frame = 1, 8 do
+			local a = Curves.evaluate(knee, (frame - 1) / 30)
+			local b = Curves.evaluate(knee, frame / 30)
+			fastest = math.max(fastest, math.abs(math.deg(b - a)))
+		end
+		return fastest, changed
+	end
+	local hard = kneeSpeed()
+	local soft, changed = kneeSpeed(0.1)
+	check("the knee moves less suddenly as the hips first drop", soft < hard * 0.8, `{soft} against {hard}`)
+	check("softened frames are not out of reach", changed.frames_out_of_reach == nil, changed.frames_out_of_reach)
+	check("the result says how short it fell", (changed.largest_soft_studs or 0) > 0, changed.largest_soft_studs)
+end)
+
 case("pins that cannot be done are refused", function()
 	local clip = squat(0.5)
 	local function refusedReal(operation: any): any

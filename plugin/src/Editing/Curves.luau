@@ -703,6 +703,10 @@ local checks: { [string]: Check } = {
 		end
 		needVector(where, operation.position, "position", Curves.MAX_POSITION)
 		needVector(where, operation.pole, "pole", Curves.MAX_POSITION)
+		local soft = operation.soft
+		if soft ~= nil and (not isFinite(soft) or soft < 0 or soft > 0.5) then
+			refuse(where, "soft must be from 0 to 0.5.")
+		end
 		if operation.on_floor ~= nil and type(operation.on_floor) ~= "boolean" then
 			refuse(where, "on_floor must be true or false.")
 		end
@@ -1756,7 +1760,7 @@ local appliers: { [string]: Apply } = {
 			else nil
 
 		local frames: { { time: number, transforms: { CFrame } } } = {}
-		local missed, worst = 0, 0
+		local missed, worst, softened = 0, 0, 0
 		local missedFrom, missedTo = math.huge, -math.huge
 		for frame = firstFrame, lastFrame do
 			local time = frame / rate
@@ -1779,7 +1783,7 @@ local appliers: { [string]: Apply } = {
 				tip = free:Lerp(tip, weight)
 			end
 			local solution = if weight <= 0
-				then { transforms = current, miss = 0 }
+				then { transforms = current, miss = 0, beyond = false }
 				else Limb.solve({
 					parent = placed[Rig.R15_PARENTS[chain[1]]],
 					joints = limb,
@@ -1789,9 +1793,13 @@ local appliers: { [string]: Apply } = {
 					bend = Limb.BEND[operation.part],
 					pole = if poleLocal then anchor * poleLocal else nil,
 					poleWeight = weight,
+					soft = operation.soft,
 				})
 			local result = solution.transforms
-			if weight >= 1 and solution.miss > 0.001 then
+			if weight >= 1 and not solution.beyond and solution.miss > 0.001 then
+				-- Short of the point only because the reach was softened.
+				softened = math.max(softened, solution.miss)
+			elseif weight >= 1 and solution.miss > 0.001 then
 				missed += 1
 				worst = math.max(worst, solution.miss)
 				missedFrom = math.min(missedFrom, time)
@@ -1809,6 +1817,9 @@ local appliers: { [string]: Apply } = {
 			writeTurns(clip, joint, channels[joint] or {}, firstFrame, lastFrame, turns, duration, changed, false)
 		end
 		count(changed, "frames_pinned", #frames)
+		if softened > 0 then
+			changed.largest_soft_studs = math.max(changed.largest_soft_studs or 0, rounded(softened, 3))
+		end
 		if missed > 0 then
 			count(changed, "frames_out_of_reach", missed)
 			changed.largest_miss_studs = math.max(changed.largest_miss_studs or 0, rounded(worst, 3))

@@ -268,6 +268,12 @@ const operations = [
 		position: vec3
 			.optional()
 			.describe("Where the part's middle is to be instead, in studs from the root part: x toward the rig's right, y up, z toward its back. With relative_to, in studs from that part's middle along its own directions instead."),
+		soft: z
+			.number()
+			.min(0)
+			.max(0.5)
+			.optional()
+			.describe("Soften the limb's reach over this last share of it, from 0 to 0.5: near full stretch the point is reached for ever more slowly and never quite reached, so the knee or elbow never locks straight or snaps through its last degrees, as hips rising off a planted foot. 0.02 to 0.05 suits a planted foot; 0.1 keeps the knee well bent. The result gives largest_soft_studs, how far short of the point that left the part; such frames are not out of reach. Default 0."),
 		on_floor: z
 			.boolean()
 			.optional()
