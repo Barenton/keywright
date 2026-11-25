@@ -142,10 +142,17 @@ describe("MCP adapter over stdio", () => {
 		const variants = (schema?.operations?.items?.oneOf ?? schema?.operations?.items?.anyOf ?? []) as Array<{ properties: { type: { const: string } } }>;
 		const published = variants.map((variant) => variant.properties.type.const).sort();
 		// The plugin's own list: the names its checks are keyed by.
-		const source = readFileSync(fileURLToPath(new URL("../../plugin/src/Operations.luau", import.meta.url)), "utf8");
-		const checks = source.slice(source.indexOf("local checks:"), source.indexOf("-- The names of every operation"));
-		const applied = [...checks.matchAll(/^\t(\w+) = function/gm)].map((match) => match[1] as string).sort();
-		assert.equal(applied.length, 15);
+		// The plugin's own lists: the names its checks are keyed by, for each kind of clip.
+		const keyed = (file: string, end: string) => {
+			const source = readFileSync(fileURLToPath(new URL(`../../plugin/src/${file}`, import.meta.url)), "utf8");
+			const checks = source.slice(source.indexOf("local checks:"), source.indexOf(end));
+			return [...checks.matchAll(/^\t(\w+) = function/gm)].map((match) => match[1] as string);
+		};
+		const keyframes = keyed("Operations.luau", "-- The names of every operation");
+		const curves = keyed("Curves.luau", "function Curves.types");
+		assert.equal(keyframes.length, 15);
+		assert.equal(curves.length, 8);
+		const applied = [...new Set([...keyframes, ...curves])].sort();
 		assert.deepEqual(published, applied);
 		// Which way each easing direction goes is spelt out where a client will read it.
 		assert.match(JSON.stringify(edit?.inputSchema), /In starts slowly and ends fast; Out starts fast and ends slowly/);

@@ -5,6 +5,7 @@
 -- nothing is returned without a bound: the lists in the summary stop at a fixed length
 -- and say so, and poses come a page at a time.
 
+local Curves = require("./Curves")
 local Operations = require("./Operations")
 local Rig = require("./Rig")
 
@@ -168,6 +169,9 @@ end
 -- A whole read: the summary unless it was left out, and a page of poses if any joints
 -- were asked for. `next_offset` is present when there are more poses to fetch.
 function Reading.read(sequence: Instance, options: Options): { [string]: any }
+	if sequence:IsA("CurveAnimation") then
+		return Curves.read(sequence, options)
+	end
 	local result: { [string]: any } = if options.posesOnly then {} else Reading.summary(sequence, options)
 	if options.joints and #options.joints > 0 then
 		local page, total = Reading.poses(sequence, options)

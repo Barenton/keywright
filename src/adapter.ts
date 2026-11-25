@@ -148,6 +148,49 @@ const operations = [
 		loop: z.boolean().optional().describe("Carry speed across from the last key to the first. Default: true when the clip loops and the range is the whole clip."),
 	}),
 	z.object({
+		type: z
+			.literal("set_key")
+			.describe("Curve clips only. Put a key at a time on a joint's rotation curves, position curves, or both; a key already within a millisecond is changed. A new key starts with flat tangents; run auto_tangents afterwards for smooth motion, or set them with set_tangent."),
+		joint,
+		time: time("Key time in seconds."),
+		rotation: vec3.optional().describe("Joint-local rotation as Euler angles in degrees, X, Y, Z order, each its own curve."),
+		position: vec3.optional().describe("Joint-local offset from rest, in studs."),
+		interpolation: z
+			.enum(["Cubic", "Linear", "Constant"])
+			.optional()
+			.describe("How the stretch from this key to the next is played: Cubic follows the tangents, Linear is straight, Constant holds. Default Cubic for a new key."),
+	}),
+	z.object({
+		type: z.literal("remove_key").describe("Curve clips only. Remove a joint's keys at a time."),
+		joint,
+		time: time("Key time in seconds."),
+		channels: z.array(z.enum(["rotation", "position"])).min(1).max(2).optional().describe("Default: both."),
+	}),
+	z.object({
+		type: z
+			.literal("set_tangent")
+			.describe("Curve clips only. Set the slope of one channel's curve as it arrives at (in) and leaves (out) a key: how fast the value is changing there. 0 is at rest. Leaving with out makes the stretch after the key cubic."),
+		joint,
+		time: time("Key time in seconds."),
+		channel: z.enum(["rotation.x", "rotation.y", "rotation.z", "position.x", "position.y", "position.z"]),
+		in: z.number().finite().optional().describe("Degrees per second for rotation, studs per second for position."),
+		out: z.number().finite().optional().describe("Degrees per second for rotation, studs per second for position."),
+	}),
+	z.object({
+		type: z
+			.literal("auto_tangents")
+			.describe("Curve clips only. Give every key in a time range the tangents of one smooth curve through its channel's keys: a key the motion passes on its way is passed at speed, a key where it turns round is come to rest at, and nothing goes past a key. Keys in the range become Cubic. The usual last step after placing keys."),
+		time_from: rangeFrom,
+		time_to: rangeTo,
+		joints: z.array(z.string()).min(1).max(32).optional().describe("Default: every joint."),
+		snap_at: z
+			.array(time("A key time."))
+			.max(16)
+			.optional()
+			.describe("Key times that are struck, not eased into: the motion arrives fast and stops dead, as a fist on what it hits."),
+		loop: z.boolean().optional().describe("Carry speed across from the last key to the first. Default: true when the clip loops and the range is the whole clip."),
+	}),
+	z.object({
 		type: z.literal("restore_source").describe("Reset the working copy to the clip it was opened from."),
 	}),
 ] as const;
@@ -198,11 +241,14 @@ export function boundRead(result: Record<string, unknown>, offset: number, budge
 	const bounded: Record<string, unknown> = { ...result };
 	delete bounded.next_offset;
 	const size = () => Buffer.byteLength(JSON.stringify(bounded));
-	const poses = Array.isArray(result.poses) ? (result.poses as unknown[]) : undefined;
-	const total = typeof result.poses_total === "number" ? result.poses_total : (poses?.length ?? 0);
+	// A keyframe clip's read lists poses; a curve clip's lists keys.
+	const field = Array.isArray(result.keys) ? "keys" : "poses";
+	const poses = Array.isArray(result[field]) ? (result[field] as unknown[]) : undefined;
+	const counted = result[`${field}_total`];
+	const total = typeof counted === "number" ? counted : (poses?.length ?? 0);
 	const withPoses = (count: number) => {
 		if (!poses) return;
-		bounded.poses = poses.slice(0, count);
+		bounded[field] = poses.slice(0, count);
 		if (offset + count < total) bounded.next_cursor = `${String(result.revision)}:${offset + count}`;
 		else delete bounded.next_cursor;
 	};
@@ -300,7 +346,7 @@ export function createAdapter(options: AdapterOptions): McpServer {
 		"open_animation",
 		{
 			description:
-				"Create a working copy to edit: blank, or copied from an existing KeyframeSequence. The source clip is never changed.",
+				'Create a working copy to edit: blank, or copied from an existing clip. The source clip is never changed. A clip is either keyframes (KeyframeSequence: poses at keyframes, each stretch between two eased by one of a few fixed shapes) or curves (CurveAnimation: each joint channel its own curve through a few keys, with tangents, as in the Curve Editor). Curves are the better choice for motion that should flow: speed carries through a key instead of stopping or turning a corner at it, and a person can keep editing the result in the Animation Editor\'s Curve Editor. Studio plays a curve clip at 30 frames a second, going straight from frame to frame, so put keys on whole frames: multiples of 1/30 s (0.0333, 0.0667, 0.1, ...). Opening a keyframe clip with format "curves" converts it: the keys pass through every pose, with smooth tangents, so the motion between poses can differ.',
 			inputSchema: {
 				studio_session: studioSession,
 				rig_id: z.string(),
@@ -310,8 +356,12 @@ export function createAdapter(options: AdapterOptions): McpServer {
 					.max(110)
 					.optional()
 					.describe(
-						'Omit for a blank clip. "selection" copies the KeyframeSequence selected in the Explorer. "saved:" followed by a name copies that saved clip of the rig, as listed by get_workspace.',
+						'Omit for a blank clip. "selection" copies the clip selected in the Explorer. "saved:" followed by a name copies that saved clip of the rig, as listed by get_workspace.',
 					),
+				format: z
+					.enum(["keyframes", "curves"])
+					.optional()
+					.describe('What the working copy is made of. Default: the source\'s format, or keyframes for a blank clip. A curve clip cannot be turned into keyframes.'),
 			},
 		},
 		async ({ studio_session, ...params }, extra) => call("open_animation", studio_session, params, extra.signal),
@@ -321,7 +371,7 @@ export function createAdapter(options: AdapterOptions): McpServer {
 		"read_animation",
 		{
 			description:
-				"Read a working copy. Returns a summary: duration, keyframe times, animated joints, markers, settings, revision, and a count of any content Keywright keeps but does not edit. Pose values are returned only for the joints listed, and only as many as fit; when there are more, next_cursor says so, and passing it back as cursor returns the next part.",
+				"Read a working copy. Returns a summary: format, duration, keyframe times, animated joints, markers, settings, revision, and a count of any content Keywright keeps but does not edit. For the joints listed, a keyframe clip returns poses and a curve clip returns keys: one per channel (rotation.x/y/z in degrees, position.x/y/z in studs) with interpolation and tangents in and out (per second). Only as many as fit are returned; when there are more, next_cursor says so, and passing it back as cursor returns the next part.",
 			inputSchema: {
 				studio_session: studioSession,
 				clip_id: clipId,
@@ -367,7 +417,7 @@ export function createAdapter(options: AdapterOptions): McpServer {
 		"edit_animation",
 		{
 			description:
-				"Apply a batch of operations to a working copy atomically: poses, easing, keyframes, retiming, markers and the clip's settings. The operations apply in the order given, each to the clip as the ones before it leave it. The whole batch is tried first; if any operation cannot be done, nothing changes and the error names it by its place in the list. Requires the current revision. One Studio undo reverts the whole batch. Only what an operation names is changed.",
+				"Apply a batch of operations to a working copy atomically. A keyframe clip takes poses, easing, keyframes, retiming and smoothing; a curve clip takes keys, tangents and auto_tangents. Both take markers, the clip's settings and restore_source; each operation's description says which clips it is for. The operations apply in the order given, each to the clip as the ones before it leave it. The whole batch is tried first; if any operation cannot be done, nothing changes and the error names it by its place in the list. Requires the current revision. One Studio undo reverts the whole batch. Only what an operation names is changed.",
 			inputSchema: {
 				studio_session: studioSession,
 				clip_id: clipId,

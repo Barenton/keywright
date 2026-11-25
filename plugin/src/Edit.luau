@@ -13,6 +13,7 @@
 local RunService = game:GetService("RunService")
 
 local Clips = require("./Clips")
+local Curves = require("./Curves")
 local Errors = require("./Errors")
 local Operations = require("./Operations")
 local Recording = require("./Recording")
@@ -32,7 +33,7 @@ Edit.fault = nil :: ((working: Clips.Working, index: number) -> ())?
 
 -- `sample` gives the pose a clip has at a time, for the joints named, as the engine
 -- plays it. It is needed only for a keyframe that is to hold the current pose.
-export type Sample = (sequence: KeyframeSequence, time: number, joints: { string }) -> { [string]: CFrame }
+export type Sample = (sequence: Instance, time: number, joints: { string }) -> { [string]: CFrame }
 
 function Edit.apply(
 	working: Clips.Working,
@@ -51,6 +52,9 @@ function Edit.apply(
 			`Expected revision {tostring(expectedRevision)}, but the clip is at {current}.`,
 			"Read the clip again and reapply the change to the current revision."
 		)
+	end
+	if working.instance:IsA("CurveAnimation") then
+		return Edit.applyCurves(working, joints, operations)
 	end
 	Operations.check(operations, joints)
 	local held: { [number]: { [string]: CFrame } } = {}
@@ -106,6 +110,31 @@ function Edit.apply(
 		-- motion around it changed because their easing is not straight or stepped.
 		held = if #holds > 0 then holds else nil,
 	}
+end
+
+-- The same, for a clip made of curves: its own operations, tried on a copy first, then
+-- applied in one undo recording.
+function Edit.applyCurves(working: Clips.Working, joints: { [string]: Rig.Joint }, operations: any): any
+	Curves.check(operations, joints)
+	local context: Curves.Context = { joints = joints, source = working.source }
+	local trial = working.instance:Clone()
+	local tried, problem = pcall(Curves.run, trial, operations, context)
+	trial:Destroy()
+	if not tried then
+		error(problem, 0)
+	end
+	local recording = Recording.begin("KeywrightEdit", "Keywright edit")
+	local changed: Curves.Changed = {}
+	Clips.mutate(working, function()
+		changed = Curves.run(working.instance, operations, context, function(index)
+			if Edit.fault then
+				Edit.fault(working, index)
+			end
+		end)
+	end, function(ok)
+		Recording.finish(recording, ok)
+	end)
+	return { revision = Clips.revisionOf(working), changed = changed }
 end
 
 return Edit

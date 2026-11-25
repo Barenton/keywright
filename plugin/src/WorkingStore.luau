@@ -18,7 +18,7 @@
 local WorkingStore = {}
 
 export type Found = {
-	instance: KeyframeSequence,
+	instance: Instance,
 	model: Instance,
 }
 
@@ -44,15 +44,15 @@ function WorkingStore.discover(root: Instance): ({ Found }, number)
 	local found: { Found } = {}
 	local unassigned = 0
 	for _, child in root:GetChildren() do
-		if child:IsA("KeyframeSequence") then
+		if child:IsA("KeyframeSequence") or child:IsA("CurveAnimation") then
 			unassigned += 1
 		elseif child:IsA("ObjectValue") then
 			local model = child.Value
 			local usable = model ~= nil and model.Parent ~= nil
 			for _, clip in child:GetChildren() do
-				if clip:IsA("KeyframeSequence") then
+				if clip:IsA("KeyframeSequence") or clip:IsA("CurveAnimation") then
 					if usable then
-						table.insert(found, { instance = clip, model = model :: Instance })
+						table.insert(found, { instance = clip :: Instance, model = model :: Instance })
 					else
 						unassigned += 1
 					end

@@ -179,7 +179,7 @@ function Sampler.close(handle: Handle): { string }
 	return problems
 end
 
-function Sampler.open(model: Model, joints: { [string]: Rig.Joint }, sequence: KeyframeSequence): Handle
+function Sampler.open(model: Model, joints: { [string]: Rig.Joint }, sequence: Instance): Handle
 	local engine = Sampler.engine()
 	local humanoid = model:FindFirstChildOfClass("Humanoid")
 	if not humanoid then

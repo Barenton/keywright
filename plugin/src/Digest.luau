@@ -9,6 +9,7 @@
 -- This is how a round trip through saving and opening is shown to change nothing.
 
 local Codec = require("./Codec")
+local Curves = require("./Curves")
 local Sha256 = require("./Sha256")
 
 local Digest = {}
@@ -45,6 +46,9 @@ end
 -- understand (a NumberPose, a Folder, anything that is not a pose or a marker) gets a
 -- line too, with its class, name and value, so that losing or changing it shows.
 function Digest.lines(sequence: Instance): { string }
+	if sequence:IsA("CurveAnimation") then
+		return Curves.digestLines(sequence)
+	end
 	local lines = { `loop|{text(sequence, "Loop")}`, `priority|{text(sequence, "Priority")}` }
 	local function walk(instance: any, time: string, path: string)
 		for _, child in instance:GetChildren() do

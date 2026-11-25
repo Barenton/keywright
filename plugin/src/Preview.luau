@@ -53,7 +53,7 @@ end
 
 export type Request = {
 	model: Model,
-	sequence: KeyframeSequence,
+	sequence: Instance,
 	time: number,
 	joints: { string }?,
 	-- Where the clone is placed while it exists.

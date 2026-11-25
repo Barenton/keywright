@@ -168,21 +168,23 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 		local model, rigId = rigModel(params)
 		Rig.require(model)
 
-		local source: KeyframeSequence? = nil
+		local function clipOrRefuse(found: Instance, what: string): Instance
+			if not found:IsA("KeyframeSequence") and not found:IsA("CurveAnimation") then
+				Errors.throw("INVALID_ARGUMENT", `{what} is a {found.ClassName}, not an animation clip.`)
+			end
+			return found
+		end
+		local format = params.format
+		if format ~= nil and format ~= "keyframes" and format ~= "curves" then
+			Errors.throw("INVALID_ARGUMENT", 'format must be "keyframes" or "curves".')
+		end
+		local source: Instance? = nil
 		if params.source == "selection" then
 			local selected = Selection:Get()[1]
 			if not selected then
 				Errors.throw("NOT_FOUND", "Nothing is selected in the Explorer.")
-			elseif selected:IsA("CurveAnimation") then
-				Errors.throw(
-					"UNSUPPORTED_CLIP_FORMAT",
-					"CurveAnimation clips are not supported.",
-					"Only KeyframeSequence clips can be opened."
-				)
-			elseif not selected:IsA("KeyframeSequence") then
-				Errors.throw("INVALID_ARGUMENT", `The selection is a {selected.ClassName}, not a KeyframeSequence.`)
 			end
-			source = selected :: KeyframeSequence
+			source = clipOrRefuse(selected, "The selection")
 		elseif type(params.source) == "string" and string.sub(params.source, 1, 6) == "saved:" then
 			-- One of the rig's saved clips, as the Animation Editor lists them.
 			local wanted = string.sub(params.source, 7)
@@ -194,16 +196,8 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 					`This rig has no saved clip named "{wanted}".`,
 					"Call get_workspace to list each rig's saved clips."
 				)
-			elseif found:IsA("CurveAnimation") then
-				Errors.throw(
-					"UNSUPPORTED_CLIP_FORMAT",
-					"CurveAnimation clips are not supported.",
-					"Only KeyframeSequence clips can be opened."
-				)
-			elseif not found:IsA("KeyframeSequence") then
-				Errors.throw("INVALID_ARGUMENT", `"{wanted}" is a {found.ClassName}, not a KeyframeSequence.`)
 			end
-			source = found :: KeyframeSequence
+			source = clipOrRefuse(found :: Instance, `"{wanted}"`)
 		elseif params.source ~= nil then
 			Errors.throw(
 				"INVALID_ARGUMENT",
@@ -217,7 +211,7 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 			else "Untitled"
 
 		local recording = Recording.begin("KeywrightOpen", "Keywright open animation")
-		local ok, result = pcall(Clips.open, rigId, name, source, model)
+		local ok, result = pcall(Clips.open, rigId, name, source, model, format)
 		Recording.finish(recording, ok)
 		if not ok then
 			error(result, 0)
@@ -268,7 +262,7 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 		end
 		local scan = Rig.require(model)
 		-- A keyframe that holds the current pose needs the engine to say what that pose is.
-		local function sample(sequence: KeyframeSequence, time: number, joints: { string }): { [string]: CFrame }
+		local function sample(sequence: Instance, time: number, joints: { string }): { [string]: CFrame }
 			if #joints == 0 then
 				return {}
 			end
@@ -345,6 +339,12 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 					Errors.throw(
 						"INVALID_ARGUMENT",
 						"This working copy has no clip to replace: it was opened blank.",
+						"Save it as a new clip instead."
+					)
+				elseif (working.source :: Instance).ClassName ~= working.instance.ClassName then
+					Errors.throw(
+						"UNSUPPORTED_CLIP_FORMAT",
+						"This working copy was converted to curves, so it cannot replace the keyframe clip it came from.",
 						"Save it as a new clip instead."
 					)
 				elseif state ~= "unchanged" then
@@ -517,10 +517,7 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 		local maxEdge = if type(params.max_edge) == "number" then math.clamp(params.max_edge, 64, 1536) else 768
 		-- A clip has nothing after its last keyframe, so a later time is held there, and
 		-- the result says which time it shows.
-		local duration = 0
-		for _, keyframe in Clips.sortedKeyframes(working.instance) do
-			duration = math.max(duration, keyframe.Time)
-		end
+		local duration = Clips.duration(working.instance)
 		local sampledTime = math.min(time, duration)
 
 		local function restPose(): { any }
@@ -595,10 +592,7 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 					firstPose = Pose.parts(scan, sample.transforms, CFrame.new())
 				end
 			end
-			local keyframes = {}
-			for _, keyframe in Clips.sortedKeyframes(working.instance) do
-				table.insert(keyframes, math.round(keyframe.Time * 1000) / 1000)
-			end
+			local keyframes = Clips.keyTimes(working.instance)
 			return {
 				clip_id = working.id,
 				revision = revision,
@@ -610,7 +604,7 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 
 		if times then
 			-- Another clip of the same rig to sample at the same times, for comparison.
-			local other: KeyframeSequence? = nil
+			local other: Instance? = nil
 			local otherName: string? = nil
 			if params.compare_with ~= nil then
 				local wanted = params.compare_with
@@ -622,14 +616,14 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 				elseif type(wanted) == "string" and string.sub(wanted, 1, 6) == "saved:" then
 					local container = Saves.container(model, ServerStorage)
 					local found = container and container:FindFirstChild(string.sub(wanted, 7))
-					if not found or not found:IsA("KeyframeSequence") then
+					if not found or not (found:IsA("KeyframeSequence") or found:IsA("CurveAnimation")) then
 						Errors.throw(
 							"NOT_FOUND",
 							`The rig has no saved clip "{string.sub(wanted, 7)}".`,
 							"get_workspace lists a rig's saved clips."
 						)
 					end
-					other = found :: KeyframeSequence
+					other = found :: Instance
 				elseif type(wanted) == "string" then
 					local second = Clips.get(wanted)
 					if second.rigId ~= working.rigId then
@@ -642,7 +636,7 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 						'compare_with must be "source", "saved:" and a name, or a clip id.'
 					)
 				end
-				otherName = (other :: KeyframeSequence).Name
+				otherName = (other :: Instance).Name
 			end
 			local frames, poses, moments = {}, {}, {}
 			local shownTimes: { number } = {}

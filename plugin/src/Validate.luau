@@ -8,6 +8,7 @@
 --
 -- Everything here only reads the KeyframeSequence it is given.
 
+local Curves = require("./Curves")
 local Operations = require("./Operations")
 local Rig = require("./Rig")
 
@@ -92,226 +93,231 @@ function Validate.run(sequence: Instance, context: Context, thresholds: { [strin
 		table.insert(issues, issue)
 	end
 
-	local keyframes = Operations.keyframes(sequence)
+	-- A clip made of curves has checks of its own; what follows is for keyframe clips.
+	if sequence:IsA("CurveAnimation") then
+		Curves.validate(sequence, context.joints, context.nonKinematic, thresholds, report)
+	else
+		local keyframes = Operations.keyframes(sequence)
 
-	-- The clip as a whole.
-	if #keyframes > Operations.MAX_KEYFRAMES then
-		report({
-			code = "TOO_MANY_KEYFRAMES",
-			severity = "error",
-			message = `The clip has {#keyframes} keyframes; the most supported is {Operations.MAX_KEYFRAMES}.`,
-			measured = #keyframes,
-			threshold = Operations.MAX_KEYFRAMES,
-			unit = "keyframes",
-		})
-	end
-	local otherContent = 0
-	for _, descendant in sequence:GetDescendants() do
-		if not (descendant:IsA("Keyframe") or descendant:IsA("Pose") or descendant:IsA("KeyframeMarker")) then
-			otherContent += 1
-		end
-	end
-	if otherContent > 0 then
-		report({
-			code = "OTHER_CONTENT",
-			severity = "warning",
-			message = `The clip holds {otherContent} instances that are kept but cannot be edited or checked here.`,
-			measured = otherContent,
-			unit = "instances",
-		})
-	end
-
-	-- Each keyframe by itself. `keyed` collects, for each joint, its poses in time order.
-	local keyed: { [string]: { { time: number, cframe: CFrame } } } = {}
-	local earlier: Keyframe? = nil
-	for _, keyframe in keyframes do
-		local time = keyframe.Time
-		local shown = milliseconds(time)
-		if not finite(time) or time < 0 or time > Operations.MAX_TIME then
+		-- The clip as a whole.
+		if #keyframes > Operations.MAX_KEYFRAMES then
 			report({
-				code = "INVALID_KEYFRAME_TIME",
+				code = "TOO_MANY_KEYFRAMES",
 				severity = "error",
-				message = `A keyframe is at {time} seconds, outside 0 to {Operations.MAX_TIME}.`,
-				time = if finite(time) then shown else nil,
-				measured = if finite(time) then time else nil,
-				threshold = Operations.MAX_TIME,
-				unit = "seconds",
+				message = `The clip has {#keyframes} keyframes; the most supported is {Operations.MAX_KEYFRAMES}.`,
+				measured = #keyframes,
+				threshold = Operations.MAX_KEYFRAMES,
+				unit = "keyframes",
 			})
 		end
-		if earlier and math.abs(time - earlier.Time) < Operations.TIME_TOLERANCE then
+		local otherContent = 0
+		for _, descendant in sequence:GetDescendants() do
+			if not (descendant:IsA("Keyframe") or descendant:IsA("Pose") or descendant:IsA("KeyframeMarker")) then
+				otherContent += 1
+			end
+		end
+		if otherContent > 0 then
 			report({
-				code = "DUPLICATE_KEYFRAME",
-				severity = "error",
-				message = `Two keyframes are at {shown} seconds. Which one plays is not defined.`,
-				time = shown,
+				code = "OTHER_CONTENT",
+				severity = "warning",
+				message = `The clip holds {otherContent} instances that are kept but cannot be edited or checked here.`,
+				measured = otherContent,
+				unit = "instances",
 			})
 		end
-		earlier = keyframe
 
-		local seen: { [string]: boolean } = {}
-		for _, descendant: any in keyframe:GetDescendants() do
-			if not descendant:IsA("Pose") then
-				continue
-			end
-			local name = descendant.Name
-			local weighted = descendant.Weight > 0
-			if seen[name] then
+		-- Each keyframe by itself. `keyed` collects, for each joint, its poses in time order.
+		local keyed: { [string]: { { time: number, cframe: CFrame } } } = {}
+		local earlier: Keyframe? = nil
+		for _, keyframe in keyframes do
+			local time = keyframe.Time
+			local shown = milliseconds(time)
+			if not finite(time) or time < 0 or time > Operations.MAX_TIME then
 				report({
-					code = "DUPLICATE_POSE",
+					code = "INVALID_KEYFRAME_TIME",
 					severity = "error",
-					message = `"{name}" has more than one pose at {shown} seconds.`,
-					joints = { name },
+					message = `A keyframe is at {time} seconds, outside 0 to {Operations.MAX_TIME}.`,
+					time = if finite(time) then shown else nil,
+					measured = if finite(time) then time else nil,
+					threshold = Operations.MAX_TIME,
+					unit = "seconds",
+				})
+			end
+			if earlier and math.abs(time - earlier.Time) < Operations.TIME_TOLERANCE then
+				report({
+					code = "DUPLICATE_KEYFRAME",
+					severity = "error",
+					message = `Two keyframes are at {shown} seconds. Which one plays is not defined.`,
 					time = shown,
 				})
 			end
-			seen[name] = true
+			earlier = keyframe
 
-			local components = { descendant.CFrame:GetComponents() }
-			local sound = true
-			for _, value in components do
-				sound = sound and finite(value)
-			end
-			if not sound then
-				report({
-					code = "NON_FINITE_TRANSFORM",
-					severity = "error",
-					message = `The pose of "{name}" at {shown} seconds holds a number that is not finite.`,
-					joints = { name },
-					time = shown,
-				})
-			elseif descendant.CFrame.Position.Magnitude > Operations.MAX_POSITION then
-				report({
-					code = "POSITION_OUT_OF_RANGE",
-					severity = "error",
-					message = `The pose of "{name}" at {shown} seconds is {rounded(
-						descendant.CFrame.Position.Magnitude
-					)} studs from rest.`,
-					joints = { name },
-					time = shown,
-					measured = rounded(descendant.CFrame.Position.Magnitude),
-					threshold = Operations.MAX_POSITION,
-					unit = "studs",
-				})
-			end
-
-			if not weighted then
-				continue
-			end
-			if not context.joints[name] then
-				-- The root part is posed by some tools; it has no joint and nothing moves.
-				if name ~= Rig.ROOT then
+			local seen: { [string]: boolean } = {}
+			for _, descendant: any in keyframe:GetDescendants() do
+				if not descendant:IsA("Pose") then
+					continue
+				end
+				local name = descendant.Name
+				local weighted = descendant.Weight > 0
+				if seen[name] then
 					report({
-						code = "UNKNOWN_JOINT",
+						code = "DUPLICATE_POSE",
 						severity = "error",
-						message = `"{name}" is posed at {shown} seconds, but the rig has no such joint.`,
+						message = `"{name}" has more than one pose at {shown} seconds.`,
 						joints = { name },
 						time = shown,
 					})
 				end
-				continue
-			end
-			local parent = descendant.Parent
-			local expected = Rig.R15_PARENTS[name]
-			if expected and parent and parent:IsA("Pose") and parent.Name ~= expected then
-				report({
-					code = "POSE_HIERARCHY",
-					severity = "warning",
-					message = `At {shown} seconds the pose of "{name}" sits under "{parent.Name}", not under "{expected}" as in the rig.`,
-					joints = { name },
-					time = shown,
-				})
-			end
-			if sound then
-				keyed[name] = keyed[name] or {}
-				table.insert(keyed[name], { time = time, cframe = descendant.CFrame })
-			end
-		end
-	end
+				seen[name] = true
 
-	-- Each joint across time.
-	local first, last = keyframes[1], keyframes[#keyframes]
-	for name, poses in keyed do
-		if context.nonKinematic and context.nonKinematic[name] then
-			report({
-				code = "NON_KINEMATIC_JOINT",
-				severity = "warning",
-				message = `"{name}" is driven through forces (IsKinematic is off), so what is rendered can differ from the clip.`,
-				joints = { name },
-			})
-		end
-
-		for index = 2, #poses do
-			local before, after = poses[index - 1], poses[index]
-			local seconds = after.time - before.time
-			if seconds < Operations.TIME_TOLERANCE then
-				continue
-			end
-			local span = { time_from = milliseconds(before.time), time_to = milliseconds(after.time) }
-			local angular = turn(before.cframe, after.cframe) / seconds
-			if angular > thresholds.speed_degrees_per_second then
-				report({
-					code = "ABRUPT_ROTATION",
-					severity = "warning",
-					message = `"{name}" turns at {rounded(angular)} degrees per second between {span.time_from} and {span.time_to} seconds.`,
-					joints = { name },
-					time_from = span.time_from,
-					time_to = span.time_to,
-					measured = rounded(angular),
-					threshold = thresholds.speed_degrees_per_second,
-					unit = "degrees per second",
-				})
-			end
-			local linear = (after.cframe.Position - before.cframe.Position).Magnitude / seconds
-			if linear > thresholds.speed_studs_per_second then
-				report({
-					code = "ABRUPT_MOVE",
-					severity = "warning",
-					message = `"{name}" moves at {rounded(linear)} studs per second between {span.time_from} and {span.time_to} seconds.`,
-					joints = { name },
-					time_from = span.time_from,
-					time_to = span.time_to,
-					measured = rounded(linear),
-					threshold = thresholds.speed_studs_per_second,
-					unit = "studs per second",
-				})
-			end
-		end
-
-		-- A loop runs from its last keyframe straight back into its first.
-		if clip.Loop == true and first and last and first ~= last then
-			local start, finish = poses[1], poses[#poses]
-			if
-				math.abs(start.time - first.Time) < Operations.TIME_TOLERANCE
-				and math.abs(finish.time - last.Time) < Operations.TIME_TOLERANCE
-			then
-				local span = { time_from = milliseconds(first.Time), time_to = milliseconds(last.Time) }
-				local degrees = turn(start.cframe, finish.cframe)
-				if degrees > thresholds.loop_rotation_degrees then
-					report({
-						code = "LOOP_ROTATION_MISMATCH",
-						severity = "warning",
-						message = `"{name}" ends {rounded(degrees)} degrees from where it starts, so the loop will jump.`,
-						joints = { name },
-						time_from = span.time_from,
-						time_to = span.time_to,
-						measured = rounded(degrees),
-						threshold = thresholds.loop_rotation_degrees,
-						unit = "degrees",
-					})
+				local components = { descendant.CFrame:GetComponents() }
+				local sound = true
+				for _, value in components do
+					sound = sound and finite(value)
 				end
-				local studs = (finish.cframe.Position - start.cframe.Position).Magnitude
-				if studs > thresholds.loop_position_studs then
+				if not sound then
 					report({
-						code = "LOOP_POSITION_MISMATCH",
-						severity = "warning",
-						message = `"{name}" ends {rounded(studs)} studs from where it starts, so the loop will jump.`,
+						code = "NON_FINITE_TRANSFORM",
+						severity = "error",
+						message = `The pose of "{name}" at {shown} seconds holds a number that is not finite.`,
 						joints = { name },
-						time_from = span.time_from,
-						time_to = span.time_to,
-						measured = rounded(studs),
-						threshold = thresholds.loop_position_studs,
+						time = shown,
+					})
+				elseif descendant.CFrame.Position.Magnitude > Operations.MAX_POSITION then
+					report({
+						code = "POSITION_OUT_OF_RANGE",
+						severity = "error",
+						message = `The pose of "{name}" at {shown} seconds is {rounded(
+							descendant.CFrame.Position.Magnitude
+						)} studs from rest.`,
+						joints = { name },
+						time = shown,
+						measured = rounded(descendant.CFrame.Position.Magnitude),
+						threshold = Operations.MAX_POSITION,
 						unit = "studs",
 					})
+				end
+
+				if not weighted then
+					continue
+				end
+				if not context.joints[name] then
+					-- The root part is posed by some tools; it has no joint and nothing moves.
+					if name ~= Rig.ROOT then
+						report({
+							code = "UNKNOWN_JOINT",
+							severity = "error",
+							message = `"{name}" is posed at {shown} seconds, but the rig has no such joint.`,
+							joints = { name },
+							time = shown,
+						})
+					end
+					continue
+				end
+				local parent = descendant.Parent
+				local expected = Rig.R15_PARENTS[name]
+				if expected and parent and parent:IsA("Pose") and parent.Name ~= expected then
+					report({
+						code = "POSE_HIERARCHY",
+						severity = "warning",
+						message = `At {shown} seconds the pose of "{name}" sits under "{parent.Name}", not under "{expected}" as in the rig.`,
+						joints = { name },
+						time = shown,
+					})
+				end
+				if sound then
+					keyed[name] = keyed[name] or {}
+					table.insert(keyed[name], { time = time, cframe = descendant.CFrame })
+				end
+			end
+		end
+
+		-- Each joint across time.
+		local first, last = keyframes[1], keyframes[#keyframes]
+		for name, poses in keyed do
+			if context.nonKinematic and context.nonKinematic[name] then
+				report({
+					code = "NON_KINEMATIC_JOINT",
+					severity = "warning",
+					message = `"{name}" is driven through forces (IsKinematic is off), so what is rendered can differ from the clip.`,
+					joints = { name },
+				})
+			end
+
+			for index = 2, #poses do
+				local before, after = poses[index - 1], poses[index]
+				local seconds = after.time - before.time
+				if seconds < Operations.TIME_TOLERANCE then
+					continue
+				end
+				local span = { time_from = milliseconds(before.time), time_to = milliseconds(after.time) }
+				local angular = turn(before.cframe, after.cframe) / seconds
+				if angular > thresholds.speed_degrees_per_second then
+					report({
+						code = "ABRUPT_ROTATION",
+						severity = "warning",
+						message = `"{name}" turns at {rounded(angular)} degrees per second between {span.time_from} and {span.time_to} seconds.`,
+						joints = { name },
+						time_from = span.time_from,
+						time_to = span.time_to,
+						measured = rounded(angular),
+						threshold = thresholds.speed_degrees_per_second,
+						unit = "degrees per second",
+					})
+				end
+				local linear = (after.cframe.Position - before.cframe.Position).Magnitude / seconds
+				if linear > thresholds.speed_studs_per_second then
+					report({
+						code = "ABRUPT_MOVE",
+						severity = "warning",
+						message = `"{name}" moves at {rounded(linear)} studs per second between {span.time_from} and {span.time_to} seconds.`,
+						joints = { name },
+						time_from = span.time_from,
+						time_to = span.time_to,
+						measured = rounded(linear),
+						threshold = thresholds.speed_studs_per_second,
+						unit = "studs per second",
+					})
+				end
+			end
+
+			-- A loop runs from its last keyframe straight back into its first.
+			if clip.Loop == true and first and last and first ~= last then
+				local start, finish = poses[1], poses[#poses]
+				if
+					math.abs(start.time - first.Time) < Operations.TIME_TOLERANCE
+					and math.abs(finish.time - last.Time) < Operations.TIME_TOLERANCE
+				then
+					local span = { time_from = milliseconds(first.Time), time_to = milliseconds(last.Time) }
+					local degrees = turn(start.cframe, finish.cframe)
+					if degrees > thresholds.loop_rotation_degrees then
+						report({
+							code = "LOOP_ROTATION_MISMATCH",
+							severity = "warning",
+							message = `"{name}" ends {rounded(degrees)} degrees from where it starts, so the loop will jump.`,
+							joints = { name },
+							time_from = span.time_from,
+							time_to = span.time_to,
+							measured = rounded(degrees),
+							threshold = thresholds.loop_rotation_degrees,
+							unit = "degrees",
+						})
+					end
+					local studs = (finish.cframe.Position - start.cframe.Position).Magnitude
+					if studs > thresholds.loop_position_studs then
+						report({
+							code = "LOOP_POSITION_MISMATCH",
+							severity = "warning",
+							message = `"{name}" ends {rounded(studs)} studs from where it starts, so the loop will jump.`,
+							joints = { name },
+							time_from = span.time_from,
+							time_to = span.time_to,
+							measured = rounded(studs),
+							threshold = thresholds.loop_position_studs,
+							unit = "studs",
+						})
+					end
 				end
 			end
 		end

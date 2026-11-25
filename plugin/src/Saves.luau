@@ -117,12 +117,12 @@ end
 -- already saved is touched: a name that is taken is refused. Must be called inside an
 -- undo recording, so that anything made here is undone with it. Returns the saved copy.
 function Saves.save(
-	sequence: KeyframeSequence,
+	sequence: Instance,
 	model: Instance,
 	storage: Instance,
 	name: string,
 	create: (className: string) -> any
-): KeyframeSequence
+): Instance
 	-- The name is judged before anything is made, so that a bad one leaves no trace.
 	local unusable = Saves.nameProblem(nil, name)
 	if unusable then

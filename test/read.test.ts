@@ -59,3 +59,14 @@ test("a summary that is too long has its lists shortened and marked", () => {
 	assert.equal(bounded.keyframe_times_truncated, undefined);
 	assert.equal(bounded.poses, undefined);
 });
+
+test("a curve clip's keys are cut to the budget the same way as poses", () => {
+	const key = (index: number) => ({ joint: "Head", channel: "rotation.y", time: index / 10, value: index, interpolation: "Cubic", in: 0, out: 0 });
+	const result = { clip_id: "clip_1", revision: "r4", format: "curves", keys: Array.from({ length: 300 }, (_, index) => key(index)), keys_total: 300 };
+	const bounded = boundRead(result, 0, 4096);
+	const kept = (bounded.keys as unknown[]).length;
+	assert.ok(kept > 0 && kept < 300);
+	assert.ok(bytes(bounded) <= 4096);
+	assert.equal(bounded.next_cursor, `r4:${kept}`);
+	assert.equal(bounded.poses, undefined);
+});

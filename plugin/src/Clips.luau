@@ -6,6 +6,7 @@
 
 local ServerStorage = game:GetService("ServerStorage")
 
+local Curves = require("./Curves")
 local Digest = require("./Digest")
 local Errors = require("./Errors")
 local Operations = require("./Operations")
@@ -21,9 +22,9 @@ Clips.TIME_TOLERANCE = Operations.TIME_TOLERANCE
 
 export type Working = {
 	id: string,
-	instance: KeyframeSequence,
+	instance: Instance,
 	rigId: string,
-	source: KeyframeSequence?,
+	source: Instance?,
 	revision: number,
 	suppress: number,
 	signals: { RBXScriptConnection },
@@ -131,7 +132,7 @@ end
 
 -- Notes any change to the clip a working copy was opened from: to it, to anything in it,
 -- or to what it holds. Replacing that clip is refused once it has changed.
-local function watchSource(working: Working, source: KeyframeSequence)
+local function watchSource(working: Working, source: Instance)
 	local function note()
 		if working.sourceQuiet == 0 then
 			working.sourceChanged = true
@@ -154,7 +155,7 @@ local function watchSource(working: Working, source: KeyframeSequence)
 	table.insert(working.sourceSignals, source.DescendantRemoving:Connect(note))
 end
 
-local function register(instance: KeyframeSequence, rigId: string, source: KeyframeSequence?): Working
+local function register(instance: Instance, rigId: string, source: Instance?): Working
 	local working: Working = {
 		id = "clip_" .. nextId,
 		instance = instance,
@@ -195,7 +196,7 @@ end
 -- recording; `finish` receives the outcome before signals are flushed, as in `mutate`,
 -- so that the recording is closed while the changes still count as this plugin's own.
 function Clips.replaceSource(working: Working, finish: (ok: boolean) -> ())
-	local source = working.source :: KeyframeSequence
+	local source = working.source :: Instance
 	working.sourceQuiet += 1
 	local ok, problem = pcall(function()
 		Operations.copyContent(working.instance, source)
@@ -219,14 +220,30 @@ function Clips.replaceSource(working: Working, finish: (ok: boolean) -> ())
 end
 
 -- Creates a working copy for the rig. Must be called inside an undo recording.
-function Clips.open(rigId: string, name: string, source: KeyframeSequence?, model: Model): Working
-	local instance: KeyframeSequence
-	if source then
+-- `format` is "keyframes" or "curves". A source of the other kind is converted: a
+-- keyframe clip into curves through its poses, never the other way.
+function Clips.open(rigId: string, name: string, source: Instance?, model: Model, format: string?): Working
+	local instance: Instance
+	local wantCurves = format == "curves" or (format == nil and source ~= nil and source:IsA("CurveAnimation"))
+	if source and source:IsA("CurveAnimation") ~= wantCurves then
+		if not wantCurves then
+			Errors.throw(
+				"UNSUPPORTED_CLIP_FORMAT",
+				"A clip made of curves cannot be turned into a keyframe clip.",
+				'Open it with format "curves".'
+			)
+		end
+		instance = Curves.fromKeyframes(source, Operations.keyframes(source), Operations.findPose)
+	elseif source then
 		instance = source:Clone()
+	elseif wantCurves then
+		instance = Instance.new("CurveAnimation");
+		(instance :: any).Loop = false
+		(instance :: any).Priority = Enum.AnimationPriority.Action
 	else
-		instance = Instance.new("KeyframeSequence")
-		instance.Loop = false
-		instance.Priority = Enum.AnimationPriority.Action
+		instance = Instance.new("KeyframeSequence");
+		(instance :: any).Loop = false
+		(instance :: any).Priority = Enum.AnimationPriority.Action
 	end
 	instance.Name = name
 	instance.Parent = WorkingStore.shelf(Clips.container(), model, create)
@@ -266,7 +283,7 @@ function Clips.restore(rigIdOf: (model: Instance) -> string?): number
 				local link = if records then WorkingStore.recall(records, entry.instance) else nil
 				local source = if link
 						and link.source
-						and link.source:IsA("KeyframeSequence")
+						and (link.source:IsA("KeyframeSequence") or link.source:IsA("CurveAnimation"))
 						and link.source.Parent
 					then link.source
 					else nil
@@ -353,6 +370,30 @@ Clips.ensurePose = Operations.ensurePose
 
 -- A read of a working copy: what Reading returns for its clip, with the ids and the
 -- revision that make it a working copy.
+-- The time of a clip's last keyframe or key, whichever kind of clip it is.
+function Clips.duration(clip: Instance): number
+	if clip:IsA("CurveAnimation") then
+		return Curves.duration(clip)
+	end
+	local last = 0
+	for _, keyframe in Operations.keyframes(clip) do
+		last = math.max(last, keyframe.Time)
+	end
+	return last
+end
+
+-- The times of a clip's keyframes, or of its curves' keys.
+function Clips.keyTimes(clip: Instance): { number }
+	if clip:IsA("CurveAnimation") then
+		return Curves.keyTimes(clip)
+	end
+	local list = {}
+	for _, keyframe in Operations.keyframes(clip) do
+		table.insert(list, math.round(keyframe.Time * 1000) / 1000)
+	end
+	return list
+end
+
 function Clips.read(working: Working, options: Reading.Options?): any
 	local result = Reading.read(working.instance, options or {})
 	result.clip_id = working.id
