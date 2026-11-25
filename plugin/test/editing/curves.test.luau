@@ -731,61 +731,6 @@ case("a soft pin does not lock the knee straight, and says how short it fell", f
 	check("the result says how short it fell", (changed.largest_soft_studs or 0) > 0, changed.largest_soft_studs)
 end)
 
-case("a pin with a toe or heel pivot lets the foot roll over that point", function()
-	-- The hips drop while the foot pitches and back: toes down, it rolls up onto its toe;
-	-- toes up, back over its heel.
-	local function rolling(pitch: number?): any
-		local clip = squat(0.3)
-		realRun(clip, {
-			-- The hips turn too, which a planted foot is not to follow.
-			{ type = "set_key", joint = "LowerTorso", time = 0, rotation = { 0, 0, 0 } },
-			{ type = "set_key", joint = "LowerTorso", time = 0.5, rotation = { 0, 20, 0 } },
-			{ type = "set_key", joint = "LowerTorso", time = 1, rotation = { 0, 0, 0 } },
-			{ type = "set_key", joint = "LeftFoot", time = 0, rotation = { 0, 0, 0 } },
-			{ type = "set_key", joint = "LeftFoot", time = 0.5, rotation = { pitch or 35, 0, 0 } },
-			{ type = "set_key", joint = "LeftFoot", time = 1, rotation = { 0, 0, 0 } },
-			{ type = "auto_tangents", time_from = 0, time_to = 1 },
-		})
-		return clip
-	end
-	local size = REAL.LeftFoot.part1.Size
-	for _, pivot in { "toe", "heel" } do
-		local pitch = if pivot == "toe" then -35 else 35
-		local original = rolling(pitch)
-		local clip = rolling(pitch)
-		local offset = roblox.Vector3.new(0, -size.Y / 2, if pivot == "toe" then -size.Z / 2 else size.Z / 2)
-		local start = placedAt(clip, 0).LeftFoot:PointToWorldSpace(offset)
-		local changed =
-			realRun(clip, { { type = "pin", part = "LeftFoot", time_from = 0, time_to = 1, pivot = pivot } })
-		check(`{pivot}: reached at every frame`, changed.frames_out_of_reach == nil, changed.largest_miss_studs)
-		local drift, pitched, twisted = 0, 0, 0
-		local heading = yaw(placedAt(clip, 0).LeftFoot)
-		for frame = 0, 30 do
-			local time = frame / 30
-			local foot = placedAt(clip, time).LeftFoot
-			drift = math.max(drift, (foot:PointToWorldSpace(offset) - start).Magnitude)
-			-- The foot pitches by as much as its own joint is keyed to.
-			local keyed = math.deg(Curves.evaluate(keysOf(original, "LeftFoot", "rotation.x"), time))
-			local tilt = math.deg(math.asin(math.clamp(foot.LookVector.Y, -1, 1)))
-			pitched = math.max(pitched, math.abs(math.abs(tilt) - math.abs(keyed)))
-			twisted = math.max(twisted, math.abs(yaw(foot) - heading))
-		end
-		check(`{pivot}: the point stays put`, drift < 0.002, drift)
-		check(`{pivot}: the foot pitches as its joint is keyed`, pitched < 0.1, pitched)
-		check(`{pivot}: and does not turn with the hips`, twisted < 0.1, twisted)
-		local checked = Validate.run(clip, { joints = REAL }, assert(Validate.thresholds({})))
-		check(
-			`{pivot}: rolling over it is not taken for sliding`,
-			checked.counts.FOOT_SLIDE == nil,
-			checked.counts.FOOT_SLIDE
-		)
-	end
-	check(
-		"a toe pivot on a hand is refused",
-		refusal(rolling(), { { type = "pin", part = "LeftHand", time_from = 0, time_to = 1, pivot = "toe" } }) ~= nil
-	)
-end)
-
 case("pins that cannot be done are refused", function()
 	local clip = squat(0.5)
 	local function refusedReal(operation: any): any
@@ -1478,6 +1423,92 @@ case("a pin on_floor stands the foot flat on the floor where it is", function()
 	check("not with relative_to", refusal(clip, {
 		{ type = "pin", part = "LeftFoot", time_from = 0, time_to = 1, on_floor = true, relative_to = "UpperTorso" },
 	}) ~= nil)
+end)
+
+case("a pin with a toe or heel pivot rolls the foot over that point", function()
+	-- The hips drop and turn, which a planted foot is not to follow.
+	local function turning(): any
+		local clip = squat(0.3)
+		realRun(clip, {
+			{ type = "set_key", joint = "LowerTorso", time = 0, rotation = { 0, 0, 0 } },
+			{ type = "set_key", joint = "LowerTorso", time = 0.5, rotation = { 0, 20, 0 } },
+			{ type = "set_key", joint = "LowerTorso", time = 1, rotation = { 0, 0, 0 } },
+			{ type = "auto_tangents", time_from = 0, time_to = 1 },
+		})
+		return clip
+	end
+	local size = REAL.LeftFoot.part1.Size
+	local function pitch(foot: any): number
+		return math.deg(math.asin(math.clamp(foot.LookVector.Y, -1, 1)))
+	end
+
+	-- Flat, then up onto the toe and back down, then flat again: as in a step's push-off,
+	-- and next to other pins, which rewrite the foot's own keys.
+	local clip = turning()
+	local toe = roblox.Vector3.new(0, -size.Y / 2, -size.Z / 2)
+	local changed = realRun(clip, {
+		{ type = "pin", part = "LeftFoot", time_from = 0, time_to = 0.4, on_floor = true },
+		{ type = "pin", part = "LeftFoot", time_from = 0.4, time_to = 0.6, pivot = "toe", roll = { 0, 30 } },
+		{ type = "pin", part = "LeftFoot", time_from = 0.6, time_to = 0.8, pivot = "toe", roll = { 30, 0 } },
+		{ type = "pin", part = "LeftFoot", time_from = 0.8, time_to = 1, on_floor = true },
+	})
+	check("reached at every frame", changed.frames_out_of_reach == nil, changed.largest_miss_studs)
+	local start = placedAt(clip, 0).LeftFoot:PointToWorldSpace(toe)
+	local heading = yaw(placedAt(clip, 0).LeftFoot)
+	local drift, twisted = 0, 0
+	for frame = 0, 30 do
+		local foot = placedAt(clip, frame / 30).LeftFoot
+		drift = math.max(drift, (foot:PointToWorldSpace(toe) - start).Magnitude)
+		twisted = math.max(twisted, math.abs(yaw(foot) - heading))
+	end
+	check("the toe stays put throughout", drift < 0.002, drift)
+	check("the foot does not turn with the hips", twisted < 0.1, twisted)
+	local lifted = placedAt(clip, 0.6).LeftFoot
+	check("at the top the heel is lifted as far as asked", math.abs(-pitch(lifted) - 30) < 0.1, pitch(lifted))
+	check("and the heel is what rose", lifted:PointToWorldSpace(-toe).Y > start.Y + 0.4)
+	check("halfway up, part of the way", math.abs(-pitch(placedAt(clip, 0.5).LeftFoot) - 15) < 0.5)
+	local checked = Validate.run(clip, { joints = REAL }, assert(Validate.thresholds({})))
+	local slides = 0
+	for _, issue in checked.issues do
+		if issue.code == "FOOT_SLIDE" and issue.joints[1] == "LeftFoot" then
+			slides += 1
+		end
+	end
+	check("rolling over the toe is not taken for sliding", slides == 0, slides)
+
+	-- Landing heel first: the toes start lifted and come down onto the floor.
+	local landing = turning()
+	local heel = roblox.Vector3.new(0, -size.Y / 2, size.Z / 2)
+	realRun(landing, {
+		{
+			type = "pin",
+			part = "LeftFoot",
+			time_from = 0,
+			time_to = 0.3,
+			pivot = "heel",
+			roll = { 25, 0 },
+			on_floor = true,
+		},
+	})
+	local first = placedAt(landing, 0).LeftFoot
+	check("landing, the toes start lifted", math.abs(pitch(first) - 25) < 0.1, pitch(first))
+	local heelStart = first:PointToWorldSpace(heel)
+	local heelDrift = 0
+	for frame = 0, 9 do
+		heelDrift =
+			math.max(heelDrift, (placedAt(landing, frame / 30).LeftFoot:PointToWorldSpace(heel) - heelStart).Magnitude)
+	end
+	check("the heel stays put", heelDrift < 0.002, heelDrift)
+	check("and on the floor", math.abs(heelStart.Y - FLOOR) < 0.002, heelStart.Y - FLOOR)
+	check("the foot ends flat", math.abs(pitch(placedAt(landing, 0.3).LeftFoot)) < 0.1)
+	check(
+		"a toe pivot on a hand is refused",
+		refusal(landing, { { type = "pin", part = "LeftHand", time_from = 0, time_to = 1, pivot = "toe" } }) ~= nil
+	)
+	check(
+		"a roll without a pivot is refused",
+		refusal(landing, { { type = "pin", part = "LeftFoot", time_from = 0, time_to = 1, roll = { 0, 10 } } }) ~= nil
+	)
 end)
 
 case("place_on_floor lifts what sank, and leaves the rest", function()

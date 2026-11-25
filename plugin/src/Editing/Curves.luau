@@ -711,10 +711,20 @@ local checks: { [string]: Check } = {
 					refuse(where, "a toe or heel pivot is for a foot.")
 				end
 				if operation.hold == "position" then
-					refuse(
-						where,
-						"with a toe or heel pivot the foot keeps its own turn already; hold position holds the ankle instead."
-					)
+					refuse(where, "a toe or heel pivot sets how the foot turns; hold position holds the ankle instead.")
+				end
+			end
+		end
+		if operation.roll ~= nil then
+			if operation.pivot ~= "toe" and operation.pivot ~= "heel" then
+				refuse(where, "roll is for a toe or heel pivot.")
+			end
+			if type(operation.roll) ~= "table" or #operation.roll ~= 2 then
+				refuse(where, "roll must be two angles in degrees: at time_from and at time_to.")
+			end
+			for _, angle in operation.roll do
+				if not isFinite(angle) or angle < 0 or angle > 90 then
+					refuse(where, "each roll angle must be from 0 to 90 degrees.")
 				end
 			end
 		end
@@ -1770,32 +1780,43 @@ local appliers: { [string]: Apply } = {
 			tipLocal = Roblox.CFrame.lookAt(standing, standing + heading.Unit)
 		end
 		-- With a toe or heel pivot, that point of the foot is what stays put, and the foot
-		-- turns by what its own joint is keyed to do, on top of the facing it has when it is
-		-- pinned, so it rolls over the point. What the hips and leg do above it is not
-		-- passed down into a planted foot.
+		-- turns about it by the roll asked for: its other end lifted off the floor by an
+		-- angle that eases from the first given to the second across the range.
 		local rolling = operation.pivot == "toe" or operation.pivot == "heel"
 		local offset = Roblox.Vector3.new()
 		local pointLocal = Roblox.Vector3.new()
 		local heldTurn = identity
-		local ownAt = identity
-		local _, footC1 = Rig.rest(limb[3])
-		local c1Turn = footC1 - footC1.Position
 		if rolling then
-			local atFoot = anchorOf(reference):Inverse() * reference[chain[3]]
-			heldTurn = atFoot - atFoot.Position
-			local atTransform = transformsAt(channels, operation.at or from)[chain[3]]
-			ownAt = atTransform - atTransform.Position
 			local size = joints[chain[3]].part1.Size
 			-- A rig faces along its own negative Z: the toe is the front of the sole.
 			offset = Roblox.Vector3.new(0, -size.Y / 2, if operation.pivot == "toe" then -size.Z / 2 else size.Z / 2)
-			pointLocal = (anchorOf(reference):Inverse() * reference[chain[3]]):PointToWorldSpace(offset)
+			local atFoot = anchorOf(reference):Inverse() * reference[chain[3]]
+			pointLocal = atFoot:PointToWorldSpace(offset)
+			heldTurn = atFoot - atFoot.Position
 			if operation.position then
 				local p = operation.position
 				pointLocal = Roblox.Vector3.new(p[1], p[2], p[3])
 			end
 			if operation.on_floor then
 				pointLocal = Roblox.Vector3.new(pointLocal.X, floorOf(joints), pointLocal.Z)
+				-- Flat on the floor before it rolls: turned only about the vertical.
+				local look = heldTurn.LookVector
+				local heading = Roblox.Vector3.new(look.X, 0, look.Z)
+				if heading.Magnitude < 1e-6 then
+					heading = Roblox.Vector3.new(0, 0, -1)
+				end
+				heldTurn = Roblox.CFrame.lookAt(Roblox.Vector3.new(), heading.Unit)
 			end
+		end
+		local rollFrom = math.rad(if operation.roll then operation.roll[1] else 0)
+		local rollTo = math.rad(if operation.roll then operation.roll[2] else 0)
+		-- Lifting the heel turns the foot one way about its own X axis, lifting the toes the
+		-- other.
+		local lift = if operation.pivot == "toe" then -1 else 1
+		if rolling and not operation.on_floor then
+			-- The foot is taken to be rolled already by the first angle where it is held,
+			-- as after another roll; its facing flat is that, rolled back.
+			heldTurn = heldTurn * Roblox.CFrame.Angles(-lift * rollFrom, 0, 0)
 		end
 		local full = rolling or (operation.hold or "full") == "full"
 		local poleLocal = if operation.pole
@@ -1813,11 +1834,10 @@ local appliers: { [string]: Apply } = {
 			local anchor = anchorOf(placed)
 			local tip = anchor * tipLocal
 			if rolling then
-				-- How far the foot's own joint has turned since it was pinned, as a turn of the
-				-- foot itself: placed = parent * C0 * transform * C1:Inverse().
-				local now = transforms[chain[3]] - transforms[chain[3]].Position
-				local since = c1Turn * ownAt:Inverse() * now * c1Turn:Inverse()
-				tip = anchor * Roblox.CFrame.new(pointLocal) * heldTurn * since * Roblox.CFrame.new(-offset)
+				local along = smoothstep((time - from) / math.max(to - from, 1e-6))
+				local angle = rollFrom + (rollTo - rollFrom) * along
+				local turned = heldTurn * Roblox.CFrame.Angles(lift * angle, 0, 0)
+				tip = anchor * Roblox.CFrame.new(pointLocal) * turned * Roblox.CFrame.new(-offset)
 			end
 			local weight = 1
 			if time < from - Curves.TIME_TOLERANCE then
