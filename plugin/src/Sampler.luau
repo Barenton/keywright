@@ -59,12 +59,17 @@ export type Strategy = "set_position" | "step_delta"
 
 local function robloxEngine(): Engine
 	local KeyframeSequenceProvider = game:GetService("KeyframeSequenceProvider")
+	local AnimationClipProvider = game:GetService("AnimationClipProvider")
 	local RunService = game:GetService("RunService")
 	return {
 		newInstance = function(className)
 			return Instance.new(className)
 		end,
 		registerClip = function(sequence)
+			if sequence:IsA("CurveAnimation") then
+				-- A clip made of curves, not keyframes. Being measured; see the notes.
+				return AnimationClipProvider:RegisterAnimationClip(sequence)
+			end
 			return KeyframeSequenceProvider:RegisterKeyframeSequence(sequence)
 		end,
 		loadTrack = function(animator, animation)
@@ -100,12 +105,26 @@ local function robloxEngine(): Engine
 	}
 end
 
--- Time of the clip's last keyframe.
-local function clipDuration(sequence: KeyframeSequence): number
+-- Time of the clip's last keyframe, or for a clip made of curves, of the last key of any
+-- of its curves.
+local function clipDuration(sequence: Instance): number
 	local last = 0
+	if sequence:IsA("CurveAnimation") then
+		for _, descendant: any in sequence:GetDescendants() do
+			local ok, keys = pcall(function()
+				return descendant:GetKeys()
+			end)
+			if ok and type(keys) == "table" then
+				for _, key in keys do
+					last = math.max(last, key.Time)
+				end
+			end
+		end
+		return last
+	end
 	for _, child in sequence:GetChildren() do
 		if child:IsA("Keyframe") then
-			last = math.max(last, child.Time)
+			last = math.max(last, (child :: Keyframe).Time)
 		end
 	end
 	return last
@@ -197,7 +216,7 @@ function Sampler.open(model: Model, joints: { [string]: Rig.Joint }, sequence: K
 		local animation = engine.newInstance("Animation")
 		table.insert(handle.owned, animation)
 		local played: any = sequence
-		if duration <= 0 then
+		if duration <= 0 and sequence:IsA("KeyframeSequence") then
 			-- A loaded track is recognised by its length, which this clip would never have.
 			played = sequence:Clone()
 			table.insert(handle.owned, played)

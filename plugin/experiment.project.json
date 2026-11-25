@@ -1,0 +1,15 @@
+{
+  "name": "KeywrightExperiment",
+  "tree": {
+    "$className": "Folder",
+    "Main": {
+      "$path": "Main.server.luau"
+    },
+    "src": {
+      "$path": "src"
+    },
+    "Experiment": {
+      "$path": "experiment/Experiment.luau"
+    }
+  }
+}
