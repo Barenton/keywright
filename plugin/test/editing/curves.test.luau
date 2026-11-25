@@ -1622,6 +1622,41 @@ case("contact with the floor is checked in a curve clip", function()
 		{ type = "set_properties", loop = true },
 	})
 	local onTheSpot = validate(cycle)
+	-- A foot on a moving floor that lands on its heel and pushes off its toe, in a loop.
+	local stepping = blank()
+	realRun(stepping, {
+		{ type = "set_key", joint = "LowerTorso", time = 0, position = { 0, -0.4, 0 } },
+		{ type = "set_key", joint = "LowerTorso", time = 1, position = { 0, -0.4, 0 } },
+		{ type = "set_properties", loop = true },
+		{
+			type = "pin",
+			part = "LeftFoot",
+			time_from = 0,
+			time_to = 0.2,
+			pivot = "heel",
+			roll = { 15, 0 },
+			on_floor = true,
+			travel = { 0, 0, 1 },
+		},
+		{ type = "pin", part = "LeftFoot", time_from = 0.2, time_to = 0.4, on_floor = true, travel = { 0, 0, 1 } },
+		{
+			type = "pin",
+			part = "LeftFoot",
+			time_from = 0.4,
+			time_to = 0.6,
+			pivot = "toe",
+			roll = { 0, 20 },
+			travel = { 0, 0, 1 },
+		},
+	})
+	local rolled = validate(stepping)
+	local leftSlides = 0
+	for _, issue in rolled.issues do
+		if issue.code == "FOOT_SLIDE" and issue.joints[1] == "LeftFoot" then
+			leftSlides += 1
+		end
+	end
+	check("rolling heel to toe on a moving floor in a loop is a cycle, not a slide", leftSlides == 0, leftSlides)
 	check(
 		"in a loop, feet moving back steadily are a cycle made on the spot",
 		onTheSpot.counts.FOOT_SLIDE == nil,

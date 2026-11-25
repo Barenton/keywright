@@ -2872,23 +2872,32 @@ local function contacts(
 					end
 					drift = math.min(drift, furthest)
 				end
-				local steps: { number } = {}
-				for step = index, finish do
-					local here = list[step].position
-					if step > index then
-						local there = list[step - 1].position
-						table.insert(steps, math.sqrt((here[1] - there[1]) ^ 2 + (here[3] - there[3]) ^ 2))
+				-- Each frame's step across the floor, at each point of the sole.
+				local steps: { { number } } = {}
+				for step = index + 1, finish do
+					local each = {}
+					for point = 1, 3 do
+						local here, there = list[step].sole[point], list[step - 1].sole[point]
+						each[point] = math.sqrt((here[1] - there[1]) ^ 2 + (here[2] - there[2]) ^ 2)
 					end
+					table.insert(steps, each)
 				end
+				-- Steady: at every frame some point of the sole moves back by about the same
+				-- step, as the heel does while the foot rolls onto it and the toe while it
+				-- rolls off.
 				local steady = false
 				if (clip :: any).Loop == true and #steps > 0 then
 					local mean = 0
-					for _, length in steps do
-						mean += length / #steps
+					for _, each in steps do
+						mean += each[3] / #steps
 					end
 					steady = mean * rate > 0.5
-					for _, length in steps do
-						steady = steady and math.abs(length - mean) <= 0.35 * mean
+					for _, each in steps do
+						local close = false
+						for point = 1, 3 do
+							close = close or math.abs(each[point] - mean) <= 0.35 * mean
+						end
+						steady = steady and close
 					end
 				end
 				if drift > thresholds.slide_studs and not steady then
