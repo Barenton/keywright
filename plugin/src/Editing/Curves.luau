@@ -640,6 +640,12 @@ local checks: { [string]: Check } = {
 		end
 		needVector(where, operation.position, "position", Curves.MAX_POSITION)
 		needVector(where, operation.pole, "pole", Curves.MAX_POSITION)
+		if operation.on_floor ~= nil and type(operation.on_floor) ~= "boolean" then
+			refuse(where, "on_floor must be true or false.")
+		end
+		if operation.on_floor and operation.relative_to ~= nil then
+			refuse(where, "on_floor holds the part on the floor, so it cannot also be relative_to another part.")
+		end
 		if operation.relative_to ~= nil then
 			needJoint(where, operation.relative_to, joints)
 			if table.find(chain :: { string }, operation.relative_to) then
@@ -1618,6 +1624,19 @@ local appliers: { [string]: Apply } = {
 		if operation.position then
 			local p = operation.position
 			tipLocal = Roblox.CFrame.new(p[1], p[2], p[3]) * (tipLocal - tipLocal.Position)
+		end
+		if operation.on_floor then
+			-- Where it is, but set flat, turned only about the vertical, with its underside
+			-- on the floor.
+			local here = tipLocal.Position
+			local look = tipLocal.LookVector
+			local heading = Roblox.Vector3.new(look.X, 0, look.Z)
+			if heading.Magnitude < 1e-6 then
+				heading = Roblox.Vector3.new(0, 0, -1)
+			end
+			local size = joints[chain[3]].part1.Size
+			local standing = Roblox.Vector3.new(here.X, floorOf(joints) + size.Y / 2, here.Z)
+			tipLocal = Roblox.CFrame.lookAt(standing, standing + heading.Unit)
 		end
 		local full = (operation.hold or "full") == "full"
 		local poleLocal = if operation.pole

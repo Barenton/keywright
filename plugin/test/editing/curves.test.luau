@@ -1206,6 +1206,25 @@ local function lowestAt(clip: any, time: number, parts: { string }?): number
 end
 local FLOOR = lowestAt(blank(), 0, Rig.R15_ORDER)
 
+case("a pin on_floor stands the foot flat on the floor where it is", function()
+	local clip = squat(0.4)
+	-- At 0.5 seconds the straight legs have pushed the feet into the floor.
+	local sunk = placedAt(clip, 0.5).LeftFoot
+	check("before, the foot is in the floor", lowestAt(clip, 0.5, { "LeftFoot" }) < FLOOR - 0.3)
+	realRun(clip, { { type = "pin", part = "LeftFoot", time_from = 0, time_to = 1, at = 0.5, on_floor = true } })
+	local height, drift = 0, 0
+	for frame = 0, 30 do
+		height = math.max(height, math.abs(lowestAt(clip, frame / 30, { "LeftFoot" }) - FLOOR))
+		local foot = placedAt(clip, frame / 30).LeftFoot.Position
+		drift = math.max(drift, math.abs(foot.X - sunk.Position.X) + math.abs(foot.Z - sunk.Position.Z))
+	end
+	check("after, it stands on the floor at every frame", height < 0.002, height)
+	check("where it was, across the floor", drift < 0.002, drift)
+	check("not with relative_to", refusal(clip, {
+		{ type = "pin", part = "LeftFoot", time_from = 0, time_to = 1, on_floor = true, relative_to = "UpperTorso" },
+	}) ~= nil)
+end)
+
 case("place_on_floor lifts what sank, and leaves the rest", function()
 	local clip = squat(0.8)
 	check("before, the feet sink", lowestAt(clip, 0.5) < FLOOR - 0.7, lowestAt(clip, 0.5) - FLOOR)

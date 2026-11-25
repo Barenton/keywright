@@ -268,6 +268,10 @@ const operations = [
 		position: vec3
 			.optional()
 			.describe("Where the part's middle is to be instead, in studs from the root part: x toward the rig's right, y up, z toward its back. With relative_to, in studs from that part's middle along its own directions instead."),
+		on_floor: z
+			.boolean()
+			.optional()
+			.describe("Hold the part where it is across the floor, but set flat, turned only about the vertical, with its underside on the floor: plants a foot properly even where the clip has it sunk or lifted at `at`, as after lowering the hips on straight legs. Not with relative_to; position's height is replaced."),
 		relative_to: r15Part
 			.optional()
 			.describe("Hold the part against another part instead of in place, re-placed at every frame as that part moves: a hand on the chest stays on the chest while the body bends, a hand on a knee stays on it as the knee rises. Without position, the part keeps where it was against that part at `at`. Not a part of the limb itself."),
