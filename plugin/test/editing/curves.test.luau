@@ -726,6 +726,44 @@ case("a soft pin does not lock the knee straight, and says how short it fell", f
 	check("the result says how short it fell", (changed.largest_soft_studs or 0) > 0, changed.largest_soft_studs)
 end)
 
+case("a pin with a toe or heel pivot lets the foot roll over that point", function()
+	-- The hips drop while the foot pitches and back: toes down, it rolls up onto its toe;
+	-- toes up, back over its heel.
+	local function rolling(pitch: number?): any
+		local clip = squat(0.3)
+		realRun(clip, {
+			{ type = "set_key", joint = "LeftFoot", time = 0, rotation = { 0, 0, 0 } },
+			{ type = "set_key", joint = "LeftFoot", time = 0.5, rotation = { pitch or 35, 0, 0 } },
+			{ type = "set_key", joint = "LeftFoot", time = 1, rotation = { 0, 0, 0 } },
+			{ type = "auto_tangents", time_from = 0, time_to = 1 },
+		})
+		return clip
+	end
+	local size = REAL.LeftFoot.part1.Size
+	for _, pivot in { "toe", "heel" } do
+		local pitch = if pivot == "toe" then -35 else 35
+		local original = rolling(pitch)
+		local clip = rolling(pitch)
+		local offset = roblox.Vector3.new(0, -size.Y / 2, if pivot == "toe" then -size.Z / 2 else size.Z / 2)
+		local start = placedAt(clip, 0).LeftFoot:PointToWorldSpace(offset)
+		local changed =
+			realRun(clip, { { type = "pin", part = "LeftFoot", time_from = 0, time_to = 1, pivot = pivot } })
+		check(`{pivot}: reached at every frame`, changed.frames_out_of_reach == nil, changed.largest_miss_studs)
+		local drift, turned = 0, 0
+		for frame = 0, 30 do
+			local foot = placedAt(clip, frame / 30).LeftFoot
+			drift = math.max(drift, (foot:PointToWorldSpace(offset) - start).Magnitude)
+			turned = math.max(turned, turnBetween(foot, placedAt(original, frame / 30).LeftFoot))
+		end
+		check(`{pivot}: the point stays put`, drift < 0.002, drift)
+		check(`{pivot}: the foot keeps the turn it is animated with`, turned < 0.05, turned)
+	end
+	check(
+		"a toe pivot on a hand is refused",
+		refusal(rolling(), { { type = "pin", part = "LeftHand", time_from = 0, time_to = 1, pivot = "toe" } }) ~= nil
+	)
+end)
+
 case("pins that cannot be done are refused", function()
 	local clip = squat(0.5)
 	local function refusedReal(operation: any): any

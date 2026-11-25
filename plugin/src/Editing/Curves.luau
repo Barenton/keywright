@@ -49,6 +49,7 @@ Curves.MAX_MARKER_VALUE = 200
 -- The longest a pin may take to blend in or out, in seconds.
 Curves.MAX_BLEND = 2
 Curves.HOLDS = { "full", "position" }
+Curves.PIVOTS = { "ankle", "toe", "heel" }
 Curves.FLOOR_MODES = { "lift", "touch" }
 Curves.MIRROR_MODES = { "flip", "left_to_right", "right_to_left" }
 Curves.MIN_SCALE = 0.01
@@ -703,6 +704,20 @@ local checks: { [string]: Check } = {
 		end
 		needVector(where, operation.position, "position", Curves.MAX_POSITION)
 		needVector(where, operation.pole, "pole", Curves.MAX_POSITION)
+		if operation.pivot ~= nil then
+			needOneOf(where, operation.pivot, "pivot", Curves.PIVOTS)
+			if operation.pivot ~= "ankle" then
+				if operation.part ~= "LeftFoot" and operation.part ~= "RightFoot" then
+					refuse(where, "a toe or heel pivot is for a foot.")
+				end
+				if operation.hold == "position" then
+					refuse(
+						where,
+						"with a toe or heel pivot the foot keeps its own turn already; hold position holds the ankle instead."
+					)
+				end
+			end
+		end
 		local soft = operation.soft
 		if soft ~= nil and (not isFinite(soft) or soft < 0 or soft > 0.5) then
 			refuse(where, "soft must be from 0 to 0.5.")
@@ -1754,7 +1769,25 @@ local appliers: { [string]: Apply } = {
 			local standing = Roblox.Vector3.new(here.X, floorOf(joints) + size.Y / 2, here.Z)
 			tipLocal = Roblox.CFrame.lookAt(standing, standing + heading.Unit)
 		end
-		local full = (operation.hold or "full") == "full"
+		-- With a toe or heel pivot, that point of the foot is what stays put, and the foot
+		-- keeps the turn its own motion gives it, so it can roll over the point.
+		local rolling = operation.pivot == "toe" or operation.pivot == "heel"
+		local offset = Roblox.Vector3.new()
+		local pointLocal = Roblox.Vector3.new()
+		if rolling then
+			local size = joints[chain[3]].part1.Size
+			-- A rig faces along its own negative Z: the toe is the front of the sole.
+			offset = Roblox.Vector3.new(0, -size.Y / 2, if operation.pivot == "toe" then -size.Z / 2 else size.Z / 2)
+			pointLocal = (anchorOf(reference):Inverse() * reference[chain[3]]):PointToWorldSpace(offset)
+			if operation.position then
+				local p = operation.position
+				pointLocal = Roblox.Vector3.new(p[1], p[2], p[3])
+			end
+			if operation.on_floor then
+				pointLocal = Roblox.Vector3.new(pointLocal.X, floorOf(joints), pointLocal.Z)
+			end
+		end
+		local full = rolling or (operation.hold or "full") == "full"
 		local poleLocal = if operation.pole
 			then Roblox.Vector3.new(operation.pole[1], operation.pole[2], operation.pole[3])
 			else nil
@@ -1769,6 +1802,10 @@ local appliers: { [string]: Apply } = {
 			local current = { transforms[chain[1]], transforms[chain[2]], transforms[chain[3]] }
 			local anchor = anchorOf(placed)
 			local tip = anchor * tipLocal
+			if rolling then
+				local own = anchor:Inverse() * placed[chain[3]]
+				tip = anchor * Roblox.CFrame.new(pointLocal) * (own - own.Position) * Roblox.CFrame.new(-offset)
+			end
 			local weight = 1
 			if time < from - Curves.TIME_TOLERANCE then
 				weight = smoothstep((time - first) / math.max(from - first, 1e-6))

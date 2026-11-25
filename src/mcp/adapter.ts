@@ -268,6 +268,10 @@ const operations = [
 		position: vec3
 			.optional()
 			.describe("Where the part's middle is to be instead, in studs from the root part: x toward the rig's right, y up, z toward its back. With relative_to, in studs from that part's middle along its own directions instead."),
+		pivot: z
+			.enum(["ankle", "toe", "heel"])
+			.optional()
+			.describe("Feet only. The point of the foot that stays put. ankle (default) holds the foot as hold says. toe or heel holds that point, the middle of the sole's front or back edge, and the foot keeps the turn its own motion gives it, so it rolls over the point: key the foot pitching toes down with the toe pinned and it peels up onto its toe, as a step pushes off; key it toes up and then down with the heel pinned and it lands heel first and rolls onto its sole. With position or on_floor, those place the point. Not with hold position."),
 		soft: z
 			.number()
 			.min(0)
