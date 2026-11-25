@@ -1067,6 +1067,21 @@ case("reduce_keys rebuilds a channel from few keys, the same at every frame", fu
 	)
 end)
 
+case("a range rewritten frame by frame leaves the motion either side exactly as it was", function()
+	local original = lopsided()
+	local clip = lopsided()
+	-- The left arm has keys before, inside and after the range.
+	realRun(clip, { { type = "pin", part = "LeftHand", time_from = 0.3, time_to = 0.6 } })
+	local worst = 0
+	for frame = 0, 30 do
+		local time = frame / 30
+		if time < 0.3 - 1e-6 or time > 0.6 + 1e-6 then
+			worst = math.max(worst, difference(sampleAll(clip, time), sampleAll(original, time)))
+		end
+	end
+	check("every frame outside the range is unchanged", worst < 1e-6, worst)
+end)
+
 -- The lowest point of the parts the floor is measured by, at a time.
 local MEASURED = {}
 for _, name in Rig.R15_ORDER do

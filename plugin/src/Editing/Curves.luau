@@ -833,9 +833,11 @@ end
 type Frames = { first: number, last: number, values: { number }, duration: number }
 
 -- Replaces a channel's keys from one whole frame to another with one key a frame, with
--- smooth tangents, and leaves the rest of the channel as it was. Where the channel had no
--- key on one side of the range, the motion there is held with a key a frame away, so that
--- it stays as it was. `original` is the channel's keys before the change.
+-- smooth tangents, and leaves the rest of the channel exactly as it was. To do that, the
+-- curve is cut a frame either side of the range, with a key there on the original curve,
+-- at its slope: a stretch of curve cut at a point with its own value and slope keeps its
+-- shape, so the motion outside the range does not change. `original` is the channel's keys
+-- before the change.
 local function writeFrames(
 	clip: Instance,
 	joint: string,
@@ -845,33 +847,55 @@ local function writeFrames(
 	changed: Changed
 )
 	local rate = Curves.FRAME_RATE
+	local tolerance = Curves.TIME_TOLERANCE
 	local startTime, endTime = frames.first / rate, frames.last / rate
 	local kept: { Key } = {}
-	local earlier, later = false, false
 	for _, key in original do
-		if key.time < startTime - Curves.TIME_TOLERANCE then
-			earlier = true
-			table.insert(kept, table.clone(key))
-		elseif key.time > endTime + Curves.TIME_TOLERANCE then
-			later = true
+		if key.time < startTime - tolerance or key.time > endTime + tolerance then
 			table.insert(kept, table.clone(key))
 		end
 	end
-	local guards: { number } = {}
-	if not earlier and frames.first > 0 then
-		table.insert(guards, (frames.first - 1) / rate)
-	end
-	if not later and endTime < frames.duration - Curves.TIME_TOLERANCE then
-		table.insert(guards, (frames.last + 1) / rate)
-	end
-	for _, time in guards do
-		table.insert(kept, {
+	-- A step small enough that a slope measured over it is the slope at the point.
+	local h = 1e-6
+	local function cut(time: number): Key?
+		for _, key in original do
+			if math.abs(key.time - time) < tolerance then
+				return nil
+			end
+		end
+		-- The stretch the cut falls in keeps its shape on both sides of it.
+		local mode = "Cubic"
+		for _, key in original do
+			if key.time < time then
+				mode = key.interpolation
+			end
+		end
+		local value = Curves.evaluate(original, time)
+		return {
 			time = time,
-			value = Curves.evaluate(original, time),
-			interpolation = "Cubic",
-			left = 0,
-			right = 0,
-		})
+			value = value,
+			interpolation = mode,
+			left = (value - Curves.evaluate(original, time - h)) / h,
+			right = if mode == "Cubic" then (Curves.evaluate(original, time + h) - value) / h else nil,
+		}
+	end
+	local guards = 0
+	if frames.first > 0 then
+		local before = cut((frames.first - 1) / rate)
+		if before then
+			-- The new keys start right after it, so it leads into them smoothly.
+			before.interpolation = "Cubic"
+			before.right = before.right or before.left
+			table.insert(kept, before)
+			guards += 1
+		end
+	end
+	if endTime < frames.duration - tolerance then
+		local after = cut((frames.last + 1) / rate)
+		if after then
+			table.insert(kept, after)
+			guards += 1
+		end
 	end
 	for index, value in frames.values do
 		table.insert(kept, {
@@ -885,11 +909,12 @@ local function writeFrames(
 	if #kept > Curves.MAX_KEYS then
 		Errors.throw("LIMIT_EXCEEDED", `A curve holds at most {Curves.MAX_KEYS} keys.`)
 	end
+	sortKeys(kept)
 	local curve = Curves.channel(clip, joint, channel, true) :: Instance
 	Curves.setKeys(curve, kept)
-	local spanFrom = if #guards > 0 then math.min(startTime, guards[1]) else startTime
-	smoothChannel(curve, spanFrom, math.max(endTime, guards[#guards] or endTime), {}, false)
-	count(changed, "keys_written", #frames.values + #guards)
+	-- Only the new keys' tangents are worked out; the cuts keep the original's slopes.
+	smoothChannel(curve, startTime, endTime, {}, false)
+	count(changed, "keys_written", #frames.values + guards)
 end
 
 local function markerCurve(clip: Instance, name: string, create: boolean): Instance?
