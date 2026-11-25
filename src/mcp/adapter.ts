@@ -103,17 +103,38 @@ const operations = [
 		to: time("Time of the copy in seconds."),
 	}),
 	z.object({
-		type: z.literal("shift_time").describe("Move every keyframe in a time range by the same amount. Refused if one would land on or pass a keyframe outside the range."),
+		type: z
+			.literal("shift_time")
+			.describe(
+				"Move every keyframe in a time range by the same amount; in a curve clip, every key of every joint and every marker, each onto the nearest whole frame. Refused if one would land on or pass a key or keyframe outside the range.",
+			),
 		time_from: rangeFrom,
 		time_to: rangeTo,
 		offset: z.number().finite().describe("Seconds to move by; negative moves earlier."),
 	}),
 	z.object({
-		type: z.literal("scale_time").describe("Stretch or squeeze the keyframes in a time range. Refused if one would land on or pass a keyframe outside the range."),
+		type: z
+			.literal("scale_time")
+			.describe(
+				"Stretch or squeeze the keyframes in a time range, to make that part of the move slower or faster. In a curve clip, every key of every joint and every marker in the range, each onto the nearest whole frame, with tangents scaled so the curves keep their shape; keys squeezed onto one frame are joined into one, and the result counts keys_merged with first_merge_at. Refused if one would land on or pass a key or keyframe outside the range, unless ripple carries those along.",
+			),
 		time_from: rangeFrom,
 		time_to: rangeTo,
 		factor: z.number().min(0.01).max(100).describe("2 makes the range twice as long, 0.5 half as long."),
 		anchor: time("The time that stays where it is. Default: time_from.").optional(),
+		ripple: z
+			.boolean()
+			.optional()
+			.describe("Also move everything after the range by as much as its end moves, so the rest of the clip keeps its own timing and the clip grows or shrinks. Default false."),
+	}),
+	z.object({
+		type: z
+			.literal("reverse_time")
+			.describe(
+				"Curve clips only. Play a time range backward: each key at time t moves to time_from + time_to - t, with its tangents turned round, and markers with them. A get-up reversed is a fall; a reach reversed is a return.",
+			),
+		time_from: rangeFrom,
+		time_to: rangeTo,
 	}),
 	z.object({
 		type: z.literal("set_properties").describe("Change the clip's own settings. Give at least one."),
@@ -494,7 +515,7 @@ export function createAdapter(options: AdapterOptions): McpServer {
 		"edit_animation",
 		{
 			description:
-				"Apply a batch of operations to a working copy atomically. A keyframe clip takes poses, easing, keyframes, retiming and smoothing; a curve clip takes keys, tangents, auto_tangents, clear_keys, mirror, pin and place_on_floor. Both take markers, the clip's settings and restore_source; each operation's description says which clips it is for. The operations apply in the order given, each to the clip as the ones before it leave it. The whole batch is tried first; if any operation cannot be done, nothing changes and the error names it by its place in the list. Requires the current revision. One Studio undo reverts the whole batch. Only what an operation names is changed.",
+				"Apply a batch of operations to a working copy atomically. A keyframe clip takes poses, easing, keyframes and smoothing; a curve clip takes keys, tangents, auto_tangents, clear_keys, mirror, pin, place_on_floor and reverse_time. Both take shift_time and scale_time (retiming), markers, the clip's settings and restore_source; each operation's description says which clips it is for. The operations apply in the order given, each to the clip as the ones before it leave it. The whole batch is tried first; if any operation cannot be done, nothing changes and the error names it by its place in the list. Requires the current revision. One Studio undo reverts the whole batch. Only what an operation names is changed.",
 			inputSchema: {
 				studio_session: studioSession,
 				clip_id: clipId,

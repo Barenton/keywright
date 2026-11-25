@@ -943,6 +943,79 @@ case("mirrors that cannot be done are refused", function()
 	)
 end)
 
+-- Every channel of a clip at a time, as one list.
+local function sampleAll(clip: any, time: number): { number }
+	local values = {}
+	for _, joint in Rig.R15_ORDER do
+		for _, channel in Curves.CHANNELS do
+			local curve = Curves.channel(clip, joint, channel, false)
+			table.insert(values, if curve then Curves.evaluate(Curves.keys(curve), time) else 0)
+		end
+	end
+	return values
+end
+local function difference(a: { number }, b: { number }): number
+	local worst = 0
+	for index, value in a do
+		worst = math.max(worst, math.abs(value - b[index]))
+	end
+	return worst
+end
+
+case("a curve clip is retimed: shifted, scaled with or without ripple, and reversed", function()
+	local original = lopsided()
+	local clip = lopsided()
+	-- Twice as slow from 0 to 0.5, the rest moved on to match.
+	local changed = realRun(clip, { { type = "scale_time", time_from = 0, time_to = 0.5, factor = 2, ripple = true } })
+	check("keys moved", (changed.keys_moved or 0) > 0, changed.keys_moved)
+	check("the clip is half a second longer", math.abs(Curves.duration(clip) - 1.5) < 1e-9, Curves.duration(clip))
+	local worst = 0
+	for step = 0, 10 do
+		local time = step / 20
+		worst = math.max(worst, difference(sampleAll(clip, time * 2), sampleAll(original, time)))
+	end
+	for step = 0, 10 do
+		local time = 0.5 + step / 20
+		worst = math.max(worst, difference(sampleAll(clip, time + 0.5), sampleAll(original, time)))
+	end
+	check("the motion is the same, only slower in the range", worst < 1e-6, worst)
+
+	local shifted = lopsided()
+	realRun(shifted, {
+		{ type = "set_key", joint = "Head", time = 1.5, rotation = { 0, 0, 0 } },
+		{ type = "shift_time", time_from = 0.4, time_to = 1.1, offset = 0.2 },
+	})
+	check("a shift moves the keys in the range", difference(sampleAll(shifted, 1.2), sampleAll(original, 1)) < 1e-6)
+	local passing = refusal(shifted, { { type = "shift_time", time_from = 0, time_to = 0.6, offset = 0.8 } })
+	check(
+		"and is refused past a key outside it",
+		passing and string.find(passing.message, "would pass", 1, true),
+		passing and passing.message
+	)
+
+	local reversed = lopsided()
+	realRun(reversed, { { type = "reverse_time", time_from = 0, time_to = 1 } })
+	local back = 0
+	for step = 0, 30 do
+		local time = step / 30
+		back = math.max(back, difference(sampleAll(reversed, time), sampleAll(original, 1 - time)))
+	end
+	check("a reversed range plays the motion backward", back < 1e-6, back)
+end)
+
+case("squeezing keys onto fewer frames joins them, and says so", function()
+	local clip = squat(0.5)
+	realRun(clip, { { type = "pin", part = "LeftFoot", time_from = 0, time_to = 1 } })
+	local changed = realRun(clip, { { type = "scale_time", time_from = 0, time_to = 1, factor = 0.5 } })
+	check("keys were joined", (changed.keys_merged or 0) > 0, changed.keys_merged)
+	check("from when", changed.first_merge_at ~= nil, changed.first_merge_at)
+	local onFrames = true
+	for _, key in keysOf(clip, "LeftLowerLeg", "rotation.x") do
+		onFrames = onFrames and math.abs(key.time * 30 - math.round(key.time * 30)) < 1e-6
+	end
+	check("every key is on a whole frame", onFrames)
+end)
+
 -- The lowest point of the parts the floor is measured by, at a time.
 local MEASURED = {}
 for _, name in Rig.R15_ORDER do

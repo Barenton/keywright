@@ -485,6 +485,18 @@ case("a range of keyframes is scaled", function()
 	check("refusals changed nothing", times(sequence) == "2.000 2.050 3.000 4.000 5.000", times(sequence))
 end)
 
+case("a scaled range can carry the rest of the clip along with ripple", function()
+	local sequence = rich()
+	run(sequence, { { type = "scale_time", time_from = 0, time_to = 1, factor = 2, ripple = true } })
+	check(
+		"the range grows and what follows moves on by as much",
+		times(sequence) == "0.000 2.000 3.000",
+		times(sequence)
+	)
+	run(sequence, { { type = "scale_time", time_from = 0, time_to = 2, factor = 0.5, ripple = true } })
+	check("and back", times(sequence) == "0.000 1.000 2.000", times(sequence))
+end)
+
 case("the clip's own settings are changed", function()
 	local sequence = blank()
 	local changed = run(sequence, { { type = "set_properties", name = "Wave", loop = true, priority = "Movement" } })

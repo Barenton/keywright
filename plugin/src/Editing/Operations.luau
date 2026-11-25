@@ -287,6 +287,9 @@ local checks: { [string]: Check } = {
 		if operation.anchor ~= nil then
 			needTime(where, operation.anchor, "anchor")
 		end
+		if operation.ripple ~= nil and type(operation.ripple) ~= "boolean" then
+			refuse(where, "ripple must be true or false.")
+		end
 	end,
 	set_properties = function(where, operation)
 		if operation.name == nil and operation.loop == nil and operation.priority == nil then
@@ -869,8 +872,20 @@ local appliers: { [string]: Apply } = {
 
 	scale_time = function(where, sequence, operation, _context, changed)
 		local anchor = if operation.anchor ~= nil then operation.anchor else operation.time_from
-		retime(where, sequence, operation, function(time)
+		local function scaled(time: number): number
 			return anchor + (time - anchor) * operation.factor
+		end
+		if not operation.ripple then
+			retime(where, sequence, operation, scaled, changed)
+			return
+		end
+		-- Everything after the range moves by as much as the range's end does, so the rest
+		-- of the clip keeps its timing.
+		local stretch = scaled(operation.time_to) - operation.time_to
+		local range = table.clone(operation)
+		range.time_to = Operations.MAX_TIME
+		retime(where, sequence, range, function(time)
+			return if time <= operation.time_to + Operations.TIME_TOLERANCE then scaled(time) else time + stretch
 		end, changed)
 	end,
 
