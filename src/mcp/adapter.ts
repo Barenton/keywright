@@ -481,6 +481,10 @@ export function createAdapter(options: AdapterOptions): McpServer {
 				clip_id: clipId,
 				expected_revision: z.string().describe("Revision from the last read or edit of this clip."),
 				operations: z.array(z.discriminatedUnion("type", operations)).min(1).max(256),
+				validate: z
+					.boolean()
+					.optional()
+					.describe("Also run validate_animation's checks, with its default limits, on the clip as the edit leaves it. The result then has validation: valid, the counts of each finding, and the first 10 findings. Saves a call after each edit."),
 			},
 		},
 		async ({ studio_session, ...params }, extra) => call("edit_animation", studio_session, params, extra.signal),

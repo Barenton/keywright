@@ -59,6 +59,8 @@ local MAX_FRAMES = 8
 local MIN_SAMPLES = 9
 local MAX_SAMPLES = 48
 local MAX_TRACKS = 8
+-- Most findings an edit lists when it is asked to check the clip it leaves.
+local EDIT_FINDINGS = 10
 
 local function requireEdit()
 	if not RunService:IsEdit() then
@@ -254,6 +256,19 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 		return result
 	end
 
+	-- What the checks need to know about a rig: its joints, and which of them are driven
+	-- through forces.
+	local function validationContext(model: Model): Validate.Context
+		local scan = Rig.require(model)
+		local nonKinematic: { [string]: boolean } = {}
+		for name, joint in scan.joints do
+			if not Rig.isKinematic(joint) then
+				nonKinematic[name] = true
+			end
+		end
+		return { joints = scan.joints, nonKinematic = nonKinematic }
+	end
+
 	methods.edit_animation = function(params: any): any
 		local working = Clips.get(requireString(params, "clip_id"))
 		local model = registry.models[working.rigId]
@@ -268,20 +283,24 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 			end
 			return Preview.run({ model = model, sequence = sequence, time = time, joints = joints, parent = workspace }).transforms
 		end
-		return Edit.apply(working, scan.joints, params.expected_revision, params.operations, sample)
-	end
-
-	-- What the checks need to know about a rig: its joints, and which of them are driven
-	-- through forces.
-	local function validationContext(model: Model): Validate.Context
-		local scan = Rig.require(model)
-		local nonKinematic: { [string]: boolean } = {}
-		for name, joint in scan.joints do
-			if not Rig.isKinematic(joint) then
-				nonKinematic[name] = true
+		local result = Edit.apply(working, scan.joints, params.expected_revision, params.operations, sample)
+		if params.validate == true then
+			-- The checks on the clip as the edit leaves it, cut short: the full list is
+			-- validate_animation's.
+			local checked = Validate.run(working.instance, validationContext(model), table.clone(Validate.DEFAULTS))
+			local issues = {}
+			for index = 1, math.min(#checked.issues, EDIT_FINDINGS) do
+				issues[index] = checked.issues[index]
 			end
+			result.validation = {
+				valid = checked.valid,
+				errors = checked.errors,
+				warnings = checked.warnings,
+				counts = checked.counts,
+				issues = issues,
+			}
 		end
-		return { joints = scan.joints, nonKinematic = nonKinematic }
+		return result
 	end
 
 	-- Runs the checks on a working copy. Changes nothing.
