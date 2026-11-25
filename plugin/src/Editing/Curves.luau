@@ -715,6 +715,7 @@ local checks: { [string]: Check } = {
 				end
 			end
 		end
+		needVector(where, operation.travel, "travel", 100)
 		if operation.roll ~= nil then
 			if operation.pivot ~= "toe" and operation.pivot ~= "heel" then
 				refuse(where, "roll is for a toe or heel pivot.")
@@ -1833,11 +1834,21 @@ local appliers: { [string]: Apply } = {
 			local current = { transforms[chain[1]], transforms[chain[2]], transforms[chain[3]] }
 			local anchor = anchorOf(placed)
 			local tip = anchor * tipLocal
+			-- On a moving floor, as for a cycle made on the spot: the held point moves on
+			-- steadily from where it was at `at`.
+			local moved = Roblox.Vector3.new()
+			if operation.travel then
+				local held = operation.at or from
+				moved = Roblox.Vector3.new(operation.travel[1], operation.travel[2], operation.travel[3])
+					* (math.clamp(time, from, to) - held)
+			end
 			if rolling then
 				local along = smoothstep((time - from) / math.max(to - from, 1e-6))
 				local angle = rollFrom + (rollTo - rollFrom) * along
 				local turned = heldTurn * Roblox.CFrame.Angles(lift * angle, 0, 0)
-				tip = anchor * Roblox.CFrame.new(pointLocal) * turned * Roblox.CFrame.new(-offset)
+				tip = anchor * Roblox.CFrame.new(pointLocal + moved) * turned * Roblox.CFrame.new(-offset)
+			elseif operation.travel then
+				tip = anchor * (tipLocal + moved)
 			end
 			local weight = 1
 			if time < from - Curves.TIME_TOLERANCE then

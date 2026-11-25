@@ -731,6 +731,26 @@ case("a soft pin does not lock the knee straight, and says how short it fell", f
 	check("the result says how short it fell", (changed.largest_soft_studs or 0) > 0, changed.largest_soft_studs)
 end)
 
+case("a pin with travel holds the foot on a floor that moves steadily", function()
+	local clip = squat(0.3)
+	local start = placedAt(clip, 0.2).LeftFoot
+	-- While the hips are low, so the leg can follow the foot back.
+	local changed = realRun(clip, {
+		{ type = "pin", part = "LeftFoot", time_from = 0.2, time_to = 0.6, travel = { 0, 0, 0.6 } },
+	})
+	check("reached at every frame", changed.frames_out_of_reach == nil, changed.largest_miss_studs)
+	local worst, turned = 0, 0
+	for frame = 6, 18 do
+		local time = frame / 30
+		local foot = placedAt(clip, time).LeftFoot
+		local wanted = start.Position + roblox.Vector3.new(0, 0, 0.6 * (time - 0.2))
+		worst = math.max(worst, (foot.Position - wanted).Magnitude)
+		turned = math.max(turned, turnBetween(foot, start))
+	end
+	check("the foot moves back at the speed asked, every frame", worst < 0.001, worst)
+	check("without turning", turned < 0.05, turned)
+end)
+
 case("pins that cannot be done are refused", function()
 	local clip = squat(0.5)
 	local function refusedReal(operation: any): any
