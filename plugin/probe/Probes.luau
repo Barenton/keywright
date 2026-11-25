@@ -174,7 +174,7 @@ function Probes.create(
 
 	probes["probe.info"] = function(): any
 		return {
-			studio_version = version(),
+			studio_version = RunService:GetRobloxVersion(),
 			is_edit = RunService:IsEdit(),
 			place_name = game.Name,
 			place_id = game.PlaceId,
