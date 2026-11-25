@@ -749,6 +749,20 @@ case("a pin with travel holds the foot on a floor that moves steadily", function
 	end
 	check("the foot moves back at the speed asked, every frame", worst < 0.001, worst)
 	check("without turning", turned < 0.05, turned)
+
+	-- Eased in, the point it eases toward is already moving, so it lands moving with it.
+	local landing = squat(0.3)
+	realRun(landing, {
+		{ type = "pin", part = "LeftFoot", time_from = 0.3, time_to = 0.6, travel = { 0, 0, 0.6 }, blend_in = 0.2 },
+	})
+	local function speedZ(time: number): number
+		return (placedAt(landing, time + 1 / 30).LeftFoot.Position.Z - placedAt(landing, time).LeftFoot.Position.Z) * 30
+	end
+	check(
+		"eased in, it already moves with the floor as it lands",
+		math.abs(speedZ(0.2667) - 0.6) < 0.15,
+		speedZ(0.2667)
+	)
 end)
 
 case("pins that cannot be done are refused", function()

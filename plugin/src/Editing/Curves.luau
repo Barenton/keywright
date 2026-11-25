@@ -1835,12 +1835,14 @@ local appliers: { [string]: Apply } = {
 			local anchor = anchorOf(placed)
 			local tip = anchor * tipLocal
 			-- On a moving floor, as for a cycle made on the spot: the held point moves on
-			-- steadily from where it was at `at`.
+			-- steadily from where it was at `at`, through the blends too, so a foot eased
+			-- in is already moving with the floor when it lands, and one eased out leaves
+			-- with it.
 			local moved = Roblox.Vector3.new()
 			if operation.travel then
 				local held = operation.at or from
 				moved = Roblox.Vector3.new(operation.travel[1], operation.travel[2], operation.travel[3])
-					* (math.clamp(time, from, to) - held)
+					* (time - held)
 			end
 			if rolling then
 				local along = smoothstep((time - from) / math.max(to - from, 1e-6))
