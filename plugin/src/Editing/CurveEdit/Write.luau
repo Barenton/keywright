@@ -201,8 +201,9 @@ end
 
 -- A channel's keys moved later by `offset` within a looping clip of length `duration`,
 -- those carried past the end coming round to the start. The curve is cut where the clip
--- now starts, with a key there and at the end on the curve, at its slope, so that the
--- motion is the same, only later.
+-- now starts, with a key there and at the end on the curve, at its slope on each side, so
+-- that the motion is the same, only later. The loop's old start is now in the middle: the
+-- key there arrives as the key at the end did, so the motion across it is the same too.
 local function wrapped(keys: { Key }, offset: number, duration: number): { Key }
 	local tolerance = Store.TIME_TOLERANCE
 	if #keys <= 1 or duration <= tolerance then
@@ -215,34 +216,31 @@ local function wrapped(keys: { Key }, offset: number, duration: number): { Key }
 		return out
 	end
 	local shift = offset % duration
+	local ending = if keys[#keys].time >= duration - tolerance then keys[#keys] else nil
 	local out: { Key } = {}
 	for _, key in keys do
 		if key.time < duration - tolerance then
 			local copy = table.clone(key)
 			copy.time = (key.time + shift) % duration
+			if ending and key.time < tolerance then
+				copy.left = ending.left
+			end
 			table.insert(out, copy)
 		end
 	end
 	-- What used to be played at `cut` is now played at the start, and again at the end.
 	local cut = (duration - shift) % duration
-	local function edge(time: number): Key
-		local h = 1e-4
-		local slope = (Store.evaluate(keys, math.min(cut + h, duration)) - Store.evaluate(keys, math.max(cut - h, 0)))
-			/ (math.min(cut + h, duration) - math.max(cut - h, 0))
+	local h = 1e-6
+	local function modeAt(time: number): string
 		local mode = keys[1].interpolation
 		for _, key in keys do
-			if key.time <= cut + tolerance then
+			if key.time <= time + tolerance then
 				mode = key.interpolation
 			end
 		end
-		return {
-			time = time,
-			value = Store.evaluate(keys, cut),
-			interpolation = mode,
-			left = slope,
-			right = if mode == "Cubic" then slope else nil,
-		}
+		return mode
 	end
+	local value = Store.evaluate(keys, cut)
 	local hasStart = false
 	for _, key in out do
 		if key.time < tolerance then
@@ -250,9 +248,27 @@ local function wrapped(keys: { Key }, offset: number, duration: number): { Key }
 		end
 	end
 	if not hasStart then
-		table.insert(out, edge(0))
+		-- Only its slope leaving matters: nothing comes before the start.
+		local mode = modeAt(cut)
+		local slope = (Store.evaluate(keys, math.min(cut + h, duration)) - value) / h
+		table.insert(out, {
+			time = 0,
+			value = value,
+			interpolation = mode,
+			left = slope,
+			right = if mode == "Cubic" then slope else nil,
+		})
 	end
-	table.insert(out, edge(duration))
+	-- Only its slope arriving matters: nothing comes after the end.
+	local arriving = (value - Store.evaluate(keys, math.max(cut - h, 0))) / h
+	local mode = modeAt(cut)
+	table.insert(out, {
+		time = duration,
+		value = value,
+		interpolation = mode,
+		left = arriving,
+		right = if mode == "Cubic" then arriving else nil,
+	})
 	sortKeys(out)
 	return out
 end

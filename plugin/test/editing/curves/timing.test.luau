@@ -120,6 +120,26 @@ case("a looping clip can be started somewhere else with shift_time and wrap", fu
 	end
 	check("each moment comes a quarter later, carried round", worst < 1e-4, worst)
 	check("the clip is as long as it was", math.abs(Curves.duration(clip) - 1) < 1e-9, Curves.duration(clip))
+
+	-- The key at the start has a slope arriving that never plays, since nothing comes before
+	-- it. Once the start is in the middle, the motion across it arrives as it did at the
+	-- end and leaves as it did from the start.
+	local function sloped(): any
+		local looped = closed()
+		realRun(looped, {
+			{ type = "auto_tangents", time_from = 0, time_to = 1 },
+			{ type = "set_tangent", joint = "UpperTorso", time = 0, channel = "rotation.y", ["in"] = 400 },
+		})
+		return looped
+	end
+	local before, moved = sloped(), sloped()
+	realRun(moved, { { type = "shift_time", time_from = 0, time_to = 1, offset = 0.3, wrap = true } })
+	local across = 0
+	for step = 0, 30 do
+		local time = step / 30
+		across = math.max(across, difference(sampleAll(moved, time), sampleAll(before, (time - 0.3) % 1)))
+	end
+	check("the motion across the old start is the same", across < 1e-4, across)
 	local plain = lopsided()
 	check(
 		"not in a clip that does not loop",
