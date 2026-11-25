@@ -129,6 +129,36 @@ const operations = [
 	}),
 	z.object({
 		type: z
+			.literal("add_offset")
+			.describe(
+				"Curve clips only. Add a turn or a move to one joint over a time range, on top of the motion it has, easing in and out: lean the chest further forward through a punch, drop the hips lower while landing, without working out new angles at every key. The amounts are added to the joint's own angles, as set_key gives them, and its position. Written at every frame and then reduced to as few keys as keep it, so the curves stay editable. The joint's motion outside the range and its blends is unchanged.",
+			),
+		joint,
+		time_from: time("Start of the range in seconds."),
+		time_to: time("End of the range in seconds. Must not be past the end of the clip."),
+		rotation: vec3.optional().describe("Degrees to add about X, Y and Z, as in set_key."),
+		position: vec3.optional().describe("Studs to add, as in set_key."),
+		blend_in: z.number().finite().min(0).max(2).optional().describe("Seconds before time_from over which it eases in. Default 0."),
+		blend_out: z.number().finite().min(0).max(2).optional().describe("Seconds after time_to over which it eases out. Default 0."),
+	}),
+	z.object({
+		type: z
+			.literal("add_noise")
+			.describe(
+				"Curve clips only. Add a smooth, slow sway on top of the motion of the joints named: breathing and weight shifts in an idle, a tremble, the shake of a hit. Each joint and channel sways its own way, from three waves at chance phases, and the same seed always gives the same sway. Over the whole of a looping clip, the sway ends where it began. Written at every frame and then reduced to as few keys as keep it.",
+			),
+		joints: z.array(z.string()).min(1).max(32),
+		time_from: time("Start of the range in seconds."),
+		time_to: time("End of the range in seconds. Must not be past the end of the clip."),
+		rotation_degrees: z.number().min(0).max(90).optional().describe("About how far each rotation channel sways either way, in degrees. Default 0."),
+		position_studs: z.number().min(0).max(5).optional().describe("About how far each position channel sways either way, in studs. Default 0."),
+		frequency: z.number().min(0.1).max(10).optional().describe("Waves a second of the slowest sway; the others are about twice and four times as fast. Default 1."),
+		seed: z.number().int().optional().describe("Another seed gives another sway. Default 1."),
+		blend_in: z.number().finite().min(0).max(2).optional().describe("Seconds before time_from over which it eases in. Default 0."),
+		blend_out: z.number().finite().min(0).max(2).optional().describe("Seconds after time_to over which it eases out. Default 0."),
+	}),
+	z.object({
+		type: z
 			.literal("reduce_keys")
 			.describe(
 				"Curve clips only. Rebuild each channel in a range from as few keys as keep it within a tolerance of how it plays now, at every frame Studio shows. pin, place_on_floor and a squeeze leave a key on every frame; reducing them afterwards leaves curves a person can edit in the Curve Editor, and reads that are far shorter. The keys at the ends of the range stay as they are. At most 60 seconds at once. The result counts keys_removed.",
@@ -527,7 +557,7 @@ export function createAdapter(options: AdapterOptions): McpServer {
 		"edit_animation",
 		{
 			description:
-				"Apply a batch of operations to a working copy atomically. A keyframe clip takes poses, easing, keyframes and smoothing; a curve clip takes keys, tangents, auto_tangents, clear_keys, mirror, pin, place_on_floor, reduce_keys and reverse_time. Both take shift_time and scale_time (retiming), markers, the clip's settings and restore_source; each operation's description says which clips it is for. The operations apply in the order given, each to the clip as the ones before it leave it. The whole batch is tried first; if any operation cannot be done, nothing changes and the error names it by its place in the list. Requires the current revision. One Studio undo reverts the whole batch. Only what an operation names is changed.",
+				"Apply a batch of operations to a working copy atomically. A keyframe clip takes poses, easing, keyframes and smoothing; a curve clip takes keys, tangents, auto_tangents, add_offset, add_noise, clear_keys, mirror, pin, place_on_floor, reduce_keys and reverse_time. Both take shift_time and scale_time (retiming), markers, the clip's settings and restore_source; each operation's description says which clips it is for. The operations apply in the order given, each to the clip as the ones before it leave it. The whole batch is tried first; if any operation cannot be done, nothing changes and the error names it by its place in the list. Requires the current revision. One Studio undo reverts the whole batch. Only what an operation names is changed.",
 			inputSchema: {
 				studio_session: studioSession,
 				clip_id: clipId,

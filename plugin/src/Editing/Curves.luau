@@ -57,6 +57,11 @@ Curves.REDUCE_DEGREES = 0.1
 Curves.REDUCE_STUDS = 0.002
 -- The longest range reduced in one go: the work grows with the square of its frames.
 Curves.MAX_REDUCE = 60
+-- Noise: the slowest and fastest it may sway, in waves a second, and the largest swing.
+Curves.MIN_FREQUENCY = 0.1
+Curves.MAX_FREQUENCY = 10
+Curves.MAX_NOISE_DEGREES = 90
+Curves.MAX_NOISE_STUDS = 5
 Curves.MAX_SCALE = 100
 Curves.MAX_LISTED = 500
 Curves.DEFAULT_KEYS = 400
@@ -429,6 +434,15 @@ local function needText(where: string, value: any, field: string, limit: number,
 	end
 end
 
+local function needBlends(where: string, operation: any)
+	for _, field in { "blend_in", "blend_out" } do
+		local value = operation[field]
+		if value ~= nil and (not isFinite(value) or value < 0 or value > Curves.MAX_BLEND) then
+			refuse(where, `{field} must be from 0 to {Curves.MAX_BLEND} seconds.`)
+		end
+	end
+end
+
 type Check = (where: string, operation: any, joints: { [string]: any }) -> ()
 
 local checks: { [string]: Check } = {
@@ -529,6 +543,41 @@ local checks: { [string]: Check } = {
 			refuse(where, "ripple must be true or false.")
 		end
 	end,
+	add_offset = function(where, operation, joints)
+		needJoint(where, operation.joint, joints)
+		needRange(where, operation)
+		needVector(where, operation.rotation, "rotation")
+		needVector(where, operation.position, "position", Curves.MAX_POSITION)
+		if operation.rotation == nil and operation.position == nil then
+			refuse(where, "give rotation, position or both.")
+		end
+		needBlends(where, operation)
+	end,
+	add_noise = function(where, operation, joints)
+		needRange(where, operation)
+		if type(operation.joints) ~= "table" or #operation.joints == 0 then
+			refuse(where, "joints must name at least one joint.")
+		end
+		needJoints(where, operation.joints, joints)
+		local degrees, studs = operation.rotation_degrees or 0, operation.position_studs or 0
+		if not isFinite(degrees) or degrees < 0 or degrees > Curves.MAX_NOISE_DEGREES then
+			refuse(where, `rotation_degrees must be from 0 to {Curves.MAX_NOISE_DEGREES}.`)
+		end
+		if not isFinite(studs) or studs < 0 or studs > Curves.MAX_NOISE_STUDS then
+			refuse(where, `position_studs must be from 0 to {Curves.MAX_NOISE_STUDS}.`)
+		end
+		if degrees == 0 and studs == 0 then
+			refuse(where, "give rotation_degrees, position_studs or both.")
+		end
+		local frequency = operation.frequency or 1
+		if not isFinite(frequency) or frequency < Curves.MIN_FREQUENCY or frequency > Curves.MAX_FREQUENCY then
+			refuse(where, `frequency must be from {Curves.MIN_FREQUENCY} to {Curves.MAX_FREQUENCY} waves a second.`)
+		end
+		if operation.seed ~= nil and (not isFinite(operation.seed) or operation.seed ~= math.floor(operation.seed)) then
+			refuse(where, "seed must be a whole number.")
+		end
+		needBlends(where, operation)
+	end,
 	reduce_keys = function(where, operation, joints)
 		needRange(where, operation)
 		needJoints(where, operation.joints, joints)
@@ -575,12 +624,7 @@ local checks: { [string]: Check } = {
 			needOneOf(where, operation.mode, "mode", Curves.FLOOR_MODES)
 		end
 		needJoints(where, operation.parts, joints)
-		for _, field in { "blend_in", "blend_out" } do
-			local value = operation[field]
-			if value ~= nil and (not isFinite(value) or value < 0 or value > Curves.MAX_BLEND) then
-				refuse(where, `{field} must be from 0 to {Curves.MAX_BLEND} seconds.`)
-			end
-		end
+		needBlends(where, operation)
 	end,
 	pin = function(where, operation, joints)
 		local chain = if type(operation.part) == "string" then Limb.CHAINS[operation.part] else nil
@@ -605,12 +649,7 @@ local checks: { [string]: Check } = {
 		if operation.hold ~= nil then
 			needOneOf(where, operation.hold, "hold", Curves.HOLDS)
 		end
-		for _, field in { "blend_in", "blend_out" } do
-			local value = operation[field]
-			if value ~= nil and (not isFinite(value) or value < 0 or value > Curves.MAX_BLEND) then
-				refuse(where, `{field} must be from 0 to {Curves.MAX_BLEND} seconds.`)
-			end
-		end
+		needBlends(where, operation)
 	end,
 }
 
@@ -1266,6 +1305,119 @@ local function reduced(keys: { Key }, from: number, to: number, tolerance: numbe
 	return out
 end
 
+-- ---------------------------------------------------------------------------------------
+-- Adding motion on top of a clip
+
+-- The whole frames an operation with a range and blends covers, and how much of it applies
+-- at a time: 1 inside the range, easing from 0 over the blends.
+type Span = { first: number, last: number, weight: (time: number) -> number }
+
+local function spanOf(where: string, clip: Instance, operation: any): Span
+	local duration = Curves.duration(clip)
+	if operation.time_to > duration + Curves.TIME_TOLERANCE then
+		refuse(
+			where,
+			`the clip ends at {milliseconds(duration)} seconds, before time_to.`,
+			"Key the clip out to its full length first."
+		)
+	end
+	local from, to = operation.time_from, operation.time_to
+	local first = math.max(0, from - (operation.blend_in or 0))
+	local last = math.min(duration, to + (operation.blend_out or 0))
+	local rate = Curves.FRAME_RATE
+	local firstFrame = math.ceil(first * rate - 1e-6)
+	local lastFrame = math.floor(last * rate + 1e-6)
+	if lastFrame < firstFrame then
+		refuse(where, "the range holds no whole frame; Studio shows a curve clip only at whole frames.")
+	end
+	return {
+		first = firstFrame,
+		last = lastFrame,
+		weight = function(time: number): number
+			if time < from - Curves.TIME_TOLERANCE then
+				return smoothstep((time - first) / math.max(from - first, 1e-6))
+			elseif time > to + Curves.TIME_TOLERANCE then
+				return smoothstep((last - time) / math.max(last - to, 1e-6))
+			end
+			return 1
+		end,
+	}
+end
+
+-- Adds `amount(time)` to one channel at every frame of a span, then reduces the keys there
+-- again to as few as keep the result, so the curve stays one a person can edit.
+local function addToChannel(
+	clip: Instance,
+	joint: string,
+	channel: string,
+	span: Span,
+	amount: (time: number) -> number,
+	changed: Changed
+)
+	local curve = Curves.channel(clip, joint, channel, false)
+	local original = if curve then Curves.keys(curve) else {}
+	local rate = Curves.FRAME_RATE
+	local values = {}
+	for frame = span.first, span.last do
+		local time = frame / rate
+		table.insert(values, Curves.evaluate(original, time) + amount(time))
+	end
+	-- Counted once below, as the keys the channel ends up with.
+	local scratch: Changed = {}
+	writeFrames(clip, joint, channel, original, {
+		first = span.first,
+		last = span.last,
+		values = values,
+		duration = Curves.duration(clip),
+	}, scratch)
+	local written = Curves.channel(clip, joint, channel, false) :: Instance
+	local tolerance = if string.sub(channel, 1, 8) == "rotation"
+		then math.rad(Curves.REDUCE_DEGREES)
+		else Curves.REDUCE_STUDS
+	local keys = Curves.keys(written)
+	local out = reduced(keys, (span.first - 1) / rate, (span.last + 1) / rate, tolerance) or keys
+	Curves.setKeys(written, out)
+	count(changed, "keys_written", #out)
+end
+
+-- A smooth sway of size about 1, the same for the same seed: three waves, each twice as
+-- fast as the one before and half as large, at chance phases. With `period`, every wave
+-- fits a whole number of times into it, so the sway comes back round to where it began.
+local function sway(seed: number, frequency: number, period: number?): (time: number) -> number
+	local state = seed % 2147483647
+	if state <= 0 then
+		state += 2147483646
+	end
+	local function chance(): number
+		state = (state * 48271) % 2147483647
+		return state / 2147483647
+	end
+	local waves = {}
+	for octave = 0, 2 do
+		local speed = frequency * 2 ^ octave * (0.85 + 0.3 * chance())
+		if period then
+			speed = math.max(1, math.round(speed * period)) / period
+		end
+		table.insert(waves, { speed = speed, phase = chance() * 2 * math.pi, size = 0.5 ^ octave })
+	end
+	return function(time: number): number
+		local total = 0
+		for _, wave in waves do
+			total += wave.size * math.sin(2 * math.pi * wave.speed * time + wave.phase)
+		end
+		return total / 1.75
+	end
+end
+
+-- A number from a joint's and a channel's names, so each gets its own sway from one seed.
+local function nameSeed(text: string): number
+	local hash = 5381
+	for index = 1, #text do
+		hash = (hash * 33 + string.byte(text, index)) % 2147483647
+	end
+	return hash
+end
+
 type Apply = (where: string, clip: Instance, operation: any, context: Context, changed: Changed) -> ()
 
 local appliers: { [string]: Apply } = {
@@ -1576,6 +1728,49 @@ local appliers: { [string]: Apply } = {
 		end, function(time)
 			return if time <= to + Curves.TIME_TOLERANCE then factor else 1
 		end, changed)
+	end,
+
+	add_offset = function(where, clip, operation, _context, changed)
+		local span = spanOf(where, clip, operation)
+		for axis, letter in { "x", "y", "z" } do
+			if operation.rotation and operation.rotation[axis] ~= 0 then
+				local size = math.rad(operation.rotation[axis])
+				addToChannel(clip, operation.joint, `rotation.{letter}`, span, function(time)
+					return size * span.weight(time)
+				end, changed)
+			end
+			if operation.position and operation.position[axis] ~= 0 then
+				local size = operation.position[axis]
+				addToChannel(clip, operation.joint, `position.{letter}`, span, function(time)
+					return size * span.weight(time)
+				end, changed)
+			end
+		end
+		count(changed, "frames_offset", span.last - span.first + 1)
+	end,
+
+	add_noise = function(where, clip, operation, _context, changed)
+		local span = spanOf(where, clip, operation)
+		local duration = Curves.duration(clip)
+		-- Over a whole looping clip, the sway comes back round to where it began.
+		local whole = near(operation.time_from, 0) and near(operation.time_to, duration)
+		local period = if (clip :: any).Loop == true and whole then duration else nil
+		local seed = operation.seed or 1
+		local frequency = operation.frequency or 1
+		local degrees = math.rad(operation.rotation_degrees or 0)
+		local studs = operation.position_studs or 0
+		for _, joint in operation.joints do
+			for _, channel in Curves.CHANNELS do
+				local size = if string.sub(channel, 1, 8) == "rotation" then degrees else studs
+				if size > 0 then
+					local wave = sway(seed * 7919 + nameSeed(joint .. channel), frequency, period)
+					addToChannel(clip, joint, channel, span, function(time)
+						return size * wave(time) * span.weight(time)
+					end, changed)
+				end
+			end
+		end
+		count(changed, "frames_with_noise", span.last - span.first + 1)
 	end,
 
 	reduce_keys = function(where, clip, operation, _context, changed)

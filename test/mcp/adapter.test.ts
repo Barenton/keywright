@@ -153,7 +153,7 @@ describe("MCP adapter over stdio", () => {
 		const keyframes = keyed("Operations.luau", "-- The names of every operation");
 		const curves = keyed("Curves.luau", "function Curves.types");
 		assert.equal(keyframes.length, 15);
-		assert.equal(curves.length, 16);
+		assert.equal(curves.length, 18);
 		const applied = [...new Set([...keyframes, ...curves])].sort();
 		assert.deepEqual(published, applied);
 		// Which way each easing direction goes is spelt out where a client will read it.

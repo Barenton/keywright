@@ -1082,6 +1082,95 @@ case("a range rewritten frame by frame leaves the motion either side exactly as 
 	check("every frame outside the range is unchanged", worst < 1e-6, worst)
 end)
 
+case("add_offset adds a turn over a range, easing in and out", function()
+	local original = lopsided()
+	local clip = lopsided()
+	realRun(clip, {
+		{
+			type = "add_offset",
+			joint = "UpperTorso",
+			time_from = 0.3,
+			time_to = 0.6,
+			rotation = { 15, 0, 0 },
+			blend_in = 0.1,
+			blend_out = 0.1,
+		},
+	})
+	local function torso(c: any, time: number): number
+		return Curves.evaluate(keysOf(c, "UpperTorso", "rotation.x"), time)
+	end
+	local inside, outside = 0, 0
+	for frame = 0, 30 do
+		local time = frame / 30
+		local added = math.deg(torso(clip, time) - torso(original, time))
+		if time >= 0.3 - 1e-6 and time <= 0.6 + 1e-6 then
+			inside = math.max(inside, math.abs(added - 15))
+		elseif time <= 0.2 + 1e-6 or time >= 0.7 - 1e-6 then
+			outside = math.max(outside, math.abs(added))
+		end
+	end
+	check("all of it inside the range", inside < 0.11, inside)
+	check("none of it outside the blends", outside < 0.11, outside)
+	local halfway = math.deg(torso(clip, 0.25) - torso(original, 0.25))
+	check("part of it halfway into the blend", halfway > 3 and halfway < 12, halfway)
+	check("other channels and joints are untouched", difference({
+		Curves.evaluate(keysOf(clip, "UpperTorso", "rotation.y"), 0.5),
+		Curves.evaluate(keysOf(clip, "Head", "rotation.x"), 0.5),
+	}, { Curves.evaluate(keysOf(original, "UpperTorso", "rotation.y"), 0.5), 0 }) < 1e-9)
+	check("and the result is not a key a frame", #keysOf(clip, "UpperTorso", "rotation.x") < 20)
+end)
+
+case("add_noise sways joints, the same for a seed, and loops in a looping clip", function()
+	local function noisy(seed: number, loop: boolean): any
+		local clip = blank()
+		realRun(clip, {
+			{ type = "set_key", joint = "Head", time = 0, rotation = { 0, 0, 0 } },
+			{ type = "set_key", joint = "Head", time = 2, rotation = { 0, 0, 0 } },
+			{ type = "set_properties", loop = loop },
+			{
+				type = "add_noise",
+				joints = { "Head", "UpperTorso" },
+				time_from = 0,
+				time_to = 2,
+				rotation_degrees = 5,
+				frequency = 1,
+				seed = seed,
+			},
+		})
+		return clip
+	end
+	local clip = noisy(3, true)
+	local largest = 0
+	for frame = 0, 60 do
+		for _, channel in { "rotation.x", "rotation.y", "rotation.z" } do
+			largest = math.max(largest, math.abs(math.deg(Curves.evaluate(keysOf(clip, "Head", channel), frame / 30))))
+		end
+	end
+	check("it moves", largest > 1, largest)
+	check("no further than asked", largest <= 5.11, largest)
+	local seam = 0
+	for _, joint in { "Head", "UpperTorso" } do
+		for _, channel in { "rotation.x", "rotation.y", "rotation.z" } do
+			local keys = keysOf(clip, joint, channel)
+			seam = math.max(seam, math.abs(math.deg(Curves.evaluate(keys, 0) - Curves.evaluate(keys, 2))))
+		end
+	end
+	check("in a loop, it ends where it began", seam < 0.11, seam)
+	check("the same seed gives the same sway", difference(sampleAll(noisy(3, true), 0.7), sampleAll(clip, 0.7)) < 1e-9)
+	check("another seed another", difference(sampleAll(noisy(4, true), 0.7), sampleAll(clip, 0.7)) > 1e-3)
+	check(
+		"each joint sways its own way",
+		math.abs(
+			Curves.evaluate(keysOf(clip, "Head", "rotation.x"), 0.7)
+				- Curves.evaluate(keysOf(clip, "UpperTorso", "rotation.x"), 0.7)
+		) > 1e-4
+	)
+	check(
+		"with nothing to add, it is refused",
+		refusal(clip, { { type = "add_noise", joints = { "Head" }, time_from = 0, time_to = 1 } }) ~= nil
+	)
+end)
+
 -- The lowest point of the parts the floor is measured by, at a time.
 local MEASURED = {}
 for _, name in Rig.R15_ORDER do
