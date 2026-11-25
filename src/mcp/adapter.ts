@@ -20,6 +20,8 @@ const vec3 = z.array(z.number().finite()).length(3);
 
 const time = (what: string) => z.number().finite().min(0).max(300).describe(what);
 const joint = z.string().describe("Name of the driven part, for example RightUpperArm.");
+// The parts of an R15 rig that a joint drives.
+const r15Part = z.enum(["LowerTorso", "UpperTorso", "Head", "LeftUpperArm", "LeftLowerArm", "LeftHand", "RightUpperArm", "RightLowerArm", "RightHand", "LeftUpperLeg", "LeftLowerLeg", "LeftFoot", "RightUpperLeg", "RightLowerLeg", "RightFoot"]);
 const position = vec3.optional().describe("Joint-local offset from the rest pose, in studs.");
 const rotation = vec3.optional().describe("Joint-local rotation as Euler angles in degrees, applied in X, Y, Z order.");
 const quaternion = z
@@ -203,8 +205,7 @@ const operations = [
 		position: vec3
 			.optional()
 			.describe("Where the part's middle is to be instead, in studs from the root part: x toward the rig's right, y up, z toward its back. With relative_to, in studs from that part's middle along its own directions instead."),
-		relative_to: z
-			.enum(["LowerTorso", "UpperTorso", "Head", "LeftUpperArm", "LeftLowerArm", "LeftHand", "RightUpperArm", "RightLowerArm", "RightHand", "LeftUpperLeg", "LeftLowerLeg", "LeftFoot", "RightUpperLeg", "RightLowerLeg", "RightFoot"])
+		relative_to: r15Part
 			.optional()
 			.describe("Hold the part against another part instead of in place, re-placed at every frame as that part moves: a hand on the chest stays on the chest while the body bends, a hand on a knee stays on it as the knee rises. Without position, the part keeps where it was against that part at `at`. Not a part of the limb itself."),
 		hold: z
@@ -214,6 +215,27 @@ const operations = [
 		pole: vec3.optional().describe("A point the knee or elbow is to point toward, in the same space as position (so also against relative_to when given)."),
 		blend_in: z.number().finite().min(0).max(2).optional().describe("Seconds before time_from over which the limb eases from its own motion into the hold. While easing in or out, the part travels straight from where its own motion has it to where it is held, turning evenly between the two. Default 0."),
 		blend_out: z.number().finite().min(0).max(2).optional().describe("Seconds after time_to over which it eases back out. Default 0."),
+	}),
+	z.object({
+		type: z
+			.literal("place_on_floor")
+			.describe(
+				"Curve clips only. Move the hips up or down at every frame of a range so that the body's lowest part rests on the floor, the rig's lowest point at rest, as validate_animation measures it. The whole body moves with the hips, feet and hands included, so place the body first and pin the feet after. The hips' position keys in the range are replaced by one key a frame, with smooth tangents; outside the range the clip is unchanged. The result counts frames_moved, with largest_raise_studs and largest_drop_studs.",
+			),
+		time_from: time("Start of the range in seconds."),
+		time_to: time("End of the range in seconds. Must not be past the end of the clip."),
+		mode: z
+			.enum(["lift", "touch"])
+			.optional()
+			.describe("lift (default) only raises a body that has gone into the floor, so a jump stays in the air. touch also brings a floating body down onto it: for lying, sitting, kneeling or a landing."),
+		parts: z
+			.array(r15Part)
+			.min(1)
+			.max(15)
+			.optional()
+			.describe("The parts that rest on the floor. Default: every part but the lower legs. Parts are measured as boxes, so for a body lying down, name the torso: the head's box is deeper than the torso and would hold the back off the floor."),
+		blend_in: z.number().finite().min(0).max(2).optional().describe("Seconds before time_from over which the move eases in. Default 0."),
+		blend_out: z.number().finite().min(0).max(2).optional().describe("Seconds after time_to over which it eases out. Default 0."),
 	}),
 	z.object({
 		type: z.literal("restore_source").describe("Reset the working copy to the clip it was opened from."),
@@ -442,7 +464,7 @@ export function createAdapter(options: AdapterOptions): McpServer {
 		"edit_animation",
 		{
 			description:
-				"Apply a batch of operations to a working copy atomically. A keyframe clip takes poses, easing, keyframes, retiming and smoothing; a curve clip takes keys, tangents, auto_tangents and pin. Both take markers, the clip's settings and restore_source; each operation's description says which clips it is for. The operations apply in the order given, each to the clip as the ones before it leave it. The whole batch is tried first; if any operation cannot be done, nothing changes and the error names it by its place in the list. Requires the current revision. One Studio undo reverts the whole batch. Only what an operation names is changed.",
+				"Apply a batch of operations to a working copy atomically. A keyframe clip takes poses, easing, keyframes, retiming and smoothing; a curve clip takes keys, tangents, auto_tangents, pin and place_on_floor. Both take markers, the clip's settings and restore_source; each operation's description says which clips it is for. The operations apply in the order given, each to the clip as the ones before it leave it. The whole batch is tried first; if any operation cannot be done, nothing changes and the error names it by its place in the list. Requires the current revision. One Studio undo reverts the whole batch. Only what an operation names is changed.",
 			inputSchema: {
 				studio_session: studioSession,
 				clip_id: clipId,

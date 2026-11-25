@@ -49,6 +49,7 @@ Curves.MAX_MARKER_VALUE = 200
 -- The longest a pin may take to blend in or out, in seconds.
 Curves.MAX_BLEND = 2
 Curves.HOLDS = { "full", "position" }
+Curves.FLOOR_MODES = { "lift", "touch" }
 Curves.MAX_LISTED = 500
 Curves.DEFAULT_KEYS = 400
 Curves.MAX_PAGE = 20000
@@ -501,6 +502,19 @@ local checks: { [string]: Check } = {
 		needText(where, operation.name, "name", Curves.MAX_NAME)
 	end,
 	restore_source = function() end,
+	place_on_floor = function(where, operation, joints)
+		needRange(where, operation)
+		if operation.mode ~= nil then
+			needOneOf(where, operation.mode, "mode", Curves.FLOOR_MODES)
+		end
+		needJoints(where, operation.parts, joints)
+		for _, field in { "blend_in", "blend_out" } do
+			local value = operation[field]
+			if value ~= nil and (not isFinite(value) or value < 0 or value > Curves.MAX_BLEND) then
+				refuse(where, `{field} must be from 0 to {Curves.MAX_BLEND} seconds.`)
+			end
+		end
+	end,
 	pin = function(where, operation, joints)
 		local chain = if type(operation.part) == "string" then Limb.CHAINS[operation.part] else nil
 		if not chain then
@@ -713,10 +727,102 @@ local function hasGeometry(joints: { [string]: any }, names: { string }): boolea
 	return true
 end
 
+-- Parts are measured against the floor as boxes of their size. A lower leg's box reaches
+-- down beside the ankle, so in a deep crouch, with the shin tilted forward, the box's back
+-- corner dips below the floor while the shin itself, which is slimmer there, stays above
+-- it (seen in Studio, 2026-11-25). The lower legs are left out of every floor measure.
+local NOT_FLOORED = { LeftLowerLeg = true, RightLowerLeg = true }
+
+-- The parts measured against the floor.
+local FLOORED: { string } = {}
+for _, name in Rig.R15_ORDER do
+	if not NOT_FLOORED[name] then
+		table.insert(FLOORED, name)
+	end
+end
+
+-- The floor: how high the rig's lowest point is in its rest pose, relative to the root
+-- part. For a character, that is the soles of its feet.
+local function floorOf(joints: { [string]: any }): number
+	local identity = Roblox.CFrame.new()
+	local rest: { [string]: CFrame } = {}
+	for _, name in Rig.R15_ORDER do
+		rest[name] = identity
+	end
+	local floor = math.huge
+	for _, part in Pose.track({ joints = joints } :: any, rest, identity, Rig.R15_ORDER) do
+		floor = math.min(floor, part.lowest)
+	end
+	return floor
+end
+
 -- Rounds a smooth step from 0 to 1 as `t` goes from 0 to 1.
 local function smoothstep(t: number): number
 	t = math.clamp(t, 0, 1)
 	return t * t * (3 - 2 * t)
+end
+
+-- Whole frames from `first` to `last`, with a value for each, in order.
+type Frames = { first: number, last: number, values: { number }, duration: number }
+
+-- Replaces a channel's keys from one whole frame to another with one key a frame, with
+-- smooth tangents, and leaves the rest of the channel as it was. Where the channel had no
+-- key on one side of the range, the motion there is held with a key a frame away, so that
+-- it stays as it was. `original` is the channel's keys before the change.
+local function writeFrames(
+	clip: Instance,
+	joint: string,
+	channel: string,
+	original: { Key },
+	frames: Frames,
+	changed: Changed
+)
+	local rate = Curves.FRAME_RATE
+	local startTime, endTime = frames.first / rate, frames.last / rate
+	local kept: { Key } = {}
+	local earlier, later = false, false
+	for _, key in original do
+		if key.time < startTime - Curves.TIME_TOLERANCE then
+			earlier = true
+			table.insert(kept, table.clone(key))
+		elseif key.time > endTime + Curves.TIME_TOLERANCE then
+			later = true
+			table.insert(kept, table.clone(key))
+		end
+	end
+	local guards: { number } = {}
+	if not earlier and frames.first > 0 then
+		table.insert(guards, (frames.first - 1) / rate)
+	end
+	if not later and endTime < frames.duration - Curves.TIME_TOLERANCE then
+		table.insert(guards, (frames.last + 1) / rate)
+	end
+	for _, time in guards do
+		table.insert(kept, {
+			time = time,
+			value = Curves.evaluate(original, time),
+			interpolation = "Cubic",
+			left = 0,
+			right = 0,
+		})
+	end
+	for index, value in frames.values do
+		table.insert(kept, {
+			time = (frames.first + index - 1) / rate,
+			value = value,
+			interpolation = "Cubic",
+			left = 0,
+			right = 0,
+		})
+	end
+	if #kept > Curves.MAX_KEYS then
+		Errors.throw("LIMIT_EXCEEDED", `A curve holds at most {Curves.MAX_KEYS} keys.`)
+	end
+	local curve = Curves.channel(clip, joint, channel, true) :: Instance
+	Curves.setKeys(curve, kept)
+	local spanFrom = if #guards > 0 then math.min(startTime, guards[1]) else startTime
+	smoothChannel(curve, spanFrom, math.max(endTime, guards[#guards] or endTime), {}, false)
+	count(changed, "keys_written", #frames.values + #guards)
 end
 
 local function markerCurve(clip: Instance, name: string, create: boolean): Instance?
@@ -978,7 +1084,7 @@ local appliers: { [string]: Apply } = {
 		end
 
 		-- The three joints' rotation keys in the range are replaced by one key a frame.
-		local startTime, endTime = firstFrame / rate, lastFrame / rate
+		local startTime = firstFrame / rate
 		for index, joint in chain do
 			local own = channels[joint] or {}
 			local before: { number } = {}
@@ -994,60 +1100,108 @@ local appliers: { [string]: Apply } = {
 				table.insert(angles, previous)
 			end
 			for axis, letter in { "x", "y", "z" } do
-				local channel = `rotation.{letter}`
-				local original = own[channel] or {}
-				local kept: { Key } = {}
-				local earlier, later = false, false
-				for _, key in original do
-					if key.time < startTime - Curves.TIME_TOLERANCE then
-						earlier = true
-						table.insert(kept, table.clone(key))
-					elseif key.time > endTime + Curves.TIME_TOLERANCE then
-						later = true
-						table.insert(kept, table.clone(key))
-					end
+				local values = {}
+				for frame in frames do
+					values[frame] = angles[frame][axis]
 				end
-				-- Where the channel had no key on one side of the range, the motion there
-				-- is held with a key a frame away, so that it stays as it was.
-				local guards: { number } = {}
-				if not earlier and firstFrame > 0 then
-					table.insert(guards, (firstFrame - 1) / rate)
-				end
-				if not later and lastFrame / rate < duration - Curves.TIME_TOLERANCE then
-					table.insert(guards, (lastFrame + 1) / rate)
-				end
-				for _, time in guards do
-					table.insert(kept, {
-						time = time,
-						value = Curves.evaluate(original, time),
-						interpolation = "Cubic",
-						left = 0,
-						right = 0,
-					})
-				end
-				for frame, entry in frames do
-					table.insert(kept, {
-						time = entry.time,
-						value = angles[frame][axis],
-						interpolation = "Cubic",
-						left = 0,
-						right = 0,
-					})
-				end
-				if #kept > Curves.MAX_KEYS then
-					Errors.throw("LIMIT_EXCEEDED", `A curve holds at most {Curves.MAX_KEYS} keys.`)
-				end
-				local curve = Curves.channel(clip, joint, channel, true) :: Instance
-				Curves.setKeys(curve, kept)
-				local spanFrom = if #guards > 0 then math.min(startTime, guards[1]) else startTime
-				smoothChannel(curve, spanFrom, math.max(endTime, guards[#guards] or endTime), {}, false)
-				count(changed, "keys_written", #frames + #guards)
+				writeFrames(clip, joint, `rotation.{letter}`, own[`rotation.{letter}`] or {}, {
+					first = firstFrame,
+					last = lastFrame,
+					values = values,
+					duration = duration,
+				}, changed)
 			end
 		end
 		count(changed, "frames_pinned", #frames)
 		if missed > 0 then
 			count(changed, "frames_out_of_reach", missed)
 			changed.largest_miss_studs = math.max(changed.largest_miss_studs or 0, rounded(worst, 3))
+		end
+	end,
+
+	place_on_floor = function(where, clip, operation, context, changed)
+		local joints = context.joints
+		if not hasGeometry(joints, Rig.R15_ORDER) then
+			refuse(where, "this rig's parts could not be measured, so the floor cannot be found.")
+		end
+		local duration = Curves.duration(clip)
+		if operation.time_to > duration + Curves.TIME_TOLERANCE then
+			refuse(
+				where,
+				`the clip ends at {milliseconds(duration)} seconds, before time_to.`,
+				"Key the clip out to its full length first."
+			)
+		end
+		local from, to = operation.time_from, operation.time_to
+		local first = math.max(0, from - (operation.blend_in or 0))
+		local last = math.min(duration, to + (operation.blend_out or 0))
+		local rate = Curves.FRAME_RATE
+		local firstFrame = math.ceil(first * rate - 1e-6)
+		local lastFrame = math.floor(last * rate + 1e-6)
+		if lastFrame < firstFrame then
+			refuse(where, "the range holds no whole frame; Studio shows a curve clip only at whole frames.")
+		end
+		local touch = operation.mode == "touch"
+		local parts = operation.parts or FLOORED
+		local floor = floorOf(joints)
+		local channels = readChannels(clip)
+		local scan = { joints = joints } :: any
+		local identity = Roblox.CFrame.new()
+		-- The hips' position is measured in the root joint's own frame; straight up in the
+		-- rig is this direction there.
+		local c0 = Rig.rest(joints.LowerTorso)
+		local up = c0:VectorToObjectSpace(Roblox.Vector3.new(0, 1, 0))
+
+		local moves: { number } = {}
+		local raised, lowered, moved = 0, 0, 0
+		for frame = firstFrame, lastFrame do
+			local time = frame / rate
+			local lowest = math.huge
+			for _, part in Pose.track(scan, transformsAt(channels, time), identity, parts) do
+				lowest = math.min(lowest, part.lowest)
+			end
+			local move = floor - lowest
+			if not touch then
+				move = math.max(0, move)
+			end
+			if time < from - Curves.TIME_TOLERANCE then
+				move *= smoothstep((time - first) / math.max(from - first, 1e-6))
+			elseif time > to + Curves.TIME_TOLERANCE then
+				move *= smoothstep((last - time) / math.max(last - to, 1e-6))
+			end
+			if math.abs(move) > 0.001 then
+				moved += 1
+			end
+			raised = math.max(raised, move)
+			lowered = math.max(lowered, -move)
+			table.insert(moves, move)
+		end
+		count(changed, "frames_moved", moved)
+		if moved == 0 then
+			return
+		end
+		changed.largest_raise_studs = math.max(changed.largest_raise_studs or 0, rounded(raised, 3))
+		if lowered > 0 then
+			changed.largest_drop_studs = math.max(changed.largest_drop_studs or 0, rounded(lowered, 3))
+		end
+		local own = channels.LowerTorso or {}
+		for axis, letter in { "x", "y", "z" } do
+			local share = ({ up.X, up.Y, up.Z })[axis]
+			if math.abs(share) < 1e-9 then
+				continue
+			end
+			local channel = `position.{letter}`
+			local original = own[channel] or {}
+			local values = {}
+			for index, move in moves do
+				values[index] = Curves.evaluate(original, (firstFrame + index - 1) / rate) + move * share
+			end
+			writeFrames(clip, "LowerTorso", channel, original, {
+				first = firstFrame,
+				last = lastFrame,
+				values = values,
+				duration = duration,
+			}, changed)
 		end
 	end,
 
@@ -1309,15 +1463,9 @@ local function turn(a: CFrame, b: CFrame): number
 end
 
 -- Contact with the ground, measured as Studio shows the clip: at every whole frame. The
--- floor is where the rig's lowest point is in its rest pose, which for a character is
--- the soles of its feet. A part that goes below it is in the ground. A foot that rests on
--- it for a few frames is planted, and should not slide while it is.
---
--- Parts are measured as boxes of their size. A lower leg's box reaches down beside the
--- ankle, so in a deep crouch, with the shin tilted forward, the box's back corner dips
--- below the floor while the shin itself, which is slimmer there, stays above it (seen in
--- Studio, 2026-11-25). The lower legs are left out of the check for that reason.
-local NOT_FLOORED = { LeftLowerLeg = true, RightLowerLeg = true }
+-- floor is where the rig's lowest point is in its rest pose (see floorOf). A part that
+-- goes below it is in the ground. A foot that rests on it for a few frames is planted,
+-- and should not slide while it is.
 
 local function contacts(
 	clip: Instance,
@@ -1332,14 +1480,7 @@ local function contacts(
 	local rate = Curves.FRAME_RATE
 	local scan = { joints = joints } :: any
 	local identity = Roblox.CFrame.new()
-	local rest: { [string]: CFrame } = {}
-	for _, name in Rig.R15_ORDER do
-		rest[name] = identity
-	end
-	local floor = math.huge
-	for _, part in Pose.track(scan, rest, identity, Rig.R15_ORDER) do
-		floor = math.min(floor, part.lowest)
-	end
+	local floor = floorOf(joints)
 	local channels = readChannels(clip)
 	local frames = math.floor(duration * rate + 1e-6)
 	type Below = { deepest: number, at: number, first: number, last: number }

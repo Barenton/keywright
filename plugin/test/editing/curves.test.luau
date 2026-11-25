@@ -718,6 +718,82 @@ case("pins that cannot be done are refused", function()
 	)
 end)
 
+-- The lowest point of the parts the floor is measured by, at a time.
+local MEASURED = {}
+for _, name in Rig.R15_ORDER do
+	if name ~= "LeftLowerLeg" and name ~= "RightLowerLeg" then
+		table.insert(MEASURED, name)
+	end
+end
+local function lowestAt(clip: any, time: number, parts: { string }?): number
+	local placed = placedAt(clip, time)
+	local lowest = math.huge
+	for _, name in parts or MEASURED do
+		local cframe, size = placed[name], REAL[name].part1.Size
+		local drop = (
+			math.abs(cframe.RightVector.Y) * size.X
+			+ math.abs(cframe.UpVector.Y) * size.Y
+			+ math.abs(cframe.LookVector.Y) * size.Z
+		) / 2
+		lowest = math.min(lowest, cframe.Position.Y - drop)
+	end
+	return lowest
+end
+local FLOOR = lowestAt(blank(), 0, Rig.R15_ORDER)
+
+case("place_on_floor lifts what sank, and leaves the rest", function()
+	local clip = squat(0.8)
+	check("before, the feet sink", lowestAt(clip, 0.5) < FLOOR - 0.7, lowestAt(clip, 0.5) - FLOOR)
+	local changed = realRun(clip, { { type = "place_on_floor", time_from = 0, time_to = 1 } })
+	check("frames were moved", (changed.frames_moved or 0) > 20, changed.frames_moved)
+	check("by as much as the deepest sink", math.abs((changed.largest_raise_studs or 0) - 0.8) < 0.01)
+	local worst = 0
+	for frame = 0, 30 do
+		worst = math.max(worst, math.abs(lowestAt(clip, frame / 30) - FLOOR))
+	end
+	check("after, the lowest part is on the floor at every frame", worst < 0.002, worst)
+
+	local floating = blank()
+	realRun(floating, {
+		{ type = "set_key", joint = "LowerTorso", time = 0, position = { 0, 0.5, 0 } },
+		{ type = "set_key", joint = "LowerTorso", time = 1, position = { 0, 0.5, 0 } },
+	})
+	local lifted = realRun(floating, { { type = "place_on_floor", time_from = 0, time_to = 1 } })
+	check("lift leaves a body in the air where it is", lifted.frames_moved == 0, lifted.frames_moved)
+	check("without writing a key", lifted.keys_written == nil, lifted.keys_written)
+end)
+
+case("place_on_floor with touch brings a floating body down, by the parts asked", function()
+	local clip = blank()
+	realRun(clip, {
+		{ type = "set_key", joint = "LowerTorso", time = 0, position = { 0, 0.5, 0 } },
+		{ type = "set_key", joint = "LowerTorso", time = 1, position = { 0, 1.2, 0 } },
+		{ type = "set_key", joint = "LowerTorso", time = 0, rotation = { 0, 0, 0 } },
+		{ type = "set_key", joint = "LowerTorso", time = 1, rotation = { 80, 0, 0 } },
+		{ type = "auto_tangents", time_from = 0, time_to = 1 },
+	})
+	local changed = realRun(clip, { { type = "place_on_floor", time_from = 0, time_to = 1, mode = "touch" } })
+	check("it was lowered", (changed.largest_drop_studs or 0) > 0.4, changed.largest_drop_studs)
+	local worst = 0
+	for frame = 0, 30 do
+		worst = math.max(worst, math.abs(lowestAt(clip, frame / 30) - FLOOR))
+	end
+	check("the lowest part touches the floor at every frame", worst < 0.002, worst)
+
+	realRun(clip, {
+		{ type = "place_on_floor", time_from = 0.5, time_to = 1, mode = "touch", parts = { "UpperTorso" } },
+	})
+	local torso = math.abs(lowestAt(clip, 1, { "UpperTorso" }) - FLOOR)
+	check("by the parts asked: the upper torso rests on the floor", torso < 0.002, torso)
+
+	local function refusedFloor(operation: any): boolean
+		return (pcall(realRun, clip, { operation })) == false
+	end
+	check("an unknown mode", refusedFloor({ type = "place_on_floor", time_from = 0, time_to = 1, mode = "sink" }))
+	check("an unknown part", refusedFloor({ type = "place_on_floor", time_from = 0, time_to = 1, parts = { "Tail" } }))
+	check("past the end", refusedFloor({ type = "place_on_floor", time_from = 0, time_to = 3 }))
+end)
+
 case("contact with the floor is checked in a curve clip", function()
 	local function validate(clip: any): any
 		return Validate.run(clip, { joints = REAL }, assert(Validate.thresholds({})))
