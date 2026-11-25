@@ -944,27 +944,32 @@ local appliers: { [string]: Apply } = {
 			local current = { transforms[chain[1]], transforms[chain[2]], transforms[chain[3]] }
 			local anchor = anchorOf(placed)
 			local tip = anchor * tipLocal
-			local pivot = Limb.pivotOf(limb[3], tip)
-			local pole = if poleLocal then anchor * poleLocal else nil
-			local solution = Limb.solve({
-				parent = placed[Rig.R15_PARENTS[chain[1]]],
-				joints = limb,
-				current = current,
-				pivot = pivot,
-				tip = if full then tip else nil,
-				bend = Limb.BEND[operation.part],
-				pole = pole,
-			})
 			local weight = 1
 			if time < from - Curves.TIME_TOLERANCE then
 				weight = smoothstep((time - first) / math.max(from - first, 1e-6))
 			elseif time > to + Curves.TIME_TOLERANCE then
 				weight = smoothstep((last - time) / math.max(last - to, 1e-6))
 			end
-			local result = {}
-			for index = 1, 3 do
-				result[index] = current[index]:Lerp(solution.transforms[index], weight)
+			-- Easing in or out, the target itself moves from where the animation has the part
+			-- to where it is held, and the limb reaches for it. The part then travels straight
+			-- between the two, instead of wherever angles part way between would put it.
+			local free = placed[chain[3]]
+			if weight < 1 then
+				tip = free:Lerp(tip, weight)
 			end
+			local solution = if weight <= 0
+				then { transforms = current, miss = 0 }
+				else Limb.solve({
+					parent = placed[Rig.R15_PARENTS[chain[1]]],
+					joints = limb,
+					current = current,
+					pivot = Limb.pivotOf(limb[3], tip),
+					tip = if full then tip else nil,
+					bend = Limb.BEND[operation.part],
+					pole = if poleLocal then anchor * poleLocal else nil,
+					poleWeight = weight,
+				})
+			local result = solution.transforms
 			if weight >= 1 and solution.miss > 0.001 then
 				missed += 1
 				worst = math.max(worst, solution.miss)

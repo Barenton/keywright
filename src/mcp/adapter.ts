@@ -212,7 +212,7 @@ const operations = [
 			.optional()
 			.describe("full (default) holds the part's position and rotation, as a foot flat on the ground. position holds only where the ankle or wrist is, and the foot or hand keeps its own animated turn."),
 		pole: vec3.optional().describe("A point the knee or elbow is to point toward, in the same space as position (so also against relative_to when given)."),
-		blend_in: z.number().finite().min(0).max(2).optional().describe("Seconds before time_from over which the limb eases from its own motion into the hold. Default 0."),
+		blend_in: z.number().finite().min(0).max(2).optional().describe("Seconds before time_from over which the limb eases from its own motion into the hold. While easing in or out, the part travels straight from where its own motion has it to where it is held, turning evenly between the two. Default 0."),
 		blend_out: z.number().finite().min(0).max(2).optional().describe("Seconds after time_to over which it eases back out. Default 0."),
 	}),
 	z.object({

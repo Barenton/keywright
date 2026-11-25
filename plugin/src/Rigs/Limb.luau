@@ -89,6 +89,8 @@ export type Request = {
 	bend: number,
 	-- If given, a point the middle joint is to point toward.
 	pole: Vector3?,
+	-- How much of the turn toward the pole to make, from 0 to 1. Default 1.
+	poleWeight: number?,
 }
 
 function Limb.solve(request: Request): Solution
@@ -149,6 +151,7 @@ function Limb.solve(request: Request): Solution
 		local poleFlat = pole - axis * axis:Dot(pole)
 		if kneeFlat.Magnitude > 1e-6 and poleFlat.Magnitude > 1e-6 then
 			local spin = math.atan2(axis:Dot(kneeFlat:Cross(poleFlat)), kneeFlat:Dot(poleFlat))
+				* (request.poleWeight or 1)
 			turned = CFrame.fromAxisAngle(axis, spin) * turned
 		end
 	end

@@ -575,6 +575,48 @@ case("a pin blends in and out over the time asked", function()
 	check("at the end of the blend it is free again", along(24) < 0.01, along(24))
 end)
 
+case("easing in and out, the foot travels straight between its own path and the hold", function()
+	-- The hips drop while the leg swings forward and back: on its own, the foot sweeps an
+	-- arc. Easing joint angles would carry it along a curve of its own; easing the target
+	-- keeps it on the line between where the animation has it and where it is held.
+	local clip = squat(0.6)
+	realRun(clip, {
+		{ type = "set_key", joint = "LeftUpperLeg", time = 0, rotation = { 0, 0, 0 } },
+		{ type = "set_key", joint = "LeftUpperLeg", time = 0.5, rotation = { 50, 0, 0 } },
+		{ type = "set_key", joint = "LeftUpperLeg", time = 1, rotation = { 0, 0, 0 } },
+		{ type = "set_key", joint = "LeftLowerLeg", time = 0, rotation = { 0, 0, 0 } },
+		{ type = "set_key", joint = "LeftLowerLeg", time = 0.5, rotation = { -70, 0, 0 } },
+		{ type = "set_key", joint = "LeftLowerLeg", time = 1, rotation = { 0, 0, 0 } },
+		{ type = "auto_tangents", time_from = 0, time_to = 1 },
+	})
+	local free = {}
+	for frame = 0, 30 do
+		free[frame] = placedAt(clip, frame / 30).LeftFoot
+	end
+	local held = free[0]
+	realRun(clip, {
+		{ type = "pin", part = "LeftFoot", time_from = 0.4, time_to = 0.6, at = 0, blend_in = 0.3, blend_out = 0.3 },
+	})
+	local function smoothstep(t: number): number
+		t = math.clamp(t, 0, 1)
+		return t * t * (3 - 2 * t)
+	end
+	local worst, turned = 0, 0
+	for frame = 3, 27 do
+		local time = frame / 30
+		local weight = if time < 0.4
+			then smoothstep((time - 0.1) / 0.3)
+			elseif time > 0.6 then smoothstep((0.9 - time) / 0.3)
+			else 1
+		local wanted = free[frame]:Lerp(held, weight)
+		local foot = placedAt(clip, time).LeftFoot
+		worst = math.max(worst, (foot.Position - wanted.Position).Magnitude)
+		turned = math.max(turned, turnBetween(foot, wanted))
+	end
+	check("the foot is on the line at every frame", worst < 0.001, worst)
+	check("turning evenly from its own turn to the held one", turned < 0.05, turned)
+end)
+
 case("a pin can put a hand somewhere new", function()
 	local clip = squat(0.4)
 	local target = { 0.6, 0.4, -1.4 }
