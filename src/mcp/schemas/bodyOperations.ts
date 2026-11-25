@@ -1,6 +1,6 @@
 // Operations for curve clips that work through the rig's body: holding a hand or foot, aiming, overlap, and the floor.
 import { z } from "zod";
-import { vec3, time, joint, r15Part, position, rotation } from "./common.js";
+import { vec3, time, joint, r15Part, position } from "./common.js";
 
 export const bodyOperations = [
 	z.object({

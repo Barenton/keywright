@@ -8,7 +8,7 @@ import { ensureBroker } from "../broker/launcher.js";
 import { BridgeError, type SessionInfo } from "../broker/protocol.js";
 import { MAX_TILE, MAX_VIEWS, MIN_TILE, renderResult, VIEWS } from "../render/render.js";
 
-import { studioSession, clipId, time, joint, position, rotation, quaternion } from "./schemas/common.js";
+import { studioSession, clipId, time, joint } from "./schemas/common.js";
 import { operations } from "./schemas/operations.js";
 
 export const ADAPTER_VERSION = "0.0.0";

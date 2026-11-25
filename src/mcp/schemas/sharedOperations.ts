@@ -1,6 +1,6 @@
 // Operations for both kinds of clip: retiming, the clip's settings and markers, and restoring.
 import { z } from "zod";
-import { time, joint, rangeFrom, rangeTo, markerName } from "./common.js";
+import { time, rangeFrom, rangeTo, markerName } from "./common.js";
 
 export const sharedOperations = [
 	z.object({
