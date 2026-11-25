@@ -281,9 +281,10 @@ const operations = [
 			.length(2)
 			.optional()
 			.describe("With a toe or heel pivot: how far, in degrees, the foot's other end is lifted off the floor at time_from and at time_to, easing between: toe with [0, 40] peels up onto the toe as a step pushes off; heel with [25, 0] lands heel first and rolls down onto the sole. At time_from the foot is taken to be lifted by the first angle already, so rolls one after another join up: up with [0, 30], back down with [30, 0]. Default [0, 0]."),
-		travel: vec3
+		travel: z
+			.union([vec3, z.literal("match")])
 			.optional()
-			.describe("Studs a second the held point moves, in the same space as position, starting from where it is at `at`: a foot planted on a floor that moves, as in a walk or run cycle made on the spot, where the planted foot moves back steadily under the body. For a cycle facing forward, a positive z (toward the back). The point moves on through blend_in and blend_out as well, so a foot eased in lands already moving with the floor, and one eased out leaves with it. A toe or heel pivot moves with it."),
+			.describe("Studs a second the held point moves, in the same space as position, starting from where it is at `at`: a foot planted on a floor that moves, as in a walk or run cycle made on the spot, where the planted foot moves back steadily under the body. For a cycle facing forward, a positive z (toward the back). \"match\" takes the speed from the clip's own motion of the held point over the range, where it is at time_from and at time_to, before the pin (across the floor only with on_floor), and the result gives it as travel_x, travel_y and travel_z. The point moves on through blend_in and blend_out as well, so a foot eased in lands already moving with the floor, and one eased out leaves with it. A toe or heel pivot moves with it."),
 		fit_hips: z
 			.boolean()
 			.optional()

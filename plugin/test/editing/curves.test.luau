@@ -750,6 +750,29 @@ case("a pin with travel holds the foot on a floor that moves steadily", function
 	check("the foot moves back at the speed asked, every frame", worst < 0.001, worst)
 	check("without turning", turned < 0.05, turned)
 
+	-- With "match", the speed is the foot's own from the start of the range to its end.
+	local drifting = squat(0.3)
+	realRun(drifting, {
+		{ type = "set_key", joint = "LowerTorso", time = 0.2, position = { 0, -0.25, -0.15 } },
+		{ type = "set_key", joint = "LowerTorso", time = 0.6, position = { 0, -0.25, -0.45 } },
+	})
+	local from, to = placedAt(drifting, 0.2).LeftFoot.Position, placedAt(drifting, 0.6).LeftFoot.Position
+	local matched =
+		realRun(drifting, { { type = "pin", part = "LeftFoot", time_from = 0.2, time_to = 0.6, travel = "match" } })
+	local expected = (to - from) / 0.4
+	check(
+		"match takes the foot's own speed",
+		math.abs(matched.travel_z - expected.Z) < 0.002 and math.abs(matched.travel_x - expected.X) < 0.002,
+		`{matched.travel_z} against {expected.Z}`
+	)
+	local even = 0
+	for frame = 6, 18 do
+		local time = frame / 30
+		local wanted = from + expected * (time - 0.2)
+		even = math.max(even, (placedAt(drifting, time).LeftFoot.Position - wanted).Magnitude)
+	end
+	check("and moves it at that speed, evenly", even < 0.001, even)
+
 	-- Eased in, the point it eases toward is already moving, so it lands moving with it.
 	local landing = squat(0.3)
 	realRun(landing, {

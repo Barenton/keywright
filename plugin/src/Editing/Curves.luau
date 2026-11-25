@@ -733,7 +733,9 @@ local checks: { [string]: Check } = {
 				end
 			end
 		end
-		needVector(where, operation.travel, "travel", 100)
+		if operation.travel ~= "match" then
+			needVector(where, operation.travel, "travel", 100)
+		end
 		if operation.fit_hips ~= nil and type(operation.fit_hips) ~= "boolean" then
 			refuse(where, "fit_hips must be true or false.")
 		end
@@ -1864,6 +1866,27 @@ local appliers: { [string]: Apply } = {
 			then Roblox.Vector3.new(operation.pole[1], operation.pole[2], operation.pole[3])
 			else nil
 
+		-- The floor's speed: as given, or with "match" the clip's own motion of the held
+		-- point from the start of the range to its end, before this pin changes it.
+		local travel: Vector3? = nil
+		if operation.travel == "match" then
+			local function heldPoint(time: number): Vector3
+				local placed = Pose.place(scan, transformsAt(channels, time), identity)
+				local part = anchorOf(placed):Inverse() * placed[chain[3]]
+				return if rolling then part:PointToWorldSpace(offset) else part.Position
+			end
+			local velocity = (heldPoint(to) - heldPoint(from)) / math.max(to - from, 1e-6)
+			if operation.on_floor then
+				velocity = Roblox.Vector3.new(velocity.X, 0, velocity.Z)
+			end
+			travel = velocity
+			changed.travel_x = rounded(velocity.X, 3)
+			changed.travel_y = rounded(velocity.Y, 3)
+			changed.travel_z = rounded(velocity.Z, 3)
+		elseif operation.travel then
+			travel = Roblox.Vector3.new(operation.travel[1], operation.travel[2], operation.travel[3])
+		end
+
 		-- For fit_hips: which way is up for the hips' position, the hips' drop at each
 		-- frame, and the limbs to keep where they are.
 		local rootC0 = Rig.rest(joints.LowerTorso)
@@ -1896,17 +1919,15 @@ local appliers: { [string]: Apply } = {
 			-- in is already moving with the floor when it lands, and one eased out leaves
 			-- with it.
 			local moved = Roblox.Vector3.new()
-			if operation.travel then
-				local held = operation.at or from
-				moved = Roblox.Vector3.new(operation.travel[1], operation.travel[2], operation.travel[3])
-					* (time - held)
+			if travel then
+				moved = travel * (time - (operation.at or from))
 			end
 			if rolling then
 				local along = smoothstep((time - from) / math.max(to - from, 1e-6))
 				local angle = rollFrom + (rollTo - rollFrom) * along
 				local turned = heldTurn * Roblox.CFrame.Angles(lift * angle, 0, 0)
 				tip = anchor * Roblox.CFrame.new(pointLocal + moved) * turned * Roblox.CFrame.new(-offset)
-			elseif operation.travel then
+			elseif travel then
 				tip = anchor * (tipLocal + moved)
 			end
 			local weight = 1
