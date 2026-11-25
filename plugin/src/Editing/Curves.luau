@@ -52,6 +52,11 @@ Curves.HOLDS = { "full", "position" }
 Curves.FLOOR_MODES = { "lift", "touch" }
 Curves.MIRROR_MODES = { "flip", "left_to_right", "right_to_left" }
 Curves.MIN_SCALE = 0.01
+-- How far a reduced curve may stray from the original at any frame, by default.
+Curves.REDUCE_DEGREES = 0.1
+Curves.REDUCE_STUDS = 0.002
+-- The longest range reduced in one go: the work grows with the square of its frames.
+Curves.MAX_REDUCE = 60
 Curves.MAX_SCALE = 100
 Curves.MAX_LISTED = 500
 Curves.DEFAULT_KEYS = 400
@@ -522,6 +527,16 @@ local checks: { [string]: Check } = {
 		end
 		if operation.ripple ~= nil and type(operation.ripple) ~= "boolean" then
 			refuse(where, "ripple must be true or false.")
+		end
+	end,
+	reduce_keys = function(where, operation, joints)
+		needRange(where, operation)
+		needJoints(where, operation.joints, joints)
+		for _, field in { "rotation_degrees", "position_studs" } do
+			local value = operation[field]
+			if value ~= nil and (not isFinite(value) or value <= 0 or value > 10) then
+				refuse(where, `{field} must be more than 0 and at most 10.`)
+			end
 		end
 	end,
 	reverse_time = function(where, operation)
@@ -1144,6 +1159,88 @@ local function retimeCurves(
 	end
 end
 
+-- ---------------------------------------------------------------------------------------
+-- Reducing keys
+
+-- The keys of one channel from its first to its last key in a range, rebuilt from as few
+-- keys as keep the curve within `tolerance` of the original at every whole frame, which is
+-- all Studio shows of it. The two end keys stay as they are, so the curve meets the rest
+-- of the channel as before. Each key added is put on the original curve at a whole frame,
+-- with the original's slope there on each side; the frame furthest from the original is
+-- added first, until none is too far. Returns nil when the channel has nothing to reduce.
+local function reduced(keys: { Key }, from: number, to: number, tolerance: number): { Key }?
+	local tol = Curves.TIME_TOLERANCE
+	local first, last = nil, nil
+	for index, key in keys do
+		if key.time >= from - tol and key.time <= to + tol then
+			first = first or index
+			last = index
+		end
+	end
+	if not first or not last or last - first < 2 then
+		return nil
+	end
+	local rate = Curves.FRAME_RATE
+	local startFrame = math.ceil(keys[first].time * rate - 1e-6)
+	local endFrame = math.floor(keys[last].time * rate + 1e-6)
+	local frames: { number } = {}
+	local values: { number } = {}
+	for frame = startFrame, endFrame do
+		table.insert(frames, frame / rate)
+		table.insert(values, Curves.evaluate(keys, frame / rate))
+	end
+	local h = 1e-4
+	local function keyAt(time: number): Key
+		local value = Curves.evaluate(keys, time)
+		return {
+			time = time,
+			value = value,
+			interpolation = "Cubic",
+			left = (value - Curves.evaluate(keys, time - h)) / h,
+			right = (Curves.evaluate(keys, time + h) - value) / h,
+		}
+	end
+	local kept: { Key } = { table.clone(keys[first]), table.clone(keys[last]) }
+	-- The first key's stretch is now shaped by the keys added after it; it is made Cubic
+	-- with the slope the original leaves it with, unless it held still.
+	local function fixFirst()
+		local head = kept[1]
+		if head.interpolation ~= "Cubic" and #kept > 2 then
+			head.right = (Curves.evaluate(keys, head.time + h) - head.value) / h
+			head.interpolation = "Cubic"
+		end
+	end
+	for _ = 1, #frames do
+		local worst, at = 0, nil
+		for index, time in frames do
+			local miss = math.abs(Curves.evaluate(kept, time) - values[index])
+			if miss > worst then
+				worst, at = miss, time
+			end
+		end
+		if worst <= tolerance or not at then
+			break
+		end
+		table.insert(kept, keyAt(at))
+		sortKeys(kept)
+		fixFirst()
+	end
+	if #kept >= last - first + 1 then
+		return nil
+	end
+	local out: { Key } = {}
+	for index, key in keys do
+		if index < first or index > last then
+			table.insert(out, key)
+		end
+	end
+	for _, key in kept do
+		table.insert(out, key)
+	end
+	sortKeys(out)
+	return out
+end
+
 type Apply = (where: string, clip: Instance, operation: any, context: Context, changed: Changed) -> ()
 
 local appliers: { [string]: Apply } = {
@@ -1454,6 +1551,36 @@ local appliers: { [string]: Apply } = {
 		end, function(time)
 			return if time <= to + Curves.TIME_TOLERANCE then factor else 1
 		end, changed)
+	end,
+
+	reduce_keys = function(where, clip, operation, _context, changed)
+		if operation.time_to - operation.time_from > Curves.MAX_REDUCE then
+			refuse(where, `at most {Curves.MAX_REDUCE} seconds are reduced at once.`, "Reduce the clip in parts.")
+		end
+		local wanted: { [string]: boolean }? = nil
+		if operation.joints then
+			wanted = {}
+			for _, name in operation.joints do
+				(wanted :: { [string]: boolean })[name] = true
+			end
+		end
+		local degrees = math.rad(operation.rotation_degrees or Curves.REDUCE_DEGREES)
+		local studs = operation.position_studs or Curves.REDUCE_STUDS
+		local before, after = 0, 0
+		for _, track in Curves.tracks(clip) do
+			if wanted and not wanted[track.joint] then
+				continue
+			end
+			local keys = Curves.keys(track.curve)
+			local tolerance = if string.sub(track.channel, 1, 8) == "rotation" then degrees else studs
+			local out = reduced(keys, operation.time_from, operation.time_to, tolerance)
+			if out then
+				before += #keys
+				after += #out
+				Curves.setKeys(track.curve, out)
+			end
+		end
+		count(changed, "keys_removed", before - after)
 	end,
 
 	reverse_time = function(where, clip, operation, _context, changed)

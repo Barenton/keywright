@@ -1016,6 +1016,57 @@ case("squeezing keys onto fewer frames joins them, and says so", function()
 	check("every key is on a whole frame", onFrames)
 end)
 
+case("reduce_keys rebuilds a channel from few keys, the same at every frame", function()
+	local clip = squat(0.6)
+	realRun(clip, {
+		{ type = "set_key", joint = "Head", time = 0, rotation = { 0, 0, 0 }, interpolation = "Constant" },
+		{ type = "set_key", joint = "Head", time = 0.4, rotation = { 20, 0, 0 }, interpolation = "Constant" },
+		{ type = "set_key", joint = "Head", time = 0.7, rotation = { 0, 10, 0 }, interpolation = "Linear" },
+		{ type = "set_key", joint = "Head", time = 1, rotation = { 0, 0, 0 } },
+		{ type = "pin", part = "LeftFoot", time_from = 0, time_to = 1 },
+	})
+	local before = {}
+	for frame = 0, 30 do
+		before[frame] = sampleAll(clip, frame / 30)
+	end
+	local knee = #keysOf(clip, "LeftLowerLeg", "rotation.x")
+	local changed = realRun(clip, { { type = "reduce_keys", time_from = 0, time_to = 1 } })
+	local after = #keysOf(clip, "LeftLowerLeg", "rotation.x")
+	check("keys were removed", (changed.keys_removed or 0) > 0, changed.keys_removed)
+	check("the pinned knee needs well under half as many", after * 2 < knee, `{knee} to {after}`)
+	local worst = 0
+	for frame = 0, 30 do
+		worst = math.max(worst, difference(sampleAll(clip, frame / 30), before[frame]))
+	end
+	check("every channel is within a tenth of a degree at every frame", worst <= math.rad(0.1) + 1e-9, math.deg(worst))
+	local foot = 0
+	local start = placedAt(clip, 0).LeftFoot.Position
+	for frame = 0, 30 do
+		foot = math.max(foot, (placedAt(clip, frame / 30).LeftFoot.Position - start).Magnitude)
+	end
+	check("so the pinned foot stays put", foot < 0.01, foot)
+
+	local partial = squat(0.6)
+	realRun(partial, { { type = "pin", part = "LeftFoot", time_from = 0, time_to = 1 } })
+	realRun(partial, { { type = "reduce_keys", time_from = 0.5, time_to = 1, joints = { "LeftLowerLeg" } } })
+	local early = 0
+	for _, key in keysOf(partial, "LeftLowerLeg", "rotation.x") do
+		if key.time < 0.5 - 1e-6 then
+			early += 1
+		end
+	end
+	check("keys before the range are kept", early == 15, early)
+	check(
+		"joints not named are kept",
+		#keysOf(partial, "LeftUpperLeg", "rotation.x") == 31,
+		#keysOf(partial, "LeftUpperLeg", "rotation.x")
+	)
+	check(
+		"a range too long is refused",
+		refusal(partial, { { type = "reduce_keys", time_from = 0, time_to = 100 } }) ~= nil
+	)
+end)
+
 -- The lowest point of the parts the floor is measured by, at a time.
 local MEASURED = {}
 for _, name in Rig.R15_ORDER do

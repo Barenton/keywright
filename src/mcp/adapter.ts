@@ -129,6 +129,18 @@ const operations = [
 	}),
 	z.object({
 		type: z
+			.literal("reduce_keys")
+			.describe(
+				"Curve clips only. Rebuild each channel in a range from as few keys as keep it within a tolerance of how it plays now, at every frame Studio shows. pin, place_on_floor and a squeeze leave a key on every frame; reducing them afterwards leaves curves a person can edit in the Curve Editor, and reads that are far shorter. The keys at the ends of the range stay as they are. At most 60 seconds at once. The result counts keys_removed.",
+			),
+		time_from: rangeFrom,
+		time_to: rangeTo,
+		joints: z.array(z.string()).min(1).max(32).optional().describe("Default: every joint."),
+		rotation_degrees: z.number().positive().max(10).optional().describe("How far a rotation may stray, in degrees. Default 0.1."),
+		position_studs: z.number().positive().max(10).optional().describe("How far a position may stray, in studs. Default 0.002."),
+	}),
+	z.object({
+		type: z
 			.literal("reverse_time")
 			.describe(
 				"Curve clips only. Play a time range backward: each key at time t moves to time_from + time_to - t, with its tangents turned round, and markers with them. A get-up reversed is a fall; a reach reversed is a return.",
@@ -515,7 +527,7 @@ export function createAdapter(options: AdapterOptions): McpServer {
 		"edit_animation",
 		{
 			description:
-				"Apply a batch of operations to a working copy atomically. A keyframe clip takes poses, easing, keyframes and smoothing; a curve clip takes keys, tangents, auto_tangents, clear_keys, mirror, pin, place_on_floor and reverse_time. Both take shift_time and scale_time (retiming), markers, the clip's settings and restore_source; each operation's description says which clips it is for. The operations apply in the order given, each to the clip as the ones before it leave it. The whole batch is tried first; if any operation cannot be done, nothing changes and the error names it by its place in the list. Requires the current revision. One Studio undo reverts the whole batch. Only what an operation names is changed.",
+				"Apply a batch of operations to a working copy atomically. A keyframe clip takes poses, easing, keyframes and smoothing; a curve clip takes keys, tangents, auto_tangents, clear_keys, mirror, pin, place_on_floor, reduce_keys and reverse_time. Both take shift_time and scale_time (retiming), markers, the clip's settings and restore_source; each operation's description says which clips it is for. The operations apply in the order given, each to the clip as the ones before it leave it. The whole batch is tried first; if any operation cannot be done, nothing changes and the error names it by its place in the list. Requires the current revision. One Studio undo reverts the whole batch. Only what an operation names is changed.",
 			inputSchema: {
 				studio_session: studioSession,
 				clip_id: clipId,
