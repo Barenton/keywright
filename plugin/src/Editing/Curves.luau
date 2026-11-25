@@ -594,6 +594,29 @@ local checks: { [string]: Check } = {
 			refuse(where, "the range must have some length.")
 		end
 	end,
+	aim = function(where, operation, joints)
+		needJoint(where, operation.joint, joints)
+		needRange(where, operation)
+		needVector(where, operation.target, "target", Curves.MAX_POSITION)
+		if operation.hold ~= nil and type(operation.hold) ~= "boolean" then
+			refuse(where, "hold must be true or false.")
+		end
+		if (operation.target ~= nil) == (operation.hold == true) then
+			refuse(where, "give target, or hold, but not both.")
+		end
+		if operation.at ~= nil then
+			needTime(where, operation.at, "at")
+		end
+		local weight = operation.weight
+		if weight ~= nil and (not isFinite(weight) or weight < 0 or weight > 1) then
+			refuse(where, "weight must be from 0 to 1.")
+		end
+		local limit = operation.limit_degrees
+		if limit ~= nil and (not isFinite(limit) or limit <= 0 or limit > 180) then
+			refuse(where, "limit_degrees must be more than 0 and at most 180.")
+		end
+		needBlends(where, operation)
+	end,
 	copy_pose = function(where, operation, joints)
 		needTime(where, operation.from, "from")
 		needTime(where, operation.to, "to")
@@ -1331,6 +1354,55 @@ local function reduced(keys: { Key }, from: number, to: number, tolerance: numbe
 	return out
 end
 
+-- Writes a joint's rotation at every frame from `first` to `last` from the transforms
+-- given, one a frame, keeping each angle near the one before so that a curve never swings
+-- the long way round. With `reduce`, the keys there are then reduced again to as few as
+-- keep the result, so the curves stay ones a person can edit. `own` is the joint's
+-- channels before the change.
+local function writeTurns(
+	clip: Instance,
+	joint: string,
+	own: { [string]: { Key } },
+	first: number,
+	last: number,
+	turns: { CFrame },
+	duration: number,
+	changed: Changed,
+	reduce: boolean
+)
+	local rate = Curves.FRAME_RATE
+	local before: { number } = {}
+	for axis, letter in { "x", "y", "z" } do
+		local keys = own[`rotation.{letter}`]
+		before[axis] = if keys then Curves.evaluate(keys, first / rate) else 0
+	end
+	local angles: { { number } } = {}
+	local previous = before
+	for _, turn in turns do
+		local x, y, z = turn:ToEulerAnglesXYZ()
+		previous = nearestAngles(x, y, z, previous)
+		table.insert(angles, previous)
+	end
+	for axis, letter in { "x", "y", "z" } do
+		local channel = `rotation.{letter}`
+		local values = {}
+		for frame in turns do
+			values[frame] = angles[frame][axis]
+		end
+		local frames = { first = first, last = last, values = values, duration = duration }
+		if not reduce then
+			writeFrames(clip, joint, channel, own[channel] or {}, frames, changed)
+			continue
+		end
+		writeFrames(clip, joint, channel, own[channel] or {}, frames, {})
+		local curve = Curves.channel(clip, joint, channel, false) :: Instance
+		local keys = Curves.keys(curve)
+		local out = reduced(keys, (first - 1) / rate, (last + 1) / rate, math.rad(Curves.REDUCE_DEGREES)) or keys
+		Curves.setKeys(curve, out)
+		count(changed, "keys_written", #out)
+	end
+end
+
 -- ---------------------------------------------------------------------------------------
 -- Adding motion on top of a clip
 
@@ -1705,33 +1777,12 @@ local appliers: { [string]: Apply } = {
 		end
 
 		-- The three joints' rotation keys in the range are replaced by one key a frame.
-		local startTime = firstFrame / rate
 		for index, joint in chain do
-			local own = channels[joint] or {}
-			local before: { number } = {}
-			for axis, letter in { "x", "y", "z" } do
-				local keys = own[`rotation.{letter}`]
-				before[axis] = if keys then Curves.evaluate(keys, startTime) else 0
+			local turns = {}
+			for frame, entry in frames do
+				turns[frame] = entry.transforms[index]
 			end
-			local angles: { { number } } = {}
-			local previous = before
-			for _, entry in frames do
-				local x, y, z = entry.transforms[index]:ToEulerAnglesXYZ()
-				previous = nearestAngles(x, y, z, previous)
-				table.insert(angles, previous)
-			end
-			for axis, letter in { "x", "y", "z" } do
-				local values = {}
-				for frame in frames do
-					values[frame] = angles[frame][axis]
-				end
-				writeFrames(clip, joint, `rotation.{letter}`, own[`rotation.{letter}`] or {}, {
-					first = firstFrame,
-					last = lastFrame,
-					values = values,
-					duration = duration,
-				}, changed)
-			end
+			writeTurns(clip, joint, channels[joint] or {}, firstFrame, lastFrame, turns, duration, changed, false)
 		end
 		count(changed, "frames_pinned", #frames)
 		if missed > 0 then
@@ -1896,6 +1947,85 @@ local appliers: { [string]: Apply } = {
 			refuse(where, `there are no keys from {milliseconds(from)} to {milliseconds(to)} seconds.`)
 		end
 		count(changed, "keys_reversed", reversed)
+	end,
+
+	aim = function(where, clip, operation, context, changed)
+		local joints = context.joints
+		if not hasGeometry(joints, Rig.R15_ORDER) then
+			refuse(where, "this rig's joints could not be measured, so nothing can be aimed on it.")
+		end
+		local span = spanOf(where, clip, operation)
+		local channels = readChannels(clip)
+		local scan = { joints = joints } :: any
+		local identity = Roblox.CFrame.new()
+		local joint = operation.joint
+		local parentName = Rig.R15_PARENTS[joint]
+		local c0, c1 = Rig.rest(joints[joint])
+		local function turnOf(cframe: CFrame): CFrame
+			return cframe - cframe.Position
+		end
+		local held: CFrame? = nil
+		if operation.hold then
+			local reference = Pose.place(scan, transformsAt(channels, operation.at or operation.time_from), identity)
+			held = turnOf(reference[joint])
+		end
+		local target = if operation.target
+			then Roblox.Vector3.new(operation.target[1], operation.target[2], operation.target[3])
+			else nil
+		local limit = math.rad(operation.limit_degrees or 180)
+		local weight = operation.weight or 1
+		local rate = Curves.FRAME_RATE
+		local turns: { CFrame } = {}
+		for frame = span.first, span.last do
+			local time = frame / rate
+			local transforms = transformsAt(channels, time)
+			local placed = Pose.place(scan, transforms, identity)
+			local part = placed[joint]
+			local parent = placed[parentName] or identity
+			-- The turn in the room that would face the part where it is wanted.
+			local turn = identity
+			if target then
+				-- The joint turns about its pivot, which moves the part's middle, and with
+				-- it the way to the target: worked out again from where the turn puts it,
+				-- a few times over, which settles it.
+				local pivot = (parent * c0).Position
+				local middle = part.Position
+				for _ = 1, 4 do
+					local toward = target - middle
+					if toward.Magnitude < 1e-6 then
+						break
+					end
+					turn = Limb.arc(part.LookVector, toward.Unit)
+					middle = pivot + turn:VectorToWorldSpace(part.Position - pivot)
+				end
+			else
+				turn = (held :: CFrame) * turnOf(part):Inverse()
+			end
+			local axis, angle = turn:ToAxisAngle()
+			angle = math.min(angle, limit) * weight * span.weight(time)
+			if math.abs(angle) > 1e-9 and axis.Magnitude > 1e-9 then
+				turn = Roblox.CFrame.fromAxisAngle(axis.Unit, angle)
+			else
+				turn = identity
+			end
+			-- The joint's own rotation that gives the part that facing, about the point
+			-- where the joint is: placed = parent * C0 * transform * C1:Inverse().
+			local wanted = turn * turnOf(part)
+			local own = turnOf(c0):Inverse() * turnOf(parent):Inverse() * wanted * turnOf(c1)
+			turns[frame - span.first + 1] = Roblox.CFrame.new(transforms[joint].Position) * own
+		end
+		writeTurns(
+			clip,
+			joint,
+			channels[joint] or {},
+			span.first,
+			span.last,
+			turns,
+			Curves.duration(clip),
+			changed,
+			true
+		)
+		count(changed, "frames_aimed", span.last - span.first + 1)
 	end,
 
 	copy_pose = function(where, clip, operation, context, changed)

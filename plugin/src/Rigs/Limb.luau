@@ -73,6 +73,8 @@ local function arc(from: Vector3, to: Vector3): CFrame
 	return Roblox.CFrame.fromAxisAngle(axis.Unit, math.atan2(sine, cosine))
 end
 
+Limb.arc = arc
+
 export type Request = {
 	-- Where the part the limb hangs from is: the lower torso for a leg, the upper torso
 	-- for an arm.

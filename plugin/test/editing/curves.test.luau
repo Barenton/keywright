@@ -1016,6 +1016,68 @@ case("copy_pose copies a pose to another time, as it is or mirrored", function()
 	)
 end)
 
+-- The angle in degrees between where a part faces and the way to a point.
+local function offAim(part: any, target: any): number
+	local toward = (target - part.Position).Unit
+	return math.deg(math.acos(math.clamp(part.LookVector:Dot(toward), -1, 1)))
+end
+
+case("aim turns a joint to face a point, or holds its facing", function()
+	local target = roblox.Vector3.new(2, 1, -6)
+	local clip = hunch()
+	local changed =
+		realRun(clip, { { type = "aim", joint = "Head", time_from = 0, time_to = 1, target = { 2, 1, -6 } } })
+	check("every frame was aimed", changed.frames_aimed == 31, changed.frames_aimed)
+	local worst = 0
+	for frame = 0, 30 do
+		worst = math.max(worst, offAim(placedAt(clip, frame / 30).Head, target))
+	end
+	check("the head faces the point at every frame", worst < 0.25, worst)
+
+	local partial = hunch()
+	local original = hunch()
+	realRun(partial, { { type = "aim", joint = "Head", time_from = 0.3, time_to = 0.7, target = { 2, 1, -6 } } })
+	local outside = 0
+	for frame = 0, 30 do
+		local time = frame / 30
+		if time < 0.3 - 1 / 30 - 1e-6 or time > 0.7 + 1 / 30 + 1e-6 then
+			outside = math.max(outside, difference(sampleAll(partial, time), sampleAll(original, time)))
+		end
+	end
+	check("frames outside the range are unchanged", outside < 1e-6, outside)
+
+	local half = hunch()
+	realRun(half, { { type = "aim", joint = "Head", time_from = 0, time_to = 1, target = { 2, 1, -6 }, weight = 0.5 } })
+	local before, after = offAim(placedAt(original, 0.5).Head, target), offAim(placedAt(half, 0.5).Head, target)
+	check("half the weight turns it half way", math.abs(after - before / 2) < 0.5, `{before} to {after}`)
+
+	local limited = hunch()
+	realRun(limited, {
+		{ type = "aim", joint = "Head", time_from = 0, time_to = 1, target = { 2, 1, -6 }, limit_degrees = 10 },
+	})
+	local most = 0
+	for frame = 0, 30 do
+		most = math.max(most, turnBetween(placedAt(limited, frame / 30).Head, placedAt(original, frame / 30).Head))
+	end
+	check("a limit caps the turn", most <= 10.3 and most > 9, most)
+
+	local steady = hunch()
+	local start = placedAt(steady, 0).Head
+	realRun(steady, { { type = "aim", joint = "Head", time_from = 0, time_to = 1, hold = true } })
+	local drift = 0
+	for frame = 0, 30 do
+		drift = math.max(drift, turnBetween(placedAt(steady, frame / 30).Head, start))
+	end
+	check("held, the head keeps its facing as the chest bends and turns", drift < 0.25, drift)
+	check(
+		"target and hold together are refused",
+		refusal(
+			steady,
+			{ { type = "aim", joint = "Head", time_from = 0, time_to = 1, hold = true, target = { 0, 0, -1 } } }
+		) ~= nil
+	)
+end)
+
 case("a curve clip is retimed: shifted, scaled with or without ripple, and reversed", function()
 	local original = lopsided()
 	local clip = lopsided()
