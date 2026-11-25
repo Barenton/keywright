@@ -26,6 +26,7 @@
 -- methods in the plugin and a stand-in in the offline tests. The operations themselves are
 -- in CurveEdit, a module for each family, each with how it is checked and applied.
 
+local Frames = require("./CurveEdit/Frames")
 local ClipOps = require("./CurveEdit/ClipOps")
 local AimOp = require("./CurveEdit/AimOp")
 local Contacts = require("./CurveEdit/Contacts")
@@ -41,14 +42,13 @@ local PinOp = require("./CurveEdit/PinOp")
 local Read = require("./CurveEdit/Read")
 local Store = require("./CurveEdit/Store")
 local TimeOps = require("./CurveEdit/TimeOps")
-local Write = require("./CurveEdit/Write")
 
 export type Key = Store.Key
 export type Marker = Store.Marker
 export type Backend = Store.Backend
 export type Track = Store.Track
-export type Context = Write.Context
-export type Changed = Write.Changed
+export type Context = Frames.Context
+export type Changed = Frames.Changed
 export type ReadOptions = Read.ReadOptions
 
 local Curves = {}

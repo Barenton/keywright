@@ -1,15 +1,16 @@
 --!strict
 -- Timing: shifting, scaling and reversing ranges, and reducing a range to few keys.
 
+local Frames = require("./Frames")
 local Need = require("./Need")
 local Store = require("./Store")
 local Write = require("./Write")
 
-local count = Write.count
+local count = Frames.count
 local currentBackend = Store.currentBackend
 local isFinite = Need.isFinite
 local milliseconds = Need.milliseconds
-local near = Write.near
+local near = Frames.near
 local needJoints = Need.needJoints
 local needRange = Need.needRange
 local needTime = Need.needTime
@@ -19,8 +20,8 @@ local refuse = Need.refuse
 local sortKeys = Store.sortKeys
 local wrapped = Write.wrapped
 
-type Changed = Write.Changed
-type Context = Write.Context
+type Changed = Frames.Changed
+type Context = Frames.Context
 type Key = Store.Key
 
 local Ops = {}

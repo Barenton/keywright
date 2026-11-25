@@ -1,6 +1,7 @@
 --!strict
 -- Putting the body on the floor, and keeping a hand or foot off it.
 
+local Frames = require("./Frames")
 local Body = require("./Body")
 local Limb = require("../../Rigs/Limb")
 local Need = require("./Need")
@@ -10,10 +11,10 @@ local Roblox = require("../../Core/Roblox")
 local Store = require("./Store")
 local Write = require("./Write")
 
-local count = Write.count
+local count = Frames.count
 local FLOORED = Body.FLOORED
 local floorOf = Body.floorOf
-local FRAME_SLACK = Write.FRAME_SLACK
+local FRAME_SLACK = Frames.FRAME_SLACK
 local hasGeometry = Body.hasGeometry
 local isFinite = Need.isFinite
 local milliseconds = Need.milliseconds
@@ -22,17 +23,17 @@ local needJoint = Need.needJoint
 local needJoints = Need.needJoints
 local needOneOf = Need.needOneOf
 local needRange = Need.needRange
-local readChannels = Write.readChannels
+local readChannels = Frames.readChannels
 local refuse = Need.refuse
 local rounded = Need.rounded
-local smoothstep = Write.smoothstep
-local spanOf = Write.spanOf
-local transformsAt = Write.transformsAt
+local smoothstep = Frames.smoothstep
+local spanOf = Frames.spanOf
+local transformsAt = Frames.transformsAt
 local writeFrames = Write.writeFrames
 local writeTurns = Write.writeTurns
 
-type Changed = Write.Changed
-type Context = Write.Context
+type Changed = Frames.Changed
+type Context = Frames.Context
 
 local Ops = {}
 

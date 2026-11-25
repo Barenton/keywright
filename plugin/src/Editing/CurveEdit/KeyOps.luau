@@ -1,6 +1,7 @@
 --!strict
 -- Keys themselves: setting, removing and shaping them, clearing a range, copying a pose.
 
+local Frames = require("./Frames")
 local Body = require("./Body")
 local Need = require("./Need")
 local Rig = require("../../Rigs/Rig")
@@ -8,12 +9,12 @@ local Store = require("./Store")
 local Write = require("./Write")
 
 local asymmetry = Body.asymmetry
-local count = Write.count
+local count = Frames.count
 local counterpart = Body.counterpart
 local hasGeometry = Body.hasGeometry
 local isFinite = Need.isFinite
 local MIRROR_SIGN = Body.MIRROR_SIGN
-local near = Write.near
+local near = Frames.near
 local needJoint = Need.needJoint
 local needJoints = Need.needJoints
 local needOneOf = Need.needOneOf
@@ -22,12 +23,12 @@ local needTime = Need.needTime
 local needVector = Need.needVector
 local outward = Store.outward
 local putKey = Write.putKey
-local readChannels = Write.readChannels
+local readChannels = Frames.readChannels
 local refuse = Need.refuse
 local smoothChannel = Write.smoothChannel
 
-type Changed = Write.Changed
-type Context = Write.Context
+type Changed = Frames.Changed
+type Context = Frames.Context
 type Key = Store.Key
 
 local Ops = {}

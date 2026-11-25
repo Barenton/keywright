@@ -1,24 +1,25 @@
 --!strict
 -- Adding a turn, a move or a sway on top of a clip's motion.
 
+local Frames = require("./Frames")
 local Need = require("./Need")
 local Store = require("./Store")
 local Write = require("./Write")
 
 local addToChannel = Write.addToChannel
-local count = Write.count
+local count = Frames.count
 local isFinite = Need.isFinite
-local near = Write.near
+local near = Frames.near
 local needBlends = Need.needBlends
 local needJoint = Need.needJoint
 local needJoints = Need.needJoints
 local needRange = Need.needRange
 local needVector = Need.needVector
 local refuse = Need.refuse
-local spanOf = Write.spanOf
+local spanOf = Frames.spanOf
 
-type Changed = Write.Changed
-type Context = Write.Context
+type Changed = Frames.Changed
+type Context = Frames.Context
 
 local Ops = {}
 

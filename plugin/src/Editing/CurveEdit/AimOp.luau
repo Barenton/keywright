@@ -1,6 +1,7 @@
 --!strict
 -- Turning a joint to face a point, or holding its facing.
 
+local Frames = require("./Frames")
 local Body = require("./Body")
 local Limb = require("../../Rigs/Limb")
 local Need = require("./Need")
@@ -10,7 +11,7 @@ local Roblox = require("../../Core/Roblox")
 local Store = require("./Store")
 local Write = require("./Write")
 
-local count = Write.count
+local count = Frames.count
 local hasGeometry = Body.hasGeometry
 local isFinite = Need.isFinite
 local needBlends = Need.needBlends
@@ -18,14 +19,14 @@ local needJoint = Need.needJoint
 local needRange = Need.needRange
 local needTime = Need.needTime
 local needVector = Need.needVector
-local readChannels = Write.readChannels
+local readChannels = Frames.readChannels
 local refuse = Need.refuse
-local spanOf = Write.spanOf
-local transformsAt = Write.transformsAt
+local spanOf = Frames.spanOf
+local transformsAt = Frames.transformsAt
 local writeTurns = Write.writeTurns
 
-type Changed = Write.Changed
-type Context = Write.Context
+type Changed = Frames.Changed
+type Context = Frames.Context
 
 local Ops = {}
 

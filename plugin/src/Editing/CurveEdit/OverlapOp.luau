@@ -1,6 +1,7 @@
 --!strict
 -- Follow-through: a chain trailing the body's motion through a damped spring.
 
+local Frames = require("./Frames")
 local Body = require("./Body")
 local Need = require("./Need")
 local Pose = require("../../Rigs/Pose")
@@ -9,21 +10,21 @@ local Roblox = require("../../Core/Roblox")
 local Store = require("./Store")
 local Write = require("./Write")
 
-local count = Write.count
+local count = Frames.count
 local hasGeometry = Body.hasGeometry
 local isFinite = Need.isFinite
-local near = Write.near
+local near = Frames.near
 local needBlends = Need.needBlends
 local needJoints = Need.needJoints
 local needRange = Need.needRange
-local readChannels = Write.readChannels
+local readChannels = Frames.readChannels
 local refuse = Need.refuse
-local spanOf = Write.spanOf
-local transformsAt = Write.transformsAt
+local spanOf = Frames.spanOf
+local transformsAt = Frames.transformsAt
 local writeTurns = Write.writeTurns
 
-type Changed = Write.Changed
-type Context = Write.Context
+type Changed = Frames.Changed
+type Context = Frames.Context
 
 local Ops = {}
 

@@ -1,6 +1,7 @@
 --!strict
 -- Mirroring motion across the rig's middle, or copying one side onto the other.
 
+local Frames = require("./Frames")
 local Body = require("./Body")
 local Need = require("./Need")
 local Rig = require("../../Rigs/Rig")
@@ -8,19 +9,19 @@ local Store = require("./Store")
 local Write = require("./Write")
 
 local asymmetry = Body.asymmetry
-local count = Write.count
+local count = Frames.count
 local counterpart = Body.counterpart
 local hasGeometry = Body.hasGeometry
 local isFinite = Need.isFinite
 local MIRROR_SIGN = Body.MIRROR_SIGN
 local needJoints = Need.needJoints
 local needOneOf = Need.needOneOf
-local readChannels = Write.readChannels
+local readChannels = Frames.readChannels
 local refuse = Need.refuse
 local wrapped = Write.wrapped
 
-type Changed = Write.Changed
-type Context = Write.Context
+type Changed = Frames.Changed
+type Context = Frames.Context
 type Key = Store.Key
 
 local Ops = {}

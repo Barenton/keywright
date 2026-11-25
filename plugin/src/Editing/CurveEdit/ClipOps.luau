@@ -1,24 +1,24 @@
 --!strict
 -- The clip's own settings, its markers, and going back to the clip it was opened from.
 
+local Frames = require("./Frames")
 local Convert = require("./Convert")
 local Need = require("./Need")
 local Operations = require("../Operations")
 local Roblox = require("../../Core/Roblox")
 local Store = require("./Store")
-local Write = require("./Write")
 
-local count = Write.count
+local count = Frames.count
 local currentBackend = Store.currentBackend
 local markerCurve = Store.markerCurve
-local near = Write.near
+local near = Frames.near
 local needOneOf = Need.needOneOf
 local needText = Need.needText
 local needTime = Need.needTime
 local refuse = Need.refuse
 
-type Changed = Write.Changed
-type Context = Write.Context
+type Changed = Frames.Changed
+type Context = Frames.Context
 type Marker = Store.Marker
 
 local Ops = {}

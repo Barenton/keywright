@@ -1,22 +1,22 @@
 --!strict
 -- Checks of a curve clip: the general ones, and contact with the floor at every frame.
 
+local Frames = require("./Frames")
 local Body = require("./Body")
 local Need = require("./Need")
 local Pose = require("../../Rigs/Pose")
 local Rig = require("../../Rigs/Rig")
 local Roblox = require("../../Core/Roblox")
 local Store = require("./Store")
-local Write = require("./Write")
 
 local floorOf = Body.floorOf
 local hasGeometry = Body.hasGeometry
 local isFinite = Need.isFinite
 local milliseconds = Need.milliseconds
 local NOT_FLOORED = Body.NOT_FLOORED
-local readChannels = Write.readChannels
+local readChannels = Frames.readChannels
 local rounded = Need.rounded
-local transformsAt = Write.transformsAt
+local transformsAt = Frames.transformsAt
 
 local Contacts = {}
 
