@@ -214,9 +214,48 @@ case("contact with the floor is checked in a curve clip", function()
 	check("rolling heel to toe on a moving floor in a loop is a cycle, not a slide", leftSlides == 0, leftSlides)
 	check(
 		"in a loop, feet moving back steadily are a cycle made on the spot",
-		onTheSpot.counts.FOOT_SLIDE == nil,
-		onTheSpot.counts.FOOT_SLIDE
+		onTheSpot.counts.FOOT_SLIDE == nil and onTheSpot.counts.FOOT_SCUFF == nil,
+		onTheSpot.counts
 	)
+
+	-- The same cycle with the left foot flicked forward along the floor for one frame, the
+	-- foot kept level: the flick is a scuff, judged against the moving floor, and the rest
+	-- of the plant is not.
+	local flicked = blank()
+	realRun(flicked, {
+		{ type = "set_key", joint = "LowerTorso", time = 0, position = { 0, 0, 0 }, interpolation = "Linear" },
+		{ type = "set_key", joint = "LowerTorso", time = 1, position = { 0, 0, 1.5 }, interpolation = "Linear" },
+		{ type = "set_properties", loop = true },
+	})
+	for _, joint in { "LeftUpperLeg", "LeftFoot" } do
+		local sign = if joint == "LeftFoot" then -1 else 1
+		realRun(flicked, {
+			{ type = "set_key", joint = joint, time = 0.4, rotation = { 0, 0, 0 }, interpolation = "Linear" },
+			{ type = "set_key", joint = joint, time = 0.4333, rotation = { 8 * sign, 0, 0 }, interpolation = "Linear" },
+			{ type = "set_key", joint = joint, time = 0.4667, rotation = { 0, 0, 0 }, interpolation = "Linear" },
+		})
+	end
+	local found = validate(flicked)
+	local scuffs = {}
+	for _, issue in found.issues do
+		if issue.code == "FOOT_SCUFF" then
+			table.insert(scuffs, issue)
+		end
+	end
+	local flick = scuffs[1]
+	check("a flick on a moving floor is one scuff", #scuffs == 1 and flick.joints[1] == "LeftFoot", #scuffs)
+	check(
+		"at the frame it happens, not the whole plant",
+		flick and math.abs(flick.time_from - 0.433) < 0.002 and math.abs(flick.time_to - 0.433) < 0.002,
+		flick and `{flick.time_from} to {flick.time_to}`
+	)
+	check("at its own speed against the floor", flick and flick.measured > 7, flick and flick.measured)
+	check(
+		"and the message says the floor moves",
+		flick and string.find(flick.message, "against the floor", 1, true) ~= nil,
+		flick and flick.message
+	)
+	check("the scuff is not also called a slide", found.counts.FOOT_SLIDE == nil, found.counts.FOOT_SLIDE)
 end)
 
 finish()

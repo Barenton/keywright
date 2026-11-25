@@ -44,9 +44,13 @@ end
 
 -- A foot touches the floor when its lowest point is within this share of the floor
 -- limit of it; and moving faster than this across the floor while it touches, in studs a
--- second, it scuffs.
+-- second both coming into a frame and going out of it, it scuffs. A swing that skims the
+-- floor moves at 5 to 10; a planted foot that creeps with the hips, under this, slides.
 local TOUCH = 0.4
-local SCUFF_SPEED = 1.5
+local SCUFF_SPEED = 3
+-- In a looping clip, a floor whose soles step back slower than this, in studs a second,
+-- is taken to stand still.
+local MOVING_FLOOR = 0.5
 
 local function contacts(
 	clip: Instance,
@@ -124,108 +128,177 @@ local function contacts(
 	-- of it (TOUCH): one passing a little above it, as a swing does, is not on it. While
 	-- it touches, it should not move across the floor: a foot that moves fast while it
 	-- touches is scuffing, as a swinging foot that drags or a planted one that skates; one
-	-- that creeps for three frames or more is sliding. In a looping clip a foot that moves
-	-- back steadily while it touches is a cycle made on the spot, as a walk or run usually
-	-- is, and is neither.
+	-- that creeps for three frames or more is sliding.
+	--
+	-- In a looping clip the floor itself may move: a walk or run is usually made on the
+	-- spot, its planted feet moving back steadily under the body. How fast is measured from
+	-- the clip, as the most common step of a sole on the floor, and a foot's motion is then
+	-- judged against the floor's. Each frame is judged by itself, so a swing that skims the
+	-- floor fast just before a plant is told from the plant.
 	local touch = TOUCH * thresholds.floor_studs
+	local looping = (clip :: any).Loop == true
+	local count = frames + 1
+	local function touching(list: { any }, step: number): boolean
+		-- No further above the floor than the touch, and no deeper into it than the floor
+		-- limit; deeper is reported as below the floor instead.
+		local height = list[step].lowest - floor
+		return height <= touch and height >= -thresholds.floor_studs
+	end
+	-- The step a point of the sole takes from one frame to another, across the floor.
+	local function stepOf(list: { any }, from: number, to: number, point: number): (number, number)
+		local here, there = list[to].sole[point], list[from].sole[point]
+		return here[1] - there[1], here[2] - there[2]
+	end
+
+	-- The floor's step each frame: in a looping clip, the middle of every step the soles
+	-- take while they touch, across and along; still when that is slower than a creep.
+	local floorX, floorZ = 0, 0
+	if looping then
+		local xs, zs = {}, {}
+		for _, list in feet do
+			for step = 2, count do
+				if touching(list, step) and touching(list, step - 1) then
+					for point = 1, 3 do
+						local x, z = stepOf(list, step - 1, step, point)
+						table.insert(xs, x)
+						table.insert(zs, z)
+					end
+				end
+			end
+		end
+		if #xs > 0 then
+			table.sort(xs)
+			table.sort(zs)
+			local middle = (#xs + 1) // 2
+			floorX, floorZ = xs[middle], zs[middle]
+			if math.sqrt(floorX ^ 2 + floorZ ^ 2) * rate < MOVING_FLOOR then
+				floorX, floorZ = 0, 0
+			end
+		end
+	end
+	local moving = floorX ~= 0 or floorZ ~= 0
+
 	for _, foot in { "LeftFoot", "RightFoot" } do
 		local list = feet[foot]
-		-- How fast the middle of the foot moves across the floor at each frame.
-		local speeds: { number } = {}
-		for step = 1, #list do
-			local before = list[math.max(step - 1, 1)].position
-			local after = list[math.min(step + 1, #list)].position
-			local apart = math.min(step + 1, #list) - math.max(step - 1, 1)
-			speeds[step] = if apart > 0
-				then math.sqrt((after[1] - before[1]) ^ 2 + (after[3] - before[3]) ^ 2) * rate / apart
-				else 0
+		-- How fast a foot moves across the floor between two frames, against the floor: as
+		-- slow as the point of its sole that moves least, so a foot rolling over its toe or
+		-- heel, which stays put, is not moving.
+		local function slip(from: number, to: number): number
+			local least = math.huge
+			for point = 1, 3 do
+				local x, z = stepOf(list, from, to, point)
+				least = math.min(least, math.sqrt((x - floorX) ^ 2 + (z - floorZ) ^ 2))
+			end
+			return least * rate
 		end
-		-- Touching: no further above the floor than the touch, and no deeper into it than
-		-- the floor limit; deeper is reported as below the floor instead.
-		local function touching(step: number): boolean
-			local height = list[step].lowest - floor
-			return height <= touch and height >= -thresholds.floor_studs
+		-- The frames on either side of one; in a looping clip the last frame and the first
+		-- are the same moment, so the clip carries on round.
+		local function before(step: number): number?
+			if step > 1 then
+				return step - 1
+			end
+			return if looping and count > 2 then count - 1 else nil
 		end
+		local function after(step: number): number?
+			if step < count then
+				return step + 1
+			end
+			return if looping and count > 2 then 2 else nil
+		end
+		-- A frame scuffs when the foot touches and moves fast both coming into it and going
+		-- out of it: a foot that lands, or lifts off, moves fast on one side only.
+		local function scuffing(step: number): number?
+			local speed = math.huge
+			local into, out = before(step), after(step)
+			if into then
+				speed = math.min(speed, slip(into, step))
+			end
+			if out then
+				speed = math.min(speed, slip(step, out))
+			end
+			return if speed ~= math.huge and speed > SCUFF_SPEED then speed else nil
+		end
+		local function times(index: number, finish: number): (number, number)
+			return (index - 1) / rate, (finish - 1) / rate
+		end
+
 		local index = 1
-		while index <= #list do
-			if not touching(index) then
+		while index <= count do
+			if not touching(list, index) then
 				index += 1
 				continue
 			end
 			local finish = index
-			while finish + 1 <= #list and touching(finish + 1) do
+			while finish + 1 <= count and touching(list, finish + 1) do
 				finish += 1
 			end
-			-- Each frame's step across the floor, at each point of the sole.
-			local steps: { { number } } = {}
-			for step = index + 1, finish do
-				local each = {}
-				for point = 1, 3 do
-					local here, there = list[step].sole[point], list[step - 1].sole[point]
-					each[point] = math.sqrt((here[1] - there[1]) ^ 2 + (here[2] - there[2]) ^ 2)
+			-- Each run of scuffing frames in the stretch is reported on its own.
+			local scuffed = false
+			local step = index
+			while step <= finish do
+				local speed = scuffing(step)
+				if not speed then
+					step += 1
+					continue
 				end
-				table.insert(steps, each)
-			end
-			-- Steady: at every frame some point of the sole moves back by about the same
-			-- step, as the heel does while the foot rolls onto it and the toe while it
-			-- rolls off.
-			local steady = false
-			if (clip :: any).Loop == true and #steps > 0 then
-				local mean = 0
-				for _, each in steps do
-					mean += each[3] / #steps
-				end
-				steady = mean * rate > 0.5
-				for _, each in steps do
-					local close = false
-					for point = 1, 3 do
-						close = close or math.abs(each[point] - mean) <= 0.35 * mean
+				local first, fastest, nearest = step, speed, list[step].lowest - floor
+				while step + 1 <= finish do
+					local next = scuffing(step + 1)
+					if not next then
+						break
 					end
-					steady = steady and close
+					step += 1
+					fastest = math.max(fastest, next)
+					nearest = math.min(nearest, list[step].lowest - floor)
 				end
-			end
-			local speed, nearest = 0, math.huge
-			for step = index, finish do
-				speed += speeds[step] / (finish - index + 1)
-				nearest = math.min(nearest, list[step].lowest - floor)
-			end
-			local from, to = (index - 1) / rate, (finish - 1) / rate
-			if not steady and speed > SCUFF_SPEED then
+				scuffed = true
+				local from, to = times(first, step)
+				local against = if moving
+					then ` against the floor, which moves {rounded(math.sqrt(floorX ^ 2 + floorZ ^ 2) * rate, 2)} studs a second in this cycle made on the spot`
+					else ""
 				report({
 					code = "FOOT_SCUFF",
 					severity = "warning",
-					message = `"{foot}" touches the floor from {milliseconds(from)} to {milliseconds(to)} seconds while moving {rounded(
-						speed,
+					message = `"{foot}" touches the floor from {milliseconds(from)} to {milliseconds(to)} seconds while moving up to {rounded(
+						fastest,
 						2
-					)} studs a second across it, coming within {rounded(nearest, 3)} studs of it: a swinging foot that drags, or a planted one that skates. Lift a swing with clear_floor; plant a foot with pin.`,
+					)} studs a second across it{against}, coming within {rounded(nearest, 3)} studs of it: a swinging foot that drags, or a planted one that skates. Lift a swing with clear_floor; plant a foot with pin.`,
 					joints = { foot },
 					time_from = milliseconds(from),
 					time_to = milliseconds(to),
-					measured = rounded(speed, 2),
+					measured = rounded(fastest, 2),
 					threshold = SCUFF_SPEED,
 					unit = "studs per second",
 				})
-			elseif not steady and finish - index >= 2 then
-				-- How far it slides: as far as the point of its sole that moves least, so a
-				-- foot rolling over its toe or heel, which stays put, is not sliding.
+				step += 1
+			end
+			if not scuffed and finish - index >= 2 then
+				-- How far it slides against the floor: as far as the point of its sole that
+				-- moves least, so a foot rolling over its toe or heel is not sliding.
 				local drift = math.huge
 				for point = 1, 3 do
 					local start = list[index].sole[point]
 					local furthest = 0
-					for step = index, finish do
-						local here = list[step].sole[point]
-						furthest = math.max(furthest, math.sqrt((here[1] - start[1]) ^ 2 + (here[2] - start[2]) ^ 2))
+					for frame = index, finish do
+						local here = list[frame].sole[point]
+						local carried = frame - index
+						local x = here[1] - start[1] - floorX * carried
+						local z = here[2] - start[2] - floorZ * carried
+						furthest = math.max(furthest, math.sqrt(x ^ 2 + z ^ 2))
 					end
 					drift = math.min(drift, furthest)
 				end
 				if drift > thresholds.slide_studs then
+					local from, to = times(index, finish)
 					report({
 						code = "FOOT_SLIDE",
 						severity = "warning",
 						message = `"{foot}" is on the floor from {milliseconds(from)} to {milliseconds(to)} seconds but slides {rounded(
 							drift,
 							3
-						)} studs along it. Pin it with the pin operation to keep it in place.`,
+						)} studs along it{if moving
+							then " against the floor of this cycle made on the spot"
+							else ""}. Pin it with the pin operation to keep it in place.`,
 						joints = { foot },
 						time_from = milliseconds(from),
 						time_to = milliseconds(to),
