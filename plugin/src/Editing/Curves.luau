@@ -1055,6 +1055,7 @@ local appliers: { [string]: Apply } = {
 
 		local frames: { { time: number, transforms: { CFrame } } } = {}
 		local missed, worst = 0, 0
+		local missedFrom, missedTo = math.huge, -math.huge
 		for frame = firstFrame, lastFrame do
 			local time = frame / rate
 			local transforms = transformsAt(channels, time)
@@ -1091,6 +1092,8 @@ local appliers: { [string]: Apply } = {
 			if weight >= 1 and solution.miss > 0.001 then
 				missed += 1
 				worst = math.max(worst, solution.miss)
+				missedFrom = math.min(missedFrom, time)
+				missedTo = math.max(missedTo, time)
 			end
 			table.insert(frames, { time = time, transforms = result })
 		end
@@ -1128,6 +1131,9 @@ local appliers: { [string]: Apply } = {
 		if missed > 0 then
 			count(changed, "frames_out_of_reach", missed)
 			changed.largest_miss_studs = math.max(changed.largest_miss_studs or 0, rounded(worst, 3))
+			-- When, so the hips can be fixed there: the first and last frame out of reach.
+			changed.out_of_reach_from = math.min(changed.out_of_reach_from or math.huge, milliseconds(missedFrom))
+			changed.out_of_reach_to = math.max(changed.out_of_reach_to or -math.huge, milliseconds(missedTo))
 		end
 	end,
 

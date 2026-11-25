@@ -527,6 +527,15 @@ case("a foot that cannot stay is reached for, and the result says by how much it
 	local changed = realRun(clip, { { type = "pin", part = "RightFoot", time_from = 0, time_to = 1 } })
 	check("some frames were out of reach", (changed.frames_out_of_reach or 0) > 0, changed.frames_out_of_reach)
 	check("with the worst shortfall", (changed.largest_miss_studs or 0) > 0.5, changed.largest_miss_studs)
+	-- The hips rise highest at the middle of the clip, so that is where the leg falls short.
+	check(
+		"and when",
+		(changed.out_of_reach_from or 0) > 0
+			and (changed.out_of_reach_from or 0) < 0.5
+			and (changed.out_of_reach_to or 1) > 0.5
+			and (changed.out_of_reach_to or 1) < 1,
+		`{changed.out_of_reach_from} to {changed.out_of_reach_to}`
+	)
 end)
 
 case("a pin over part of a clip leaves the rest of it as it was", function()
