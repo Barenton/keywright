@@ -515,6 +515,12 @@ local checks: { [string]: Check } = {
 		end
 		needVector(where, operation.position, "position", Curves.MAX_POSITION)
 		needVector(where, operation.pole, "pole", Curves.MAX_POSITION)
+		if operation.relative_to ~= nil then
+			needJoint(where, operation.relative_to, joints)
+			if table.find(chain :: { string }, operation.relative_to) then
+				refuse(where, `relative_to cannot be a part of the limb being pinned.`)
+			end
+		end
 		if operation.hold ~= nil then
 			needOneOf(where, operation.hold, "hold", Curves.HOLDS)
 		end
@@ -911,15 +917,21 @@ local appliers: { [string]: Apply } = {
 		local scan = { joints = joints } :: any
 		local identity = Roblox.CFrame.new()
 		local limb = { joints[chain[1]], joints[chain[2]], joints[chain[3]] }
+		-- The part the target moves with, if any: the target is kept in its frame, so a
+		-- hand held to the chest stays on the chest as the body bends.
+		local anchorName = operation.relative_to
+		local function anchorOf(placed: { [string]: CFrame }): CFrame
+			return if anchorName then placed[anchorName] else identity
+		end
 		local reference = Pose.place(scan, transformsAt(channels, operation.at or from), identity)
-		local tip = reference[chain[3]]
+		-- The target, in the anchor's frame.
+		local tipLocal = anchorOf(reference):Inverse() * reference[chain[3]]
 		if operation.position then
 			local p = operation.position
-			tip = Roblox.CFrame.new(p[1], p[2], p[3]) * (tip - tip.Position)
+			tipLocal = Roblox.CFrame.new(p[1], p[2], p[3]) * (tipLocal - tipLocal.Position)
 		end
 		local full = (operation.hold or "full") == "full"
-		local pivot = Limb.pivotOf(limb[3], tip)
-		local pole = if operation.pole
+		local poleLocal = if operation.pole
 			then Roblox.Vector3.new(operation.pole[1], operation.pole[2], operation.pole[3])
 			else nil
 
@@ -930,6 +942,10 @@ local appliers: { [string]: Apply } = {
 			local transforms = transformsAt(channels, time)
 			local placed = Pose.place(scan, transforms, identity)
 			local current = { transforms[chain[1]], transforms[chain[2]], transforms[chain[3]] }
+			local anchor = anchorOf(placed)
+			local tip = anchor * tipLocal
+			local pivot = Limb.pivotOf(limb[3], tip)
+			local pole = if poleLocal then anchor * poleLocal else nil
 			local solution = Limb.solve({
 				parent = placed[Rig.R15_PARENTS[chain[1]]],
 				joints = limb,

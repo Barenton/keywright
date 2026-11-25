@@ -589,6 +589,59 @@ case("a pin can put a hand somewhere new", function()
 	check("the hand is held there through the squat", worst < 0.001, worst)
 end)
 
+-- Hips that drop while the chest bends forward and turns, over a second.
+local function hunch(): any
+	local clip = squat(0.4)
+	realRun(clip, {
+		{ type = "set_key", joint = "UpperTorso", time = 0, rotation = { 0, 0, 0 } },
+		{ type = "set_key", joint = "UpperTorso", time = 0.5, rotation = { -35, 20, 0 } },
+		{ type = "set_key", joint = "UpperTorso", time = 1, rotation = { 0, 0, 0 } },
+		{ type = "auto_tangents", time_from = 0, time_to = 1 },
+	})
+	return clip
+end
+
+case("a pin relative to another part moves with that part", function()
+	local clip = hunch()
+	local offset = roblox.Vector3.new(0.3, 0.2, -1)
+	local changed = realRun(clip, {
+		{
+			type = "pin",
+			part = "RightHand",
+			time_from = 0,
+			time_to = 1,
+			relative_to = "UpperTorso",
+			position = { offset.X, offset.Y, offset.Z },
+		},
+	})
+	check("nothing was out of reach", changed.frames_out_of_reach == nil, changed.largest_miss_studs)
+	local worst, travelled = 0, 0
+	local start = placedAt(clip, 0).RightHand.Position
+	for frame = 0, 30 do
+		local placed = placedAt(clip, frame / 30)
+		local wanted = placed.UpperTorso:PointToWorldSpace(offset)
+		worst = math.max(worst, (placed.RightHand.Position - wanted).Magnitude)
+		travelled = math.max(travelled, (placed.RightHand.Position - start).Magnitude)
+	end
+	check("the hand stays on the chest", worst < 0.001, worst)
+	check("and so moves through the room with it", travelled > 0.5, travelled)
+
+	-- Without a position, the hand keeps where it was against the part at `at`.
+	local kept = hunch()
+	local before = placedAt(kept, 0)
+	local relation = before.UpperTorso:Inverse() * before.LeftHand
+	realRun(kept, { { type = "pin", part = "LeftHand", time_from = 0, time_to = 1, relative_to = "UpperTorso" } })
+	local drift, turned = 0, 0
+	for frame = 0, 30 do
+		local placed = placedAt(kept, frame / 30)
+		local wanted = placed.UpperTorso * relation
+		drift = math.max(drift, (placed.LeftHand.Position - wanted.Position).Magnitude)
+		turned = math.max(turned, turnBetween(placed.LeftHand, wanted))
+	end
+	check("a hand held to the chest as it was stays so", drift < 0.001, drift)
+	check("turning with it", turned < 0.05, turned)
+end)
+
 case("pins that cannot be done are refused", function()
 	local clip = squat(0.5)
 	local function refusedReal(operation: any): any
@@ -605,6 +658,15 @@ case("pins that cannot be done are refused", function()
 	check(
 		"too long a blend",
 		refusedReal({ type = "pin", part = "LeftFoot", time_from = 0, time_to = 1, blend_in = 5 }) ~= nil
+	)
+	check(
+		"relative to a part of the limb itself",
+		refusedReal({ type = "pin", part = "RightHand", time_from = 0, time_to = 1, relative_to = "RightLowerArm" })
+			~= nil
+	)
+	check(
+		"relative to a part the rig lacks",
+		refusedReal({ type = "pin", part = "RightHand", time_from = 0, time_to = 1, relative_to = "Tail" }) ~= nil
 	)
 	local blind = refusal(clip, { { type = "pin", part = "LeftFoot", time_from = 0, time_to = 1 } })
 	check(

@@ -202,12 +202,16 @@ const operations = [
 		at: time("The time whose pose is held: the part stays where it is then. Default time_from.").optional(),
 		position: vec3
 			.optional()
-			.describe("Where the part's middle is to be instead, in studs from the root part: x toward the rig's right, y up, z toward its back."),
+			.describe("Where the part's middle is to be instead, in studs from the root part: x toward the rig's right, y up, z toward its back. With relative_to, in studs from that part's middle along its own directions instead."),
+		relative_to: z
+			.enum(["LowerTorso", "UpperTorso", "Head", "LeftUpperArm", "LeftLowerArm", "LeftHand", "RightUpperArm", "RightLowerArm", "RightHand", "LeftUpperLeg", "LeftLowerLeg", "LeftFoot", "RightUpperLeg", "RightLowerLeg", "RightFoot"])
+			.optional()
+			.describe("Hold the part against another part instead of in place, re-placed at every frame as that part moves: a hand on the chest stays on the chest while the body bends, a hand on a knee stays on it as the knee rises. Without position, the part keeps where it was against that part at `at`. Not a part of the limb itself."),
 		hold: z
 			.enum(["full", "position"])
 			.optional()
 			.describe("full (default) holds the part's position and rotation, as a foot flat on the ground. position holds only where the ankle or wrist is, and the foot or hand keeps its own animated turn."),
-		pole: vec3.optional().describe("A point the knee or elbow is to point toward, in the same space as position."),
+		pole: vec3.optional().describe("A point the knee or elbow is to point toward, in the same space as position (so also against relative_to when given)."),
 		blend_in: z.number().finite().min(0).max(2).optional().describe("Seconds before time_from over which the limb eases from its own motion into the hold. Default 0."),
 		blend_out: z.number().finite().min(0).max(2).optional().describe("Seconds after time_to over which it eases back out. Default 0."),
 	}),
