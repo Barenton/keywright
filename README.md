@@ -65,7 +65,7 @@ Malicious software already running as the same OS user is out of scope.
 ## Requirements
 
 - Node.js 22 or later.
-- [Aftman](https://github.com/LPGhatguy/aftman) for the Roblox tools pinned in `aftman.toml` (Rojo, Lune, StyLua).
+- [Rokit](https://github.com/rojo-rbx/rokit) for the Roblox tools pinned in `rokit.toml` (Rojo, Lune, StyLua, selene, luau-lsp). Run `rokit install` in the project folder.
 
 ## Commands
 
