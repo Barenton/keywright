@@ -403,8 +403,8 @@ export interface Motion {
 	times: number[];
 	/** The clip's keyframe times. */
 	keyframes: number[];
-	/** For each tracked part, where its middle is at each sample. */
-	parts: Array<{ name: string; positions: Vec[] }>;
+	/** For each tracked part, where its middle is at each sample, and how high its lowest point is when known. */
+	parts: Array<{ name: string; positions: Vec[]; lowest?: number[] }>;
 }
 
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
@@ -420,7 +420,7 @@ export function parseMotion(value: unknown): Motion {
 	const keyframes = Array.isArray(value.keyframes) ? value.keyframes.filter(finite).slice(0, 2000) : [];
 	const names = Object.keys(value.parts).sort();
 	if (names.length === 0 || names.length > MAX_TRACKS) throw new Error("the motion tracks an unusable number of parts");
-	const parts = names.map((name) => {
+	const parts: Motion["parts"] = names.map((name) => {
 		const positions = (value.parts as Record<string, unknown>)[name];
 		if (name.length > 64 || !Array.isArray(positions) || positions.length !== times.length) throw new Error(`the path of "${name}" is not usable`);
 		return {
@@ -433,6 +433,14 @@ export function parseMotion(value: unknown): Motion {
 			}),
 		};
 	});
+	// The height of each part's lowest point at each sample, from a plugin that sends it.
+	const lowest = isRecord(value.lowest) ? value.lowest : {};
+	for (const part of parts) {
+		const heights = lowest[part.name];
+		if (Array.isArray(heights) && heights.length === times.length && heights.every((item) => finite(item) && Math.abs(item) <= MAX_REACH)) {
+			part.lowest = heights as number[];
+		}
+	}
 	return { times: times as number[], keyframes, parts };
 }
 
@@ -461,12 +469,19 @@ export function summariseMotion(motion: Motion): Record<string, unknown> {
 	for (const part of motion.parts) {
 		const speeds = speedsOf(motion, part.positions);
 		const peak = Math.max(...speeds);
+		// Where the part comes lowest, and when: how near the floor it gets.
+		const low: Record<string, number> = {};
+		if (part.lowest) {
+			const least = Math.min(...part.lowest);
+			low.lowest = Math.round(least * 1000) / 1000;
+			low.lowest_time = hundredths(motion.times[part.lowest.indexOf(least)] as number);
+		}
 		let path = 0;
 		for (let index = 1; index < part.positions.length; index += 1) path += Math.hypot(...sub(part.positions[index] as Vec, part.positions[index - 1] as Vec));
 		const first = part.positions[0] as Vec;
 		const last = part.positions[part.positions.length - 1] as Vec;
 		if (peak < 0.05) {
-			summary[part.name] = { path: hundredths(path), still: true };
+			summary[part.name] = { path: hundredths(path), still: true, ...low };
 			continue;
 		}
 		// Moving means faster than a twentieth of its own top speed.
@@ -512,6 +527,7 @@ export function summariseMotion(motion: Motion): Record<string, unknown> {
 			largest_speed_jump: hundredths(jump),
 			largest_speed_jump_time: hundredths(jumpAt),
 			bow: hundredths(bow),
+			...low,
 		};
 	}
 	return summary;

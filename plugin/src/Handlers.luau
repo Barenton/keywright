@@ -583,6 +583,8 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 			end
 			local sampleTimes: { number } = {}
 			local paths: { [string]: { { number } } } = {}
+			-- The height of each part's lowest point at each moment, as validate measures it.
+			local lowest: { [string]: { number } } = {}
 			for _, name in followed do
 				paths[name] = {}
 			end
@@ -606,6 +608,8 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 				table.insert(sampleTimes, math.round(at * 10000) / 10000)
 				for name, tracked in Pose.track(scan, sample.transforms, CFrame.new(), followed) do
 					table.insert(paths[name], tracked.position)
+					lowest[name] = lowest[name] or {}
+					table.insert(lowest[name], tracked.lowest)
 				end
 				if index == 0 and render then
 					firstPose = Pose.parts(scan, sample.transforms, CFrame.new())
@@ -616,7 +620,7 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 				clip_id = working.id,
 				revision = revision,
 				duration = math.round(duration * 1000) / 1000,
-				motion = { times = sampleTimes, keyframes = keyframes, parts = paths },
+				motion = { times = sampleTimes, keyframes = keyframes, parts = paths, lowest = lowest },
 				pose = if firstPose then { parts = firstPose, rest = restPose() } else nil,
 			}
 		end

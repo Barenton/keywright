@@ -26,6 +26,21 @@ test("a part's travel, top speed and when it moves are measured", () => {
 	assert.equal(hand.largest_speed_jump, 10);
 });
 
+test("where each part comes lowest, and when, is given when the plugin sends it", () => {
+	// A foot that dips to its lowest at 0.3 seconds.
+	const swing = path((time) => [0, -2.8 + Math.abs(time - 0.3), 0]);
+	const lowest = times.map((time) => -3 + Math.abs(time - 0.3));
+	const summary = summariseMotion(parseMotion({ times, keyframes: [0, 1], parts: { LeftFoot: swing }, lowest: { LeftFoot: lowest } })) as Record<
+		string,
+		{ lowest?: number; lowest_time?: number }
+	>;
+	assert.equal(summary.LeftFoot?.lowest, -3);
+	assert.equal(summary.LeftFoot?.lowest_time, 0.3);
+	// From a plugin that does not send it, there is none.
+	const without = summariseMotion(motionOf({ LeftFoot: swing })) as Record<string, { lowest?: number }>;
+	assert.equal(without.LeftFoot?.lowest, undefined);
+});
+
 test("a hold in the middle of a move is found, and a curved path is told from a straight one", () => {
 	// Out for 0.25 s, still for 0.5 s, back for 0.25 s.
 	const held = path((time) => [0, 0, -(time < 0.25 ? time * 8 : time < 0.75 ? 2 : (1 - time) * 8)]);
