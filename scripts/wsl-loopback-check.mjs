@@ -14,8 +14,8 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Broker } from "../dist/src/broker.js";
-import { loadOrCreateSecret } from "../dist/src/state.js";
+import { Broker } from "../dist/src/broker/broker.js";
+import { loadOrCreateSecret } from "../dist/src/broker/state.js";
 
 if (process.platform !== "linux" || !/microsoft/i.test(readFileSync("/proc/version", "utf8"))) {
 	console.error("Run this inside WSL.");

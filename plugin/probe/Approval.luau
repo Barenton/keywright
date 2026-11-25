@@ -20,7 +20,7 @@
 -- only computes from what it is handed.
 
 local FixtureGuard = require("./FixtureGuard")
-local Stage = require("../src/Stage")
+local Stage = require("../src/Preview/Stage")
 
 local Approval = {}
 

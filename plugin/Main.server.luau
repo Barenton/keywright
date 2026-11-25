@@ -4,13 +4,13 @@
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
 
-local Access = require("./src/Access")
-local Connection = require("./src/Connection")
-local Edit = require("./src/Edit")
+local Access = require("./src/Network/Access")
+local Connection = require("./src/Network/Connection")
+local Edit = require("./src/Editing/Edit")
 local Handlers = require("./src/Handlers")
-local Preview = require("./src/Preview")
-local Proposals = require("./src/Proposals")
-local Recording = require("./src/Recording")
+local Preview = require("./src/Preview/Preview")
+local Proposals = require("./src/Storage/Proposals")
+local Recording = require("./src/Editing/Recording")
 
 local PLUGIN_VERSION = "0.0.0"
 local DEFAULT_PORT = 47318
@@ -181,8 +181,8 @@ if experiment and experiment:IsA("ModuleScript") then
 	(require(experiment) :: any).install(methods, {
 		registry = registry,
 		Preview = Preview,
-		Rig = require("./src/Rig"),
-		Saves = require("./src/Saves"),
+		Rig = require("./src/Rigs/Rig"),
+		Saves = require("./src/Storage/Saves"),
 		Recording = Recording,
 	})
 	version ..= "+experiment"

@@ -11,10 +11,30 @@ MCP client ──stdio──> adapter ──loopback──> broker <──WebSoc
 (one adapter per client)        (one per OS user)           (opens the connection)
 ```
 
-- **Plugin** (`plugin/`, Luau): rig inspection, working copies of `KeyframeSequence` clips, atomic edits with undo, sampling a clip on a disposable copy of the rig, and saving clips where Roblox's Animation Editor keeps them.
+- **Plugin** (`plugin/`, Luau): rig inspection, working copies of clips made of keyframes (`KeyframeSequence`) or curves (`CurveAnimation`), atomic edits with undo, sampling a clip on a disposable copy of the rig, and saving clips where Roblox's Animation Editor keeps them.
 - **Adapter and broker** (`src/`, TypeScript): MCP tools, schema validation, session routing and authentication. The adapter also draws the picture of a pose from the joint positions the plugin samples. They contain no animation logic.
 
 Studio is the only place animation data lives. The broker holds routing state and can restart without losing anything.
+
+### Where the code is
+
+| Folder | What is in it |
+|---|---|
+| `plugin/Main.server.luau` | The plugin's entry point: the agent access switch, pairing, and connection status. |
+| `plugin/src/Handlers.luau` | The methods a Studio session answers, one per tool. |
+| `plugin/src/Core/` | Shared basics: structured errors, encoding, hashing, time limits, the engine's libraries. |
+| `plugin/src/Network/` | The authenticated connection to the broker, and the per-place access switch. |
+| `plugin/src/Rigs/` | Reading a rig's joints, and working out where its parts are for a pose. |
+| `plugin/src/Storage/` | Working copies, saved clips, and proposals to replace a clip. |
+| `plugin/src/Editing/` | The edits for keyframe clips and for curve clips, atomic batches, and undo recordings. |
+| `plugin/src/Inspection/` | Reading a clip, checking it, and fingerprinting it. |
+| `plugin/src/Preview/` | Sampling a clip on a disposable copy of the rig, and the gated screenshot path. |
+| `plugin/fault/`, `plugin/experiment/`, `plugin/probe/` | Extra modules for the test builds described below. |
+| `plugin/test/` | Offline Luau suites, in folders matching `plugin/src`. `npm run test:luau` runs every `*.test.luau`. |
+| `src/broker/` | The broker, the client that connects to it, its handshake, wire protocol and state files. |
+| `src/mcp/` | The MCP adapter: the tools and their schemas. |
+| `src/render/` | Pictures of poses and motion, and screenshot results. |
+| `test/` | TypeScript tests, in folders matching `src`, plus checks on the scripts in `scripts/`. |
 
 ## Tools
 

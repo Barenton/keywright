@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-import { runAdapter } from "./adapter.js";
-import { isValidPairingCode } from "./auth.js";
-import { Broker } from "./broker.js";
-import { BrokerAbsentError, connectAdapter, ForeignListenerError } from "./client.js";
-import { ensureBroker } from "./launcher.js";
-import { BridgeError } from "./protocol.js";
-import { configuredPort, loadOrCreateSecret, rotateSecret, stateDir } from "./state.js";
+import { runAdapter } from "./mcp/adapter.js";
+import { isValidPairingCode } from "./broker/auth.js";
+import { Broker } from "./broker/broker.js";
+import { BrokerAbsentError, connectAdapter, ForeignListenerError } from "./broker/client.js";
+import { ensureBroker } from "./broker/launcher.js";
+import { BridgeError } from "./broker/protocol.js";
+import { configuredPort, loadOrCreateSecret, rotateSecret, stateDir } from "./broker/state.js";
 
 const USAGE = `Usage: keywright [command]
 

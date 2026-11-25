@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { WebSocket } from "ws";
-import { deriveCredentialKeyHex, pairingKey } from "../src/auth.js";
-import { handshake } from "../src/client.js";
-import type { SessionInfo, WireError } from "../src/protocol.js";
+import { deriveCredentialKeyHex, pairingKey } from "../src/broker/auth.js";
+import { handshake } from "../src/broker/client.js";
+import type { SessionInfo, WireError } from "../src/broker/protocol.js";
 
 export const CLI_PATH = fileURLToPath(new URL("../src/cli.js", import.meta.url));
 

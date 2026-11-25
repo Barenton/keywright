@@ -134,7 +134,7 @@ const EASING = "|Enum.PoseEasingStyle.Linear|Enum.PoseEasingDirection.In";
 
 /**
  * The fingerprint of a blank working copy given one pose for the head at one second: the
- * twelve numbers of that pose's CFrame, each already as text. Follows plugin/src/Digest.luau.
+ * twelve numbers of that pose's CFrame, each already as text. Follows plugin/src/Inspection/Digest.luau.
  */
 export function headPoseFingerprint(numbers) {
 	const lines = [
@@ -263,9 +263,9 @@ function clipOperations() {
 
 async function main() {
 	const options = parseArguments(process.argv.slice(2));
-	const { connectAdapter } = await import(pathToFileURL(join(ROOT, "dist/src/client.js")).href);
-	const state = await import(pathToFileURL(join(ROOT, "dist/src/state.js")).href);
-	const render = await import(pathToFileURL(join(ROOT, "dist/src/render.js")).href);
+	const { connectAdapter } = await import(pathToFileURL(join(ROOT, "dist/src/broker/client.js")).href);
+	const state = await import(pathToFileURL(join(ROOT, "dist/src/broker/state.js")).href);
+	const render = await import(pathToFileURL(join(ROOT, "dist/src/render/render.js")).href);
 	const broker = await connectAdapter(state.configuredPort(), state.loadOrCreateSecret(state.stateDir()));
 	const results = [];
 	const made = [];
@@ -580,7 +580,7 @@ async function main() {
 		}
 
 		// E10: Studio's numbers for a fixed set of poses, recovered from fingerprints, for
-		// the offline suite to compare with Lune's (plugin/test/vectors.luau).
+		// the offline suite to compare with Lune's (plugin/test/measurements/vectors.test.luau).
 		const vectors = [];
 		{
 			let unrecovered = 0;
@@ -598,7 +598,7 @@ async function main() {
 				vectors.push({ ...vector, fingerprint, studio: studio ?? null });
 			}
 			results.push(
-				judge("E10", `Studio's exact numbers recovered for ${VECTORS.length} poses, from their fingerprints`, unrecovered, 0, "not recovered", "compare with Lune by copying the vectors file to plugin/test/studio-vectors.json and running plugin/test/vectors.luau"),
+				judge("E10", `Studio's exact numbers recovered for ${VECTORS.length} poses, from their fingerprints`, unrecovered, 0, "not recovered", "compare with Lune by copying the vectors file to plugin/test/measurements/studio-vectors.json and running plugin/test/measurements/vectors.test.luau"),
 			);
 		}
 

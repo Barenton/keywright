@@ -51,9 +51,9 @@ if type(port) ~= "number" or type(code) ~= "string" then
 	return
 end
 
-local Connection = require("../src/Connection")
+local Connection = require("../src/Network/Connection")
 local Handlers = require("../src/Handlers")
-local Preview = require("../src/Preview")
+local Preview = require("../src/Preview/Preview")
 
 local screenshotMode = marker:GetAttribute(FixtureGuard.MODE_ATTRIBUTE) == true
 local methods, registry = Handlers.create()
