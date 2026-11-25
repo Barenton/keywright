@@ -15,6 +15,7 @@ Roblox.Enum = roblox.Enum
 
 local Digest = require("../../src/Inspection/Digest")
 local Operations = require("../../src/Editing/Operations")
+local Sequence = require("../../src/Editing/KeyframeEdit/Sequence")
 local Rig = require("../../src/Rigs/Rig")
 
 local Instance = roblox.Instance
@@ -622,8 +623,8 @@ case("a batch that fails on a scratch copy leaves the clip alone", function()
 end)
 
 case("the keyframe limit holds for every way of making one", function()
-	local limit = Operations.MAX_KEYFRAMES
-	Operations.MAX_KEYFRAMES = 3
+	local limit = Sequence.MAX_KEYFRAMES
+	Sequence.MAX_KEYFRAMES = 3
 	local sequence = rich()
 	local ways: { [string]: any } = {
 		["a new keyframe"] = { type = "add_keyframe", time = 5 },
@@ -639,7 +640,7 @@ case("the keyframe limit holds for every way of making one", function()
 		"a pose at an existing time is still allowed",
 		refusal(sequence, { { type = "set_pose", joint = "RightFoot", time = 1, rotation = { 0, 0, 0 } } }) == nil
 	)
-	Operations.MAX_KEYFRAMES = limit
+	Sequence.MAX_KEYFRAMES = limit
 end)
 
 case("a keyframe can hold the pose the clip already has", function()
@@ -948,11 +949,11 @@ case("smoothing is held to its limits", function()
 		local problem = refusal(sequence, { operation }) :: any
 		check(name, type(problem) == "table" and problem.code == "INVALID_ARGUMENT", problem)
 	end
-	local limit = Operations.MAX_KEYFRAMES
-	Operations.MAX_KEYFRAMES = 8
+	local limit = Sequence.MAX_KEYFRAMES
+	Sequence.MAX_KEYFRAMES = 8
 	local scratch = sequence:Clone()
 	local over = refusal(scratch, { { type = "smooth_motion", time_from = 0, time_to = 1, rate = 30 } }) :: any
-	Operations.MAX_KEYFRAMES = limit
+	Sequence.MAX_KEYFRAMES = limit
 	check("more keyframes than a clip may hold", type(over) == "table" and over.code == "LIMIT_EXCEEDED", over)
 	check("the clip itself was not touched", times(sequence) == "0.000 0.330 0.500 1.000", times(sequence))
 end)

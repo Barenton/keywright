@@ -145,19 +145,15 @@ describe("MCP adapter over stdio", () => {
 		const schema = edit?.inputSchema.properties as { operations?: { items?: { oneOf?: unknown[]; anyOf?: unknown[] } } } | undefined;
 		const variants = (schema?.operations?.items?.oneOf ?? schema?.operations?.items?.anyOf ?? []) as Array<{ properties: { type: { const: string } } }>;
 		const published = variants.map((variant) => variant.properties.type.const).sort();
-		// The plugin's own list: the names its checks are keyed by.
-		// The plugin's own lists: the names its checks are keyed by, for each kind of clip.
-		const keyed = (file: string, end: string) => {
-			const source = readFileSync(fileURLToPath(new URL(`../../../plugin/src/Editing/${file}`, import.meta.url)), "utf8");
-			const checks = source.slice(source.indexOf("local checks:"), source.indexOf(end));
-			return [...checks.matchAll(/^\t(\w+) = function/gm)].map((match) => match[1] as string);
+		const opsIn = (folder: string) => {
+			const dir = fileURLToPath(new URL(`../../../plugin/src/Editing/${folder}/`, import.meta.url));
+			return readdirSync(dir)
+				.filter((file) => file.endsWith(".luau"))
+				.flatMap((file) => [...readFileSync(`${dir}${file}`, "utf8").matchAll(/^Ops\.(\w+) = \{/gm)].map((match) => match[1] as string));
 		};
-		const keyframes = keyed("Operations.luau", "-- The names of every operation");
-		// Each curve operation is a module field in CurveEdit: `Ops.name = {`.
-		const curveDir = fileURLToPath(new URL("../../../plugin/src/Editing/CurveEdit/", import.meta.url));
-		const curves = readdirSync(curveDir)
-			.filter((file) => file.endsWith(".luau"))
-			.flatMap((file) => [...readFileSync(`${curveDir}${file}`, "utf8").matchAll(/^Ops\.(\w+) = \{/gm)].map((match) => match[1] as string));
+		const keyframes = opsIn("KeyframeEdit");
+		// Each operation is a module field, `Ops.name = {`, in the folder for its kind of clip.
+		const curves = opsIn("CurveEdit");
 		assert.equal(keyframes.length, 15);
 		assert.equal(curves.length, 22);
 		const applied = [...new Set([...keyframes, ...curves])].sort();

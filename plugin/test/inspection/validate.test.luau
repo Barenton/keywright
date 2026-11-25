@@ -15,6 +15,7 @@ Roblox.CFrame = roblox.CFrame
 Roblox.Enum = roblox.Enum
 
 local Operations = require("../../src/Editing/Operations")
+local Sequence = require("../../src/Editing/KeyframeEdit/Sequence")
 local Rig = require("../../src/Rigs/Rig")
 local Validate = require("../../src/Inspection/Validate")
 
@@ -154,10 +155,10 @@ case("structural problems are errors", function()
 	check("a keyframe past the longest clip", late and late.severity == "error" and late.measured == 400)
 
 	sequence = wave()
-	local limit = Operations.MAX_KEYFRAMES
-	Operations.MAX_KEYFRAMES = 2
+	local limit = Sequence.MAX_KEYFRAMES
+	Sequence.MAX_KEYFRAMES = 2
 	local crowded = validate(sequence)
-	Operations.MAX_KEYFRAMES = limit
+	Sequence.MAX_KEYFRAMES = limit
 	check("more keyframes than are supported", only(crowded, "TOO_MANY_KEYFRAMES") ~= nil and not crowded.valid)
 end)
 

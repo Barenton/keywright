@@ -10,6 +10,7 @@
 
 local Curves = require("../Editing/Curves")
 local Operations = require("../Editing/Operations")
+local Sequence = require("../Editing/KeyframeEdit/Sequence")
 local Rig = require("../Rigs/Rig")
 
 local Validate = {}
@@ -103,13 +104,13 @@ function Validate.run(sequence: Instance, context: Context, thresholds: { [strin
 		local keyframes = Operations.keyframes(sequence)
 
 		-- The clip as a whole.
-		if #keyframes > Operations.MAX_KEYFRAMES then
+		if #keyframes > Sequence.MAX_KEYFRAMES then
 			report({
 				code = "TOO_MANY_KEYFRAMES",
 				severity = "error",
-				message = `The clip has {#keyframes} keyframes; the most supported is {Operations.MAX_KEYFRAMES}.`,
+				message = `The clip has {#keyframes} keyframes; the most supported is {Sequence.MAX_KEYFRAMES}.`,
 				measured = #keyframes,
-				threshold = Operations.MAX_KEYFRAMES,
+				threshold = Sequence.MAX_KEYFRAMES,
 				unit = "keyframes",
 			})
 		end
