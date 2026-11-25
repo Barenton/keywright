@@ -718,6 +718,53 @@ case("pins that cannot be done are refused", function()
 	)
 end)
 
+case("clear_keys removes a range's keys, so a pin can be redone over another range", function()
+	local clip = squat(0.6)
+	realRun(clip, {
+		{ type = "set_key", joint = "LeftUpperLeg", time = 0, rotation = { 0, 0, 0 } },
+		{ type = "set_key", joint = "LeftUpperLeg", time = 1, rotation = { 10, 0, 0 } },
+		{ type = "pin", part = "LeftFoot", time_from = 0.2, time_to = 0.8, blend_out = 0.1 },
+	})
+	local function timesOf(joint: string, channel: string): { number }
+		local times = {}
+		for _, key in keysOf(clip, joint, channel) do
+			table.insert(times, math.round(key.time * 30))
+		end
+		return times
+	end
+	check("the pin keyed every frame", #timesOf("LeftLowerLeg", "rotation.x") > 20)
+
+	local changed = realRun(clip, {
+		{
+			type = "clear_keys",
+			time_from = 0.2,
+			time_to = 0.9,
+			joints = { "LeftUpperLeg", "LeftLowerLeg", "LeftFoot" },
+			channels = { "rotation" },
+		},
+	})
+	check("keys were removed", (changed.keys_removed or 0) > 60, changed.keys_removed)
+	local upper = timesOf("LeftUpperLeg", "rotation.x")
+	check("keys outside the range stay", upper[1] == 0 and upper[#upper] == 30, table.concat(upper, ","))
+	check("keys inside it are gone", #upper <= 4, table.concat(upper, ","))
+	check("the hips are not touched", #keysOf(clip, "LowerTorso", "position.y") == 3)
+
+	realRun(clip, { { type = "pin", part = "LeftFoot", time_from = 0.3, time_to = 0.5 } })
+	-- After the new range, only a key holding the knee's own value (it was never keyed, so
+	-- straight) may remain: nothing the first pin solved.
+	local stray = 0
+	for _, key in keysOf(clip, "LeftLowerLeg", "rotation.x") do
+		if key.time > 16 / 30 + 1e-6 and math.abs(key.value) > 1e-6 then
+			stray += 1
+		end
+	end
+	check("a pin redone over a shorter range leaves no keys of the first", stray == 0, stray)
+	check(
+		"clearing a range with no keys is not an error",
+		(realRun(clip, { { type = "clear_keys", time_from = 0.95, time_to = 0.96 } }).keys_removed or 0) == 0
+	)
+end)
+
 -- The lowest point of the parts the floor is measured by, at a time.
 local MEASURED = {}
 for _, name in Rig.R15_ORDER do

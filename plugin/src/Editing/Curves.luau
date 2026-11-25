@@ -502,6 +502,18 @@ local checks: { [string]: Check } = {
 		needText(where, operation.name, "name", Curves.MAX_NAME)
 	end,
 	restore_source = function() end,
+	clear_keys = function(where, operation, joints)
+		needRange(where, operation)
+		needJoints(where, operation.joints, joints)
+		if operation.channels ~= nil then
+			if type(operation.channels) ~= "table" or #operation.channels == 0 then
+				refuse(where, "channels must list at least one of rotation, position.")
+			end
+			for _, name in operation.channels do
+				needOneOf(where, name, "each of channels", { "rotation", "position" })
+			end
+		end
+	end,
 	place_on_floor = function(where, operation, joints)
 		needRange(where, operation)
 		if operation.mode ~= nil then
@@ -1117,6 +1129,41 @@ local appliers: { [string]: Apply } = {
 			count(changed, "frames_out_of_reach", missed)
 			changed.largest_miss_studs = math.max(changed.largest_miss_studs or 0, rounded(worst, 3))
 		end
+	end,
+
+	clear_keys = function(_where, clip, operation, _context, changed)
+		local wanted: { [string]: boolean }? = nil
+		if operation.joints then
+			wanted = {}
+			for _, name in operation.joints do
+				(wanted :: { [string]: boolean })[name] = true
+			end
+		end
+		local kinds = {}
+		for _, kind in operation.channels or { "rotation", "position" } do
+			kinds[kind] = true
+		end
+		local from, to = operation.time_from, operation.time_to
+		local removed = 0
+		for _, track in Curves.tracks(clip) do
+			local kind = string.match(track.channel, "^(%a+)%.")
+			if (wanted and not wanted[track.joint]) or not kinds[kind] then
+				continue
+			end
+			local keys = Curves.keys(track.curve)
+			local kept = {}
+			for _, key in keys do
+				if key.time >= from - Curves.TIME_TOLERANCE and key.time <= to + Curves.TIME_TOLERANCE then
+					removed += 1
+				else
+					table.insert(kept, key)
+				end
+			end
+			if #kept ~= #keys then
+				Curves.setKeys(track.curve, kept)
+			end
+		end
+		count(changed, "keys_removed", removed)
 	end,
 
 	place_on_floor = function(where, clip, operation, context, changed)
