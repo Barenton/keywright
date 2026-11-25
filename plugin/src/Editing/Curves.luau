@@ -594,6 +594,22 @@ local checks: { [string]: Check } = {
 			refuse(where, "the range must have some length.")
 		end
 	end,
+	copy_pose = function(where, operation, joints)
+		needTime(where, operation.from, "from")
+		needTime(where, operation.to, "to")
+		needJoints(where, operation.joints, joints)
+		if operation.mirror ~= nil and type(operation.mirror) ~= "boolean" then
+			refuse(where, "mirror must be true or false.")
+		end
+		if operation.channels ~= nil then
+			if type(operation.channels) ~= "table" or #operation.channels == 0 then
+				refuse(where, "channels must list at least one of rotation, position.")
+			end
+			for _, name in operation.channels do
+				needOneOf(where, name, "each of channels", { "rotation", "position" })
+			end
+		end
+	end,
 	mirror = function(where, operation, joints)
 		needOneOf(where, operation.mode, "mode", Curves.MIRROR_MODES)
 		needJoints(where, operation.joints, joints)
@@ -1880,6 +1896,64 @@ local appliers: { [string]: Apply } = {
 			refuse(where, `there are no keys from {milliseconds(from)} to {milliseconds(to)} seconds.`)
 		end
 		count(changed, "keys_reversed", reversed)
+	end,
+
+	copy_pose = function(where, clip, operation, context, changed)
+		local joints = context.joints
+		local mirrored = operation.mirror == true
+		if mirrored then
+			if not hasGeometry(joints, Rig.R15_ORDER) then
+				refuse(where, "this rig's joints could not be measured, so a pose cannot be mirrored on it.")
+			end
+			local problem = asymmetry(joints)
+			if problem then
+				refuse(
+					where,
+					`this rig's sides are not mirror images, so a mirrored pose would not be exact: {problem}`
+				)
+			end
+		end
+		local kinds = {}
+		for _, kind in operation.channels or { "rotation", "position" } do
+			kinds[kind] = true
+		end
+		local names: { string } = operation.joints or Rig.R15_ORDER
+		-- Everything is read before anything is written, so a mirrored pose copied onto
+		-- the time it came from swaps the sides instead of copying one onto itself.
+		local channels = readChannels(clip)
+		local plan: { { joint: string, channel: string, value: number } } = {}
+		for _, joint in names do
+			local source = if mirrored then counterpart(joint) else joint
+			for _, channel in Curves.CHANNELS do
+				if not kinds[string.match(channel, "^(%a+)%.") :: string] then
+					continue
+				end
+				local from = channels[source] and channels[source][channel]
+				local to = channels[joint] and channels[joint][channel]
+				if (from == nil or #from == 0) and (to == nil or #to == 0) then
+					-- Neither moves on this channel: it is at rest at both times already.
+					continue
+				end
+				local value = if from then Curves.evaluate(from, operation.from) else 0
+				if mirrored then
+					value *= MIRROR_SIGN[channel]
+				end
+				table.insert(plan, { joint = joint, channel = channel, value = value })
+			end
+		end
+		if #plan == 0 then
+			refuse(where, "none of these joints is keyed, so there is no pose to copy.")
+		end
+		for _, entry in plan do
+			putKey(
+				Curves.channel(clip, entry.joint, entry.channel, true) :: Instance,
+				operation.to,
+				entry.value,
+				nil,
+				changed
+			)
+		end
+		count(changed, "poses_copied")
 	end,
 
 	mirror = function(where, clip, operation, context, changed)

@@ -974,6 +974,48 @@ local function difference(a: { number }, b: { number }): number
 	return worst
 end
 
+case("copy_pose copies a pose to another time, as it is or mirrored", function()
+	local clip = lopsided()
+	realRun(clip, { { type = "copy_pose", from = 0, to = 1 } })
+	check(
+		"copied to the end, the clip ends in the pose it began with",
+		difference(sampleAll(clip, 1), sampleAll(clip, 0)) < 1e-9,
+		difference(sampleAll(clip, 1), sampleAll(clip, 0))
+	)
+
+	local mirrored = lopsided()
+	local before = placedAt(mirrored, 0.5)
+	realRun(mirrored, { { type = "copy_pose", from = 0.5, to = 0.75, mirror = true } })
+	local after = placedAt(mirrored, 0.75)
+	local studs, degrees = 0, 0
+	for name, cframe in before do
+		local wanted = inMirror(cframe)
+		studs = math.max(studs, (after[mirrorName(name)].Position - wanted.Position).Magnitude)
+		degrees = math.max(degrees, turnBetween(after[mirrorName(name)], wanted))
+	end
+	check("mirrored, every part is where its mirror image was", studs < 1e-4, studs)
+	check("turned as its mirror image was", degrees < 0.01, degrees)
+
+	local some = lopsided()
+	local headBefore = #keysOf(some, "UpperTorso", "rotation.x")
+	realRun(some, { { type = "copy_pose", from = 0.5, to = 0.25, joints = { "LeftUpperArm" } } })
+	check(
+		"only the joints named get a key",
+		#keysOf(some, "UpperTorso", "rotation.x") == headBefore and #keysOf(some, "LeftUpperArm", "rotation.x") == 4
+	)
+	check(
+		"with the pose from the other time",
+		math.abs(
+			Curves.evaluate(keysOf(some, "LeftUpperArm", "rotation.z"), 0.25)
+				- Curves.evaluate(keysOf(lopsided(), "LeftUpperArm", "rotation.z"), 0.5)
+		) < 1e-9
+	)
+	check(
+		"a clip with no keys has no pose to copy",
+		refusal(blank(), { { type = "copy_pose", from = 0, to = 1 } }) ~= nil
+	)
+end)
+
 case("a curve clip is retimed: shifted, scaled with or without ripple, and reversed", function()
 	local original = lopsided()
 	local clip = lopsided()
