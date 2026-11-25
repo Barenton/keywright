@@ -693,6 +693,18 @@ case("a pin relative to another part moves with that part", function()
 	check("turning with it", turned < 0.05, turned)
 end)
 
+case("a range written to four decimals covers the frames it names", function()
+	local clip = squat(0.5)
+	-- 0.3667 is a little after frame 11 (0.36666...) and 0.6333 a little before frame 19
+	-- (0.63333...): each is still that frame.
+	local changed = realRun(clip, {
+		{ type = "place_on_floor", time_from = 0.3667, time_to = 0.3667, mode = "touch" },
+		{ type = "pin", part = "LeftFoot", time_from = 0.6333, time_to = 0.6333 },
+	})
+	check("a one-frame place_on_floor", changed.frames_moved == 1, changed.frames_moved)
+	check("a one-frame pin", changed.frames_pinned == 1, changed.frames_pinned)
+end)
+
 case("pins that cannot be done are refused", function()
 	local clip = squat(0.5)
 	local function refusedReal(operation: any): any

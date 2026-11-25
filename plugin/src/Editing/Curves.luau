@@ -862,6 +862,10 @@ local function floorOf(joints: { [string]: any }): number
 	return floor
 end
 
+-- How far from a whole frame, in frames, a time may be and still count as that frame: a
+-- millisecond, as for keys. A time written as 1.1333 is frame 34 (1.13333...).
+local FRAME_SLACK = Curves.TIME_TOLERANCE * Curves.FRAME_RATE
+
 -- Rounds a smooth step from 0 to 1 as `t` goes from 0 to 1.
 local function smoothstep(t: number): number
 	t = math.clamp(t, 0, 1)
@@ -1325,8 +1329,8 @@ local function spanOf(where: string, clip: Instance, operation: any): Span
 	local first = math.max(0, from - (operation.blend_in or 0))
 	local last = math.min(duration, to + (operation.blend_out or 0))
 	local rate = Curves.FRAME_RATE
-	local firstFrame = math.ceil(first * rate - 1e-6)
-	local lastFrame = math.floor(last * rate + 1e-6)
+	local firstFrame = math.ceil(first * rate - FRAME_SLACK)
+	local lastFrame = math.floor(last * rate + FRAME_SLACK)
 	if lastFrame < firstFrame then
 		refuse(where, "the range holds no whole frame; Studio shows a curve clip only at whole frames.")
 	end
@@ -1591,8 +1595,8 @@ local appliers: { [string]: Apply } = {
 		local first = math.max(0, from - (operation.blend_in or 0))
 		local last = math.min(duration, to + (operation.blend_out or 0))
 		local rate = Curves.FRAME_RATE
-		local firstFrame = math.ceil(first * rate - 1e-6)
-		local lastFrame = math.floor(last * rate + 1e-6)
+		local firstFrame = math.ceil(first * rate - FRAME_SLACK)
+		local lastFrame = math.floor(last * rate + FRAME_SLACK)
 		if lastFrame < firstFrame then
 			refuse(where, "the range holds no whole frame; Studio shows a curve clip only at whole frames.")
 		end
@@ -1992,8 +1996,8 @@ local appliers: { [string]: Apply } = {
 		local first = math.max(0, from - (operation.blend_in or 0))
 		local last = math.min(duration, to + (operation.blend_out or 0))
 		local rate = Curves.FRAME_RATE
-		local firstFrame = math.ceil(first * rate - 1e-6)
-		local lastFrame = math.floor(last * rate + 1e-6)
+		local firstFrame = math.ceil(first * rate - FRAME_SLACK)
+		local lastFrame = math.floor(last * rate + FRAME_SLACK)
 		if lastFrame < firstFrame then
 			refuse(where, "the range holds no whole frame; Studio shows a curve clip only at whole frames.")
 		end
