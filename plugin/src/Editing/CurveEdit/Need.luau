@@ -49,10 +49,12 @@ local function needVector(where: string, value: any, field: string, limit: numbe
 	end
 end
 
-local function needRange(where: string, operation: any)
+-- With `wraps`, time_from may be after time_to: in a looping clip the range then runs on
+-- past the end and round from the start (see Seam).
+local function needRange(where: string, operation: any, wraps: boolean?)
 	needTime(where, operation.time_from, "time_from")
 	needTime(where, operation.time_to, "time_to")
-	if operation.time_to < operation.time_from then
+	if operation.time_to < operation.time_from and not wraps then
 		refuse(where, "time_to must not be before time_from.")
 	end
 end

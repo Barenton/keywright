@@ -22,6 +22,10 @@ export const quaternion = z
 	.describe("Joint-local rotation as a quaternion (x, y, z, w) of length 1, in place of rotation.");
 export const rangeFrom = time("Start of the time range in seconds. Keyframes at the ends are included.");
 export const rangeTo = time("End of the time range in seconds.");
+// The range of a curve operation that writes frames. In a looping clip the end and the
+// start are one moment, so its range may run across them.
+export const spanFrom = time("Start of the range in seconds. In a looping clip it may be after time_to: the range then runs on past the end and round from the start, as a step that lands just after the loop begins (time_from 0.9, time_to 0.2), blends included.");
+export const spanTo = time("End of the range in seconds. Must not be past the end of the clip. In a looping clip, a range or blend that reaches the end, or the start, changes both alike, so the loop stays closed.");
 // As measured in Studio on a jump: Out covers most of the distance early and slows into
 // the next pose; In starts slowly and arrives fast.
 export const easingStyle = z

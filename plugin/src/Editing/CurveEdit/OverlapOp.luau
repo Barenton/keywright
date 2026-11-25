@@ -29,12 +29,15 @@ type Context = Frames.Context
 local Ops = {}
 
 Ops.overlap = {
+	-- Its range may run across a looping clip's end (see Seam).
+	wraps = true,
+
 	check = function(where: string, operation: any, joints: { [string]: any })
 		if type(operation.joints) ~= "table" or #operation.joints == 0 then
 			refuse(where, "joints must name at least one joint.")
 		end
 		needJoints(where, operation.joints, joints)
-		needRange(where, operation)
+		needRange(where, operation, true)
 		local lag = operation.lag
 		if lag ~= nil and (not isFinite(lag) or lag < Store.MIN_LAG or lag > Store.MAX_LAG) then
 			refuse(where, `lag must be from {Store.MIN_LAG} to {Store.MAX_LAG} seconds.`)

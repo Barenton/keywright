@@ -31,9 +31,12 @@ type Context = Frames.Context
 local Ops = {}
 
 Ops.aim = {
+	-- Its range may run across a looping clip's end (see Seam).
+	wraps = true,
+
 	check = function(where: string, operation: any, joints: { [string]: any })
 		needJoint(where, operation.joint, joints)
-		needRange(where, operation)
+		needRange(where, operation, true)
 		needVector(where, operation.target, "target", Store.MAX_POSITION)
 		if operation.hold ~= nil and type(operation.hold) ~= "boolean" then
 			refuse(where, "hold must be true or false.")

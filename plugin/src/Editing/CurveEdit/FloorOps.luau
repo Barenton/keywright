@@ -38,8 +38,11 @@ type Context = Frames.Context
 local Ops = {}
 
 Ops.place_on_floor = {
+	-- Its range may run across a looping clip's end (see Seam).
+	wraps = true,
+
 	check = function(where: string, operation: any, joints: { [string]: any })
-		needRange(where, operation)
+		needRange(where, operation, true)
 		if operation.mode ~= nil then
 			needOneOf(where, operation.mode, "mode", Store.FLOOR_MODES)
 		end
@@ -135,6 +138,9 @@ Ops.place_on_floor = {
 }
 
 Ops.clear_floor = {
+	-- Its range may run across a looping clip's end (see Seam).
+	wraps = true,
+
 	check = function(where: string, operation: any, joints: { [string]: any })
 		local chain = if type(operation.part) == "string" then Limb.CHAINS[operation.part] else nil
 		if not chain then
@@ -143,7 +149,7 @@ Ops.clear_floor = {
 		for _, name in chain :: { string } do
 			needJoint(where, name, joints)
 		end
-		needRange(where, operation)
+		needRange(where, operation, true)
 		local clearance = operation.clearance
 		if clearance ~= nil and (not isFinite(clearance) or clearance < 0 or clearance > 2) then
 			refuse(where, "clearance must be from 0 to 2 studs.")

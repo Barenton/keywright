@@ -1,17 +1,17 @@
 // Operations for curve clips that work through the rig's body: holding a hand or foot, aiming, overlap, and the floor.
 import { z } from "zod";
-import { vec3, time, joint, r15Part, position } from "./common.js";
+import { vec3, time, joint, r15Part, position, spanFrom, spanTo } from "./common.js";
 
 export const bodyOperations = [
 	z.object({
 		type: z
 			.literal("pin")
 			.describe(
-				"Curve clips only. Hold a foot or hand in place over a time range, or put it somewhere and hold it there, by turning the limb's three joints at every frame: a planted foot stays put while the hips move, a hand stays on a wall while the body leans. The knee or elbow bends the way it bends and keeps pointing as it was animated unless pole is given. The hips and everything else are left as they are. The limb's rotation keys in the range are replaced by one key a frame, with smooth tangents; outside the range the clip is unchanged. The result counts frames_pinned and, if the hips went too far for the limb to reach, frames_out_of_reach, largest_miss_studs, and out_of_reach_from and out_of_reach_to: the first and last of those frames, in seconds, where the hips are to be brought nearer. For a landing, hold the pose the foot settles in (at the end of the range), not the one it touches down in, or it is held where it first touched, often still in the air. End the range, and any blend_out, where the foot leaves the floor: easing out while it is still down lets it slide.",
+				"Curve clips only. Hold a foot or hand in place over a time range, or put it somewhere and hold it there, by turning the limb's three joints at every frame: a planted foot stays put while the hips move, a hand stays on a wall while the body leans. The knee or elbow bends the way it bends and keeps pointing as it was animated unless pole is given. The hips and everything else are left as they are. The limb's rotation keys in the range are replaced by one key a frame, with smooth tangents; outside the range the clip is unchanged. The result counts frames_pinned and, if the hips went too far for the limb to reach, frames_out_of_reach, largest_miss_studs, and out_of_reach_from and out_of_reach_to: the first and last of those frames, in seconds, where the hips are to be brought nearer (in a range across a loop's end, the first can be after the last). For a landing, hold the pose the foot settles in (at the end of the range), not the one it touches down in, or it is held where it first touched, often still in the air. End the range, and any blend_out, where the foot leaves the floor: easing out while it is still down lets it slide.",
 			),
 		part: z.enum(["LeftFoot", "RightFoot", "LeftHand", "RightHand"]).describe("The end of the limb to hold."),
-		time_from: time("Start of the range in seconds."),
-		time_to: time("End of the range in seconds. Must not be past the end of the clip."),
+		time_from: spanFrom,
+		time_to: spanTo,
 		at: time("The time whose pose is held: the part stays where it is then. Default time_from.").optional(),
 		position: vec3
 			.optional()
@@ -66,8 +66,8 @@ export const bodyOperations = [
 				"Curve clips only. Turn one joint so the front of its part faces a point over a time range, by the smallest turn from how it is animated: a head that watches an opponent through a whole combo, a chest that squares up to a target. With hold instead, the part keeps the facing it has at `at` while the body moves under it, as a head stays level through a run. To turn the chest part of the way and the head the rest, aim the chest first with a weight, then the head. Written at every frame and then reduced to as few keys as keep it; the joint's motion outside the range and its blends is unchanged.",
 			),
 		joint,
-		time_from: time("Start of the range in seconds."),
-		time_to: time("End of the range in seconds. Must not be past the end of the clip."),
+		time_from: spanFrom,
+		time_to: spanTo,
 		target: vec3.optional().describe("The point to face, in studs from the root part: x toward the rig's right, y up, z toward its back."),
 		hold: z.boolean().optional().describe("Keep the facing the part has at `at` instead of facing a point."),
 		at: time("With hold: the time whose facing is kept. Default time_from.").optional(),
@@ -83,8 +83,8 @@ export const bodyOperations = [
 				"Curve clips only. Follow-through and overlapping action: the joints named trail the motion they are given, through a damped spring, so a fast move pulls them along late and, with bounce, they swing on past where it stops before settling. An arm that trails a punch's turn, a head that lags a landing, hands that flap after a stop. Joints are taken from the body outward, each trailing a parent that already trails, and the lag is shared along them so the end of the chain trails by about `lag`. Over the whole of a looping clip, the motion comes back round to where it began. Written at every frame and then reduced to as few keys as keep it.",
 			),
 		joints: z.array(z.string()).min(1).max(32).describe("The joints that trail, for example LeftUpperArm, LeftLowerArm and LeftHand, or Head."),
-		time_from: time("Start of the range in seconds."),
-		time_to: time("End of the range in seconds. Must not be past the end of the clip."),
+		time_from: spanFrom,
+		time_to: spanTo,
 		lag: z.number().min(0.02).max(0.5).optional().describe("About how many seconds the end of the chain trails behind. Default 0.1."),
 		bounce: z.number().min(0).max(0.9).optional().describe("How far it swings past where the motion stops: 0 trails without swinging past, 0.9 is very springy. Default 0.3."),
 		weight: z.number().min(0).max(1).optional().describe("How much of the trailing to use, from 0 to 1. Default 1."),
@@ -97,8 +97,8 @@ export const bodyOperations = [
 			.describe(
 				"Curve clips only. Move the hips up or down at every frame of a range so that the body's lowest part rests on the floor, the rig's lowest point at rest, as validate_animation measures it. The whole body moves with the hips, feet and hands included, so place the body first and pin the feet after. The hips' position keys in the range are replaced by one key a frame, with smooth tangents; outside the range the clip is unchanged. The result counts frames_moved, with largest_raise_studs and largest_drop_studs.",
 			),
-		time_from: time("Start of the range in seconds."),
-		time_to: time("End of the range in seconds. Must not be past the end of the clip."),
+		time_from: spanFrom,
+		time_to: spanTo,
 		mode: z
 			.enum(["lift", "touch"])
 			.optional()
@@ -119,8 +119,8 @@ export const bodyOperations = [
 				"Curve clips only. Keep a hand or foot off the floor over a time range: at every frame where its lowest point is nearer the floor than clearance, its limb lifts it straight up by the shortfall, turned as it was and where it was across the floor; frames where it is clear already are left as they are. A swinging foot that scuffs on its way to the next step, a hand that brushes the ground in a crawl or cartwheel. The floor is validate_animation's. Written at every frame and then reduced to as few keys as keep it. The result counts frames_lifted with largest_lift_studs.",
 			),
 		part: z.enum(["LeftFoot", "RightFoot", "LeftHand", "RightHand"]),
-		time_from: time("Start of the range in seconds."),
-		time_to: time("End of the range in seconds. Must not be past the end of the clip."),
+		time_from: spanFrom,
+		time_to: spanTo,
 		clearance: z.number().min(0).max(2).optional().describe("The least height of the part's lowest point above the floor, in studs. Default 0.05."),
 		blend_in: z.number().finite().min(0).max(2).optional().describe("Seconds before time_from over which it eases in. Default 0."),
 		blend_out: z.number().finite().min(0).max(2).optional().describe("Seconds after time_to over which it eases out. Default 0."),

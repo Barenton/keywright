@@ -1,6 +1,6 @@
 // Operations for curve clips on keys and time: setting and shaping keys, clearing and copying, adding motion on top, reducing, reversing, mirroring.
 import { z } from "zod";
-import { vec3, time, joint, position, rotation, rangeFrom, rangeTo } from "./common.js";
+import { vec3, time, joint, position, rotation, rangeFrom, rangeTo, spanFrom, spanTo } from "./common.js";
 
 export const curveOperations = [
 	z.object({
@@ -76,8 +76,8 @@ export const curveOperations = [
 				"Curve clips only. Add a turn or a move to one joint over a time range, on top of the motion it has, easing in and out: lean the chest further forward through a punch, drop the hips lower while landing, without working out new angles at every key. The amounts are added to the joint's own angles, as set_key gives them, and its position. Written at every frame and then reduced to as few keys as keep it, so the curves stay editable. The joint's motion outside the range and its blends is unchanged.",
 			),
 		joint,
-		time_from: time("Start of the range in seconds."),
-		time_to: time("End of the range in seconds. Must not be past the end of the clip."),
+		time_from: spanFrom,
+		time_to: spanTo,
 		rotation: vec3.optional().describe("Degrees to add about X, Y and Z, as in set_key."),
 		position: vec3.optional().describe("Studs to add, as in set_key."),
 		blend_in: z.number().finite().min(0).max(2).optional().describe("Seconds before time_from over which it eases in. Default 0."),
@@ -90,8 +90,8 @@ export const curveOperations = [
 				"Curve clips only. Add a smooth, slow sway on top of the motion of the joints named: breathing and weight shifts in an idle, a tremble, the shake of a hit. Each joint and channel sways its own way, from three waves at chance phases, and the same seed always gives the same sway. Over the whole of a looping clip, the sway ends where it began. Written at every frame and then reduced to as few keys as keep it.",
 			),
 		joints: z.array(z.string()).min(1).max(32),
-		time_from: time("Start of the range in seconds."),
-		time_to: time("End of the range in seconds. Must not be past the end of the clip."),
+		time_from: spanFrom,
+		time_to: spanTo,
 		rotation_degrees: z.number().min(0).max(90).optional().describe("About how far each rotation channel sways either way, in degrees. Default 0."),
 		position_studs: z.number().min(0).max(5).optional().describe("About how far each position channel sways either way, in studs. Default 0."),
 		frequency: z.number().min(0.1).max(10).optional().describe("Waves a second of the slowest sway; the others are about twice and four times as fast. Default 1."),

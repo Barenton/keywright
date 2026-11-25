@@ -37,6 +37,9 @@ type Context = Frames.Context
 local Ops = {}
 
 Ops.pin = {
+	-- Its range may run across a looping clip's end (see Seam).
+	wraps = true,
+
 	check = function(where: string, operation: any, joints: { [string]: any })
 		local chain = if type(operation.part) == "string" then Limb.CHAINS[operation.part] else nil
 		if not chain then
@@ -45,7 +48,7 @@ Ops.pin = {
 		for _, name in chain :: { string } do
 			needJoint(where, name, joints)
 		end
-		needRange(where, operation)
+		needRange(where, operation, true)
 		if operation.at ~= nil then
 			needTime(where, operation.at, "at")
 		end

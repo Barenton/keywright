@@ -40,6 +40,7 @@ local Need = require("./CurveEdit/Need")
 local OverlapOp = require("./CurveEdit/OverlapOp")
 local PinOp = require("./CurveEdit/PinOp")
 local Read = require("./CurveEdit/Read")
+local Seam = require("./CurveEdit/Seam")
 local Store = require("./CurveEdit/Store")
 local TimeOps = require("./CurveEdit/TimeOps")
 
@@ -98,10 +99,12 @@ Curves.evaluate = Store.evaluate
 Curves.duration = Store.duration
 Curves.keyTimes = Store.keyTimes
 
--- Every operation for curve clips, by name: how it is checked and how it is applied.
+-- Every operation for curve clips, by name: how it is checked and how it is applied, and
+-- whether its range may run across a looping clip's end.
 type Operation = {
 	check: (where: string, operation: any, joints: { [string]: any }) -> (),
 	apply: (where: string, clip: Instance, operation: any, context: Context, changed: Changed) -> (),
+	wraps: boolean?,
 }
 local operations: { [string]: Operation } = {}
 for _, family in { KeyOps, ClipOps, TimeOps, MirrorOp, PinOp, FloorOps, LayerOps, AimOp, OverlapOp } :: { any } do
@@ -149,7 +152,13 @@ function Curves.run(clip: Instance, list: { any }, context: Context, before: ((i
 		if before then
 			before(index)
 		end
-		operations[operation.type].apply(`operations[{index}]`, clip, operation, context, changed)
+		local found = operations[operation.type]
+		local where = `operations[{index}]`
+		if found.wraps then
+			Seam.apply(where, clip, operation, context, changed, found.apply)
+		else
+			found.apply(where, clip, operation, context, changed)
+		end
 	end
 	return changed
 end

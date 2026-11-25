@@ -62,9 +62,12 @@ local function nameSeed(text: string): number
 end
 
 Ops.add_offset = {
+	-- Its range may run across a looping clip's end (see Seam).
+	wraps = true,
+
 	check = function(where: string, operation: any, joints: { [string]: any })
 		needJoint(where, operation.joint, joints)
-		needRange(where, operation)
+		needRange(where, operation, true)
 		needVector(where, operation.rotation, "rotation")
 		needVector(where, operation.position, "position", Store.MAX_POSITION)
 		if operation.rotation == nil and operation.position == nil then
@@ -94,8 +97,11 @@ Ops.add_offset = {
 }
 
 Ops.add_noise = {
+	-- Its range may run across a looping clip's end (see Seam).
+	wraps = true,
+
 	check = function(where: string, operation: any, joints: { [string]: any })
-		needRange(where, operation)
+		needRange(where, operation, true)
 		if type(operation.joints) ~= "table" or #operation.joints == 0 then
 			refuse(where, "joints must name at least one joint.")
 		end
