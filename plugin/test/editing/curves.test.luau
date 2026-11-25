@@ -1633,6 +1633,45 @@ case("a pin with a toe or heel pivot rolls the foot over that point", function()
 	)
 end)
 
+case("clear_floor lifts a hand or foot to a clearance, and leaves the rest", function()
+	-- Straight legs as the hips drop: the feet go into the floor.
+	local original = squat(0.4)
+	local clip = squat(0.4)
+	local changed =
+		realRun(clip, { { type = "clear_floor", part = "LeftFoot", time_from = 0, time_to = 1, clearance = 0.1 } })
+	check("frames were lifted", (changed.frames_lifted or 0) > 20, changed.frames_lifted)
+	local low, across, turned = math.huge, 0, 0
+	for frame = 0, 30 do
+		local time = frame / 30
+		low = math.min(low, lowestAt(clip, time, { "LeftFoot" }))
+		local before, after = placedAt(original, time).LeftFoot, placedAt(clip, time).LeftFoot
+		across = math.max(
+			across,
+			math.abs(after.Position.X - before.Position.X) + math.abs(after.Position.Z - before.Position.Z)
+		)
+		turned = math.max(turned, turnBetween(after, before))
+	end
+	check("the foot never comes nearer the floor than the clearance", low > FLOOR + 0.1 - 0.004, low - FLOOR)
+	-- Within what reducing the keys to a tenth of a degree allows at the foot.
+	check("it only rose: across the floor it is where it was", across < 0.005, across)
+	check("and turned as it was", turned < 0.15, turned)
+	check(
+		"the hips are not touched",
+		difference({ placedAt(clip, 0.5).LowerTorso.Position.Y }, { placedAt(original, 0.5).LowerTorso.Position.Y })
+			< 1e-9
+	)
+
+	-- Hips that rise: the foot is already clear, and nothing is written.
+	local high = squat(-0.3)
+	realRun(high, { { type = "set_key", joint = "LeftUpperLeg", time = 0.5, rotation = { 40, 0, 0 } } })
+	local before = #keysOf(high, "LeftUpperLeg", "rotation.x")
+	local clear = realRun(high, { { type = "clear_floor", part = "LeftFoot", time_from = 0.4, time_to = 0.6 } })
+	check(
+		"a part already clear is left alone",
+		clear.frames_lifted == 0 and #keysOf(high, "LeftUpperLeg", "rotation.x") == before
+	)
+end)
+
 case("place_on_floor lifts what sank, and leaves the rest", function()
 	local clip = squat(0.8)
 	check("before, the feet sink", lowestAt(clip, 0.5) < FLOOR - 0.7, lowestAt(clip, 0.5) - FLOOR)

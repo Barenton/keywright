@@ -645,6 +645,21 @@ local checks: { [string]: Check } = {
 		end
 		needBlends(where, operation)
 	end,
+	clear_floor = function(where, operation, joints)
+		local chain = if type(operation.part) == "string" then Limb.CHAINS[operation.part] else nil
+		if not chain then
+			refuse(where, "part must be LeftFoot, RightFoot, LeftHand or RightHand.")
+		end
+		for _, name in chain :: { string } do
+			needJoint(where, name, joints)
+		end
+		needRange(where, operation)
+		local clearance = operation.clearance
+		if clearance ~= nil and (not isFinite(clearance) or clearance < 0 or clearance > 2) then
+			refuse(where, "clearance must be from 0 to 2 studs.")
+		end
+		needBlends(where, operation)
+	end,
 	copy_pose = function(where, operation, joints)
 		needTime(where, operation.from, "from")
 		needTime(where, operation.to, "to")
@@ -2408,6 +2423,76 @@ local appliers: { [string]: Apply } = {
 			writeTurns(clip, name, channels[name] or {}, span.first, span.last, turns[name], duration, changed, true)
 		end
 		count(changed, "frames_with_overlap", frameCount)
+	end,
+
+	clear_floor = function(where, clip, operation, context, changed)
+		local joints = context.joints
+		if not hasGeometry(joints, Rig.R15_ORDER) then
+			refuse(where, "this rig's parts could not be measured, so the floor cannot be found.")
+		end
+		local span = spanOf(where, clip, operation)
+		local chain = Limb.CHAINS[operation.part]
+		local limb = { joints[chain[1]], joints[chain[2]], joints[chain[3]] }
+		local channels = readChannels(clip)
+		local scan = { joints = joints } :: any
+		local identity = Roblox.CFrame.new()
+		local lowestAllowed = floorOf(joints) + (operation.clearance or 0.05)
+		local rate = Curves.FRAME_RATE
+		local turns: { [string]: { CFrame } } = { [chain[1]] = {}, [chain[2]] = {}, [chain[3]] = {} }
+		local lifted, highest, missed = 0, 0, 0
+		for frame = span.first, span.last do
+			local index = frame - span.first + 1
+			local time = frame / rate
+			local transforms = transformsAt(channels, time)
+			local placed = Pose.place(scan, transforms, identity)
+			local current = { transforms[chain[1]], transforms[chain[2]], transforms[chain[3]] }
+			local lowest = Pose.track(scan, transforms, identity, { chain[3] })[chain[3]].lowest
+			-- How far short of the clearance it is, eased over the blends.
+			local short = (lowestAllowed - lowest) * span.weight(time)
+			local result = current
+			if short > 0.0005 then
+				-- Straight up by that much, turned as it is.
+				local tip = Roblox.CFrame.new(0, short, 0) * placed[chain[3]]
+				local solution = Limb.solve({
+					parent = placed[Rig.R15_PARENTS[chain[1]]],
+					joints = limb,
+					current = current,
+					pivot = Limb.pivotOf(limb[3], tip),
+					tip = tip,
+					bend = Limb.BEND[operation.part],
+				})
+				result = solution.transforms
+				lifted += 1
+				highest = math.max(highest, short)
+				if solution.beyond then
+					missed += 1
+				end
+			end
+			for position, joint in chain do
+				turns[joint][index] = result[position]
+			end
+		end
+		count(changed, "frames_lifted", lifted)
+		if lifted == 0 then
+			return
+		end
+		for _, joint in chain do
+			writeTurns(
+				clip,
+				joint,
+				channels[joint] or {},
+				span.first,
+				span.last,
+				turns[joint],
+				Curves.duration(clip),
+				changed,
+				true
+			)
+		end
+		changed.largest_lift_studs = math.max(changed.largest_lift_studs or 0, rounded(highest, 3))
+		if missed > 0 then
+			count(changed, "frames_out_of_reach", missed)
+		end
 	end,
 
 	copy_pose = function(where, clip, operation, context, changed)

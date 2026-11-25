@@ -348,6 +348,19 @@ const operations = [
 	}),
 	z.object({
 		type: z
+			.literal("clear_floor")
+			.describe(
+				"Curve clips only. Keep a hand or foot off the floor over a time range: at every frame where its lowest point is nearer the floor than clearance, its limb lifts it straight up by the shortfall, turned as it was and where it was across the floor; frames where it is clear already are left as they are. A swinging foot that scuffs on its way to the next step, a hand that brushes the ground in a crawl or cartwheel. The floor is validate_animation's. Written at every frame and then reduced to as few keys as keep it. The result counts frames_lifted with largest_lift_studs.",
+			),
+		part: z.enum(["LeftFoot", "RightFoot", "LeftHand", "RightHand"]),
+		time_from: time("Start of the range in seconds."),
+		time_to: time("End of the range in seconds. Must not be past the end of the clip."),
+		clearance: z.number().min(0).max(2).optional().describe("The least height of the part's lowest point above the floor, in studs. Default 0.05."),
+		blend_in: z.number().finite().min(0).max(2).optional().describe("Seconds before time_from over which it eases in. Default 0."),
+		blend_out: z.number().finite().min(0).max(2).optional().describe("Seconds after time_to over which it eases out. Default 0."),
+	}),
+	z.object({
+		type: z
 			.literal("copy_pose")
 			.describe(
 				"Curve clips only. Copy the pose the clip has at one time to a key at another, for every joint or those named: end a loop in exactly the pose it starts with, come back to a guard pose, hold a pose. With mirror, the pose is copied as its mirror image, left onto right: a walk's left contact pose becomes the right one. A key already at `to` gets the new value and keeps its tangents; a new one starts flat, as with set_key, so run auto_tangents afterwards for smooth motion. The result counts keys_created and keys_changed.",
@@ -638,7 +651,7 @@ export function createAdapter(options: AdapterOptions): McpServer {
 		"edit_animation",
 		{
 			description:
-				"Apply a batch of operations to a working copy atomically. A keyframe clip takes poses, easing, keyframes and smoothing; a curve clip takes keys, tangents, auto_tangents, add_offset, add_noise, aim, clear_keys, copy_pose, mirror, overlap, pin, place_on_floor, reduce_keys and reverse_time. Both take shift_time and scale_time (retiming), markers, the clip's settings and restore_source; each operation's description says which clips it is for. The operations apply in the order given, each to the clip as the ones before it leave it. The whole batch is tried first; if any operation cannot be done, nothing changes and the error names it by its place in the list. Requires the current revision. One Studio undo reverts the whole batch. Only what an operation names is changed.",
+				"Apply a batch of operations to a working copy atomically. A keyframe clip takes poses, easing, keyframes and smoothing; a curve clip takes keys, tangents, auto_tangents, add_offset, add_noise, aim, clear_floor, clear_keys, copy_pose, mirror, overlap, pin, place_on_floor, reduce_keys and reverse_time. Both take shift_time and scale_time (retiming), markers, the clip's settings and restore_source; each operation's description says which clips it is for. The operations apply in the order given, each to the clip as the ones before it leave it. The whole batch is tried first; if any operation cannot be done, nothing changes and the error names it by its place in the list. Requires the current revision. One Studio undo reverts the whole batch. Only what an operation names is changed.",
 			inputSchema: {
 				studio_session: studioSession,
 				clip_id: clipId,
