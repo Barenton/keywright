@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { after, before, describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -153,7 +153,11 @@ describe("MCP adapter over stdio", () => {
 			return [...checks.matchAll(/^\t(\w+) = function/gm)].map((match) => match[1] as string);
 		};
 		const keyframes = keyed("Operations.luau", "-- The names of every operation");
-		const curves = keyed("Curves.luau", "function Curves.types");
+		// Each curve operation is a module field in CurveEdit: `Ops.name = {`.
+		const curveDir = fileURLToPath(new URL("../../../plugin/src/Editing/CurveEdit/", import.meta.url));
+		const curves = readdirSync(curveDir)
+			.filter((file) => file.endsWith(".luau"))
+			.flatMap((file) => [...readFileSync(`${curveDir}${file}`, "utf8").matchAll(/^Ops\.(\w+) = \{/gm)].map((match) => match[1] as string));
 		assert.equal(keyframes.length, 15);
 		assert.equal(curves.length, 22);
 		const applied = [...new Set([...keyframes, ...curves])].sort();

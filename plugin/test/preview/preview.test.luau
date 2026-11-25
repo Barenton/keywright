@@ -20,6 +20,7 @@ local task = require("@lune/task")
 
 local Capture = require("../../src/Preview/Capture")
 local Curves = require("../../src/Editing/Curves")
+local CurveStore = require("../../src/Editing/CurveEdit/Store")
 local Preview = require("../../src/Preview/Preview")
 local Sampler = require("../../src/Preview/Sampler")
 
@@ -639,7 +640,7 @@ case("a curve clip with no length is sampled through a copy padded by a curve th
 	local serde = require("@lune/serde")
 	local Roblox = require("../../src/Core/Roblox") :: any
 	Roblox.Instance, Roblox.CFrame, Roblox.Enum = roblox.Instance, roblox.CFrame, roblox.Enum
-	Curves.backend = {
+	CurveStore.backend = {
 		keys = function(curve)
 			local text = curve:GetAttribute("Keys")
 			return if text then serde.decode("json", text) else {}
@@ -674,7 +675,7 @@ case("a curve clip with no length is sampled through a copy padded by a curve th
 		check("the copy was destroyed", table.find(world.destroyed, world.registered) ~= nil)
 		checkUntouched(world, rig, before)
 	end
-	Curves.backend = nil
+	CurveStore.backend = nil
 end)
 
 case("a clip that never loads fails closed and cleans up", function()

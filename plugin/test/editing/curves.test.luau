@@ -18,6 +18,7 @@ Roblox.Enum = roblox.Enum
 
 local BlockRig = require("../rigs/blockrig")
 local Curves = require("../../src/Editing/Curves")
+local CurveStore = require("../../src/Editing/CurveEdit/Store")
 local Pose = require("../../src/Rigs/Pose")
 local Digest = require("../../src/Inspection/Digest")
 local Operations = require("../../src/Editing/Operations")
@@ -25,7 +26,7 @@ local Reading = require("../../src/Inspection/Reading")
 local Rig = require("../../src/Rigs/Rig")
 local Validate = require("../../src/Inspection/Validate")
 
-Curves.backend = {
+CurveStore.backend = {
 	keys = function(curve)
 		local text = curve:GetAttribute("Keys")
 		return if text then serde.decode("json", text) else {}
@@ -239,7 +240,7 @@ case("settings, markers and restoring work as for keyframe clips", function()
 	check("settings", clip.Name == "Wave" and clip.Loop == true and clip.Priority == Enum.AnimationPriority.Movement)
 	local hit = clip:FindFirstChild("Hit")
 	check("one marker curve per name, at the top", hit and hit.ClassName == "MarkerCurve")
-	local markers = Curves.backend.markers(hit)
+	local markers = CurveStore.backend.markers(hit)
 	check("setting one at the same time changes it", #markers == 2 and markers[1].value == "right")
 	run(
 		clip,
@@ -325,7 +326,7 @@ case("a keyframe clip becomes a curve clip through its poses", function()
 	check("joints that are not posed get nothing", Curves.folder(clip, "LeftFoot", false) == nil)
 	check("tangents are worked out", y[2].left > 0)
 	local look = clip:FindFirstChild("Look")
-	check("markers come along", look and Curves.backend.markers(look)[1].value == "left")
+	check("markers come along", look and CurveStore.backend.markers(look)[1].value == "left")
 end)
 
 case("reading a curve clip gives its keys in the outside's units", function()
