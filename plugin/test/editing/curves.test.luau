@@ -773,6 +773,12 @@ case("a pin with a toe or heel pivot lets the foot roll over that point", functi
 		check(`{pivot}: the point stays put`, drift < 0.002, drift)
 		check(`{pivot}: the foot pitches as its joint is keyed`, pitched < 0.1, pitched)
 		check(`{pivot}: and does not turn with the hips`, twisted < 0.1, twisted)
+		local checked = Validate.run(clip, { joints = REAL }, assert(Validate.thresholds({})))
+		check(
+			`{pivot}: rolling over it is not taken for sliding`,
+			checked.counts.FOOT_SLIDE == nil,
+			checked.counts.FOOT_SLIDE
+		)
 	end
 	check(
 		"a toe pivot on a hand is refused",

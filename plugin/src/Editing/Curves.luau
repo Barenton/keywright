@@ -2759,10 +2759,12 @@ local function contacts(
 	local frames = math.floor(duration * rate + 1e-6)
 	type Below = { deepest: number, at: number, first: number, last: number }
 	local below: { [string]: Below } = {}
-	local feet: { [string]: { Pose.Tracked } } = { LeftFoot = {}, RightFoot = {} }
+	local feet: { [string]: { any } } = { LeftFoot = {}, RightFoot = {} }
 	for frame = 0, frames do
 		local time = frame / rate
-		local tracked = Pose.track(scan, transformsAt(channels, time), identity, Rig.R15_ORDER)
+		local transforms = transformsAt(channels, time)
+		local tracked = Pose.track(scan, transforms, identity, Rig.R15_ORDER)
+		local placed = Pose.place(scan, transforms, identity)
 		for name, part in tracked do
 			local depth = floor - part.lowest
 			if depth > thresholds.floor_studs and not NOT_FLOORED[name] then
@@ -2778,7 +2780,14 @@ local function contacts(
 			end
 		end
 		for foot, list in feet do
-			list[frame + 1] = tracked[foot]
+			-- Where the toe, the heel and the middle of the sole are across the floor.
+			local size = joints[foot].part1.Size
+			local sole = {}
+			for _, along in { -0.5, 0.5, 0 } do
+				local point = placed[foot]:PointToWorldSpace(Roblox.Vector3.new(0, -size.Y / 2, along * size.Z))
+				table.insert(sole, { point.X, point.Z })
+			end
+			list[frame + 1] = { lowest = tracked[foot].lowest, position = tracked[foot].position, sole = sole }
 		end
 	end
 	for _, name in Rig.R15_ORDER do
@@ -2820,12 +2829,21 @@ local function contacts(
 				finish += 1
 			end
 			if finish - index >= 2 then
-				local start = list[index].position
-				local drift = 0
+				-- How far it slides: as far as the point of its sole that moves least, so a
+				-- foot rolling over its toe or heel, which stays put, is not sliding.
+				local drift = math.huge
+				for point = 1, 3 do
+					local start = list[index].sole[point]
+					local furthest = 0
+					for step = index, finish do
+						local here = list[step].sole[point]
+						furthest = math.max(furthest, math.sqrt((here[1] - start[1]) ^ 2 + (here[2] - start[2]) ^ 2))
+					end
+					drift = math.min(drift, furthest)
+				end
 				local steps: { number } = {}
 				for step = index, finish do
 					local here = list[step].position
-					drift = math.max(drift, math.sqrt((here[1] - start[1]) ^ 2 + (here[3] - start[3]) ^ 2))
 					if step > index then
 						local there = list[step - 1].position
 						table.insert(steps, math.sqrt((here[1] - there[1]) ^ 2 + (here[3] - there[3]) ^ 2))
