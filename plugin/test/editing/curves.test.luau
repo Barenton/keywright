@@ -1078,6 +1078,72 @@ case("aim turns a joint to face a point, or holds its facing", function()
 	)
 end)
 
+-- Which way a part faces across the floor, in degrees.
+local function yaw(part: any): number
+	return math.deg(math.atan2(-part.LookVector.X, -part.LookVector.Z))
+end
+
+-- The chest turns 60 degrees in 0.3 seconds and stops; the arm is not animated.
+local function turnAndStop(): any
+	local clip = blank()
+	realRun(clip, {
+		{ type = "set_key", joint = "UpperTorso", time = 0, rotation = { 0, 0, 0 } },
+		{ type = "set_key", joint = "UpperTorso", time = 0.3, rotation = { 0, 60, 0 } },
+		{ type = "set_key", joint = "UpperTorso", time = 1.2, rotation = { 0, 60, 0 } },
+		{ type = "auto_tangents", time_from = 0, time_to = 1.2 },
+	})
+	return clip
+end
+
+case("overlap has a chain trail the body, swing on and settle", function()
+	local arm = { "LeftHand", "LeftUpperArm", "LeftLowerArm" }
+	local rigid = turnAndStop()
+	local clip = turnAndStop()
+	realRun(clip, { { type = "overlap", joints = arm, time_from = 0, time_to = 1.2, lag = 0.1, bounce = 0.5 } })
+	local during, stiff = yaw(placedAt(clip, 0.15).LeftHand), yaw(placedAt(rigid, 0.15).LeftHand)
+	check("mid-turn, the hand trails behind", math.abs(during) < math.abs(stiff) - 2, `{during} against {stiff}`)
+	local furthest = 0
+	for frame = 9, 30 do
+		furthest = math.max(furthest, math.abs(yaw(placedAt(clip, frame / 30).LeftHand)))
+	end
+	check("after the chest stops, it swings past", furthest > 60.5, furthest)
+	local settled = math.abs(math.abs(yaw(placedAt(clip, 1.2).LeftHand)) - 60)
+	check("and settles where the chest left it", settled < 0.5, settled)
+	check(
+		"the chest itself is not touched",
+		difference(
+			{ Curves.evaluate(keysOf(clip, "UpperTorso", "rotation.y"), 0.2) },
+			{ Curves.evaluate(keysOf(rigid, "UpperTorso", "rotation.y"), 0.2) }
+		) < 1e-12
+	)
+
+	local calm = turnAndStop()
+	realRun(calm, { { type = "overlap", joints = arm, time_from = 0, time_to = 1.2, lag = 0.1, bounce = 0 } })
+	local most = 0
+	for frame = 9, 36 do
+		most = math.max(most, math.abs(yaw(placedAt(calm, frame / 30).LeftHand)))
+	end
+	check("with no bounce, it trails but does not swing past", most < 60.3, most)
+
+	local loop = blank()
+	realRun(loop, {
+		{ type = "set_key", joint = "UpperTorso", time = 0, rotation = { 0, 0, 0 } },
+		{ type = "set_key", joint = "UpperTorso", time = 0.5, rotation = { 0, 35, 0 } },
+		{ type = "set_key", joint = "UpperTorso", time = 1, rotation = { 0, 0, 0 } },
+		{ type = "set_properties", loop = true },
+		{ type = "auto_tangents", time_from = 0, time_to = 1 },
+		{ type = "overlap", joints = arm, time_from = 0, time_to = 1, lag = 0.15, bounce = 0.3 },
+	})
+	local seam = turnBetween(placedAt(loop, 0).LeftHand, placedAt(loop, 1).LeftHand)
+	check("in a looping clip, it ends where it began", seam < 0.3, seam)
+	local behind = turnBetween(placedAt(loop, 0).LeftHand, placedAt(loop, 0).UpperTorso)
+	check("which, in a loop, is still trailing at the start", behind > 1, behind)
+	check(
+		"a lag out of bounds is refused",
+		refusal(loop, { { type = "overlap", joints = arm, time_from = 0, time_to = 1, lag = 3 } }) ~= nil
+	)
+end)
+
 case("a curve clip is retimed: shifted, scaled with or without ripple, and reversed", function()
 	local original = lopsided()
 	local clip = lopsided()

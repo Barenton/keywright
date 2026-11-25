@@ -302,6 +302,21 @@ const operations = [
 	}),
 	z.object({
 		type: z
+			.literal("overlap")
+			.describe(
+				"Curve clips only. Follow-through and overlapping action: the joints named trail the motion they are given, through a damped spring, so a fast move pulls them along late and, with bounce, they swing on past where it stops before settling. An arm that trails a punch's turn, a head that lags a landing, hands that flap after a stop. Joints are taken from the body outward, each trailing a parent that already trails, and the lag is shared along them so the end of the chain trails by about `lag`. Over the whole of a looping clip, the motion comes back round to where it began. Written at every frame and then reduced to as few keys as keep it.",
+			),
+		joints: z.array(z.string()).min(1).max(32).describe("The joints that trail, for example LeftUpperArm, LeftLowerArm and LeftHand, or Head."),
+		time_from: time("Start of the range in seconds."),
+		time_to: time("End of the range in seconds. Must not be past the end of the clip."),
+		lag: z.number().min(0.02).max(0.5).optional().describe("About how many seconds the end of the chain trails behind. Default 0.1."),
+		bounce: z.number().min(0).max(0.9).optional().describe("How far it swings past where the motion stops: 0 trails without swinging past, 0.9 is very springy. Default 0.3."),
+		weight: z.number().min(0).max(1).optional().describe("How much of the trailing to use, from 0 to 1. Default 1."),
+		blend_in: z.number().finite().min(0).max(2).optional().describe("Seconds before time_from over which it eases in. Default 0."),
+		blend_out: z.number().finite().min(0).max(2).optional().describe("Seconds after time_to over which it eases out. Default 0."),
+	}),
+	z.object({
+		type: z
 			.literal("copy_pose")
 			.describe(
 				"Curve clips only. Copy the pose the clip has at one time to a key at another, for every joint or those named: end a loop in exactly the pose it starts with, come back to a guard pose, hold a pose. With mirror, the pose is copied as its mirror image, left onto right: a walk's left contact pose becomes the right one. A key already at `to` gets the new value and keeps its tangents; a new one starts flat, as with set_key, so run auto_tangents afterwards for smooth motion. The result counts keys_created and keys_changed.",
@@ -592,7 +607,7 @@ export function createAdapter(options: AdapterOptions): McpServer {
 		"edit_animation",
 		{
 			description:
-				"Apply a batch of operations to a working copy atomically. A keyframe clip takes poses, easing, keyframes and smoothing; a curve clip takes keys, tangents, auto_tangents, add_offset, add_noise, aim, clear_keys, copy_pose, mirror, pin, place_on_floor, reduce_keys and reverse_time. Both take shift_time and scale_time (retiming), markers, the clip's settings and restore_source; each operation's description says which clips it is for. The operations apply in the order given, each to the clip as the ones before it leave it. The whole batch is tried first; if any operation cannot be done, nothing changes and the error names it by its place in the list. Requires the current revision. One Studio undo reverts the whole batch. Only what an operation names is changed.",
+				"Apply a batch of operations to a working copy atomically. A keyframe clip takes poses, easing, keyframes and smoothing; a curve clip takes keys, tangents, auto_tangents, add_offset, add_noise, aim, clear_keys, copy_pose, mirror, overlap, pin, place_on_floor, reduce_keys and reverse_time. Both take shift_time and scale_time (retiming), markers, the clip's settings and restore_source; each operation's description says which clips it is for. The operations apply in the order given, each to the clip as the ones before it leave it. The whole batch is tried first; if any operation cannot be done, nothing changes and the error names it by its place in the list. Requires the current revision. One Studio undo reverts the whole batch. Only what an operation names is changed.",
 			inputSchema: {
 				studio_session: studioSession,
 				clip_id: clipId,
