@@ -29,7 +29,7 @@ Studio is the only place animation data lives. The broker holds routing state an
 | `plugin/src/Editing/` | The edits for keyframe clips and for curve clips, atomic batches, and undo recordings. |
 | `plugin/src/Inspection/` | Reading a clip, checking it, and fingerprinting it. |
 | `plugin/src/Preview/` | Sampling a clip on a disposable copy of the rig, and the gated screenshot path. |
-| `plugin/fault/`, `plugin/experiment/`, `plugin/probe/` | Extra modules for the test builds described below. |
+| `plugin/fault/` | The extra module for the test build described below. |
 | `plugin/test/` | Offline Luau suites, in folders matching `plugin/src`. `npm run test:luau` runs every `*.test.luau`. |
 | `src/broker/` | The broker, the client that connects to it, its handshake, wire protocol and state files. |
 | `src/mcp/` | The MCP adapter: the tools and their schemas. |
@@ -84,16 +84,6 @@ npm run measure -- --place-id <id>   # measure against a connected Studio sessio
 
 `npm run build:fault` builds the plugin with one extra module, `plugin/fault/Fault.luau`, which makes an edit fail or stop after its first operation. It exists to check in Studio what happens to a half-finished batch: that a failed batch leaves nothing behind, and that an undo recording left open is cancelled when the plugin unloads. Which fault happens is chosen by the name of the working copy being edited ("Fault fail", "Fault stall", "Fault stall raw"); other working copies behave as usual. A session from this build reports its version with `+fault`, and the panel says it is a test build. Install it in place of the normal plugin, never beside it, and only in a place you can throw away: "Fault stall raw" leaves Studio refusing undo recordings in that window until Studio is restarted.
 
-### Studio fixture
-
-`npm run prepare:fixture` writes a disposable Studio place and its instructions into `build/fixture/`. The place holds a baseplate and a unique fixture marker, and no scripts.
-
-Preparation only writes those files. It does not start, stop or attach to Studio, install a plugin, open a network listener, or pair with a broker. Nothing in this project launches Studio.
-
-The probe code in `plugin/probe/` refuses to act unless the open place is unpublished, in edit mode, and carries a fixture marker (`plugin/probe/FixtureGuard.luau`).
-
-`npm run probe:wsl` checks, from WSL, that a Windows process can authenticate to a broker listening on loopback inside WSL. It does not involve Studio.
-
 ## What is tested
 
 Tested by `npm test` and `npm run test:luau`:
@@ -107,7 +97,6 @@ Tested by `npm test` and `npm run test:luau`:
 - Saving where the Animation Editor keeps clips, working copies that survive a plugin reload, remembered agent access, and the clip fingerprint.
 - Preview isolation, against a model of the animation engine: the preview samples a sanitized copy, never writes or steps the original rig, and removes what it created on success, failure and timeout.
 - The screenshot rules, against models of `StudioCaptureService` and of Studio: nothing is asked of Studio while the gate is closed, every wait has a deadline, only a complete PNG of the requested size is returned, and the camera is never moved.
-- Fixture scoping: the guard that confines probe code to a disposable fixture, and the preparation script writing only inside `build/fixture/`.
 
 Measured in Studio on Windows, with the adapter in WSL, by `npm run measure` on one `Motor6D` rig and one `AnimationConstraint` rig:
 

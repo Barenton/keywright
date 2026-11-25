@@ -177,7 +177,7 @@ test("every recorded Studio vector hashes to the fingerprint Studio gave", () =>
 	}
 });
 
-test("the reference clips have the sizes the requirements give them", () => {
+test("the reference clips have the sizes they are meant to have", () => {
 	const small = measure.referenceOperations(31);
 	const long = measure.referenceOperations(301);
 	assert.equal(small.length, 465);

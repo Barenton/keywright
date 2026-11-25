@@ -5,7 +5,6 @@
 local process = require("@lune/process")
 
 local Auth = require("../../src/Network/Auth")
-local FixtureGuard = require("../../probe/FixtureGuard")
 local Codec = require("../../src/Core/Codec")
 local Sha256 = require("../../src/Core/Sha256")
 
@@ -102,113 +101,6 @@ for i = 0, 255 do
 end
 check("hex round trip", buffer.tostring(Codec.fromHex(Codec.toHex(allBytes))), buffer.tostring(allBytes))
 check("hex encoding", Codec.toHex(buffer.fromstring("\x00\x0f\xa0\xff")), "000fa0ff")
-
--- Fixture guard: probes may act only in an unpublished fixture, in edit mode, with a valid marker.
-local FIXTURE_ID = "0123456789abcdef0123456789abcdef"
-local function guard(overrides: { [string]: any }): (boolean, string)
-	local observation = {
-		markerClass = "StringValue" :: string?,
-		markerValue = (FixtureGuard.MARKER_PREFIX .. FIXTURE_ID) :: string?,
-		placeId = 0,
-		gameId = 0,
-		isEdit = true,
-	}
-	for key, value in overrides do
-		(observation :: any)[key] = if value == "<nil>" then nil else value
-	end
-	return FixtureGuard.check(observation)
-end
-local accepted, acceptedId = guard({})
-check("guard accepts a valid fixture", accepted, true)
-check("guard returns the fixture id", acceptedId, FIXTURE_ID)
-for name, overrides in
-	{
-		["published place"] = { placeId = 123 },
-		["published experience"] = { gameId = 456 },
-		["playtest"] = { isEdit = false },
-		["no marker"] = { markerClass = "<nil>", markerValue = "<nil>" },
-		["marker of another class"] = { markerClass = "Folder", markerValue = "<nil>" },
-		["empty marker"] = { markerValue = "" },
-		["old probe marker"] = { markerValue = '{"port":47419,"code":"ABCDEFGH23"}' },
-		["wrong prefix"] = { markerValue = "keywright-fixture/2/" .. FIXTURE_ID },
-		["short id"] = { markerValue = FixtureGuard.MARKER_PREFIX .. "0123" },
-		["uppercase id"] = { markerValue = FixtureGuard.MARKER_PREFIX .. string.upper(FIXTURE_ID) },
-		["trailing text"] = { markerValue = FixtureGuard.MARKER_PREFIX .. FIXTURE_ID .. "x" },
-	} :: { [string]: { [string]: any } }
-do
-	local allowed, reason = guard(overrides)
-	check(`guard rejects: {name}`, allowed, false)
-	check(`guard gives a reason: {name}`, type(reason) == "string" and #reason > 0, true)
-end
-
--- Screenshots: only in the fixture the probe was started in, armed with that fixture's own id.
-local OTHER_ID = "fedcba9876543210fedcba9876543210"
-local function shots(overrides: { [string]: any }, armed: any, pinned: any): (boolean, string)
-	local observation = {
-		markerClass = "StringValue" :: string?,
-		markerValue = (FixtureGuard.MARKER_PREFIX .. FIXTURE_ID) :: string?,
-		placeId = 0,
-		gameId = 0,
-		isEdit = true,
-	}
-	for key, value in overrides do
-		(observation :: any)[key] = if value == "<nil>" then nil else value
-	end
-	return FixtureGuard.screenshots(observation, armed, pinned)
-end
-local armedOk, armedId = shots({}, FIXTURE_ID, FIXTURE_ID)
-check("screenshots allowed when armed with the pinned fixture's id", armedOk, true)
-check("armed fixture returns its id", armedId, FIXTURE_ID)
-for name, value in
-	{
-		["true"] = true,
-		["false"] = false,
-		["the text true"] = "true",
-		["a number"] = 1,
-		["a table"] = {},
-		["another fixture's id"] = OTHER_ID,
-		["the id in capitals"] = string.upper(FIXTURE_ID),
-		["the id with a trailing space"] = FIXTURE_ID .. " ",
-		["the whole marker value"] = FixtureGuard.MARKER_PREFIX .. FIXTURE_ID,
-		["an empty string"] = "",
-	} :: { [string]: any }
-do
-	local allowed, reason = shots({}, value, FIXTURE_ID)
-	check(`screenshots refused when the arm attribute is {name}`, allowed, false)
-	check(`a reason is given when the arm attribute is {name}`, type(reason) == "string" and #reason > 0, true)
-end
-check("screenshots refused when the arm attribute is absent", (shots({}, nil, FIXTURE_ID)), false)
--- A marker of the right form is not enough: it must be the fixture the probe started in.
-local otherMarker = { markerValue = FixtureGuard.MARKER_PREFIX .. OTHER_ID }
-check(
-	"another fixture's marker is refused even when armed with its own id",
-	(shots(otherMarker, OTHER_ID, FIXTURE_ID)),
-	false
-)
-check(
-	"another fixture's marker is refused when armed with the pinned id",
-	(shots(otherMarker, FIXTURE_ID, FIXTURE_ID)),
-	false
-)
-check("the pinned fixture is refused when armed for another", (shots({}, OTHER_ID, OTHER_ID)), false)
-for name, pinned in { ["nothing"] = "<nil>", ["a short id"] = "0123", ["true"] = true } :: { [string]: any } do
-	check(
-		`screenshots refused when the pinned id is {name}`,
-		(shots({}, FIXTURE_ID, if pinned == "<nil>" then nil else pinned)),
-		false
-	)
-end
-for name, overrides in
-	{
-		["a published place"] = { placeId = 123 },
-		["a published experience"] = { gameId = 456 },
-		["a playtest"] = { isEdit = false },
-		["no marker"] = { markerClass = "<nil>", markerValue = "<nil>" },
-		["a malformed marker"] = { markerValue = "keywright-fixture/1/xyz" },
-	} :: { [string]: { [string]: any } }
-do
-	check(`armed screenshots still refused in {name}`, (shots(overrides, FIXTURE_ID, FIXTURE_ID)), false)
-end
 
 print(`{count - failures}/{count} checks passed`)
 if failures > 0 then

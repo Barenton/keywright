@@ -57,7 +57,7 @@ Sampler.PAD_SECONDS = 1
 -- The folder that pads a curve clip with no length. Named after no part of any rig.
 Sampler.PAD_NAME = "KeywrightPad"
 
--- How the track is moved to a time. Phase 0 compares these in Studio.
+-- How the track is moved to a time. scripts/measure.mjs compares these in Studio.
 export type Strategy = "set_position" | "step_delta"
 
 local function robloxEngine(): Engine

@@ -62,8 +62,7 @@ Capture.PERMISSION_TIMEOUT = 20
 Capture.BUFFER_TIMEOUT = 15
 
 -- Why nothing is captured while the gate is closed.
-Capture.GATE_CLOSED =
-	"screenshots of a preview are off: they run only in an armed disposable fixture until their behaviour in Studio has been validated"
+Capture.GATE_CLOSED = "screenshots of a preview are off until their behaviour in Studio has been validated"
 
 local PNG_SIGNATURE = { 137, 80, 78, 71, 13, 10, 26, 10 }
 -- The empty chunk every complete PNG ends with, checksum included.

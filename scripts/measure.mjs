@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Measures Phase 0 experiments through the ordinary tools, against a Studio session a
+// Measures how the plugin behaves in Studio, through the ordinary tools, against a Studio session a
 // person has already connected.
 //
 // It talks only to the local broker, the way the MCP adapter does. It does not start,
@@ -197,7 +197,7 @@ export const VECTORS = [
 ];
 
 /**
- * The operations that build a reference clip (PRD section 15): every one of the fifteen
+ * The operations that build a reference clip: every one of the fifteen
  * joints posed at each keyframe, a tenth of a second apart. 31 keyframes make Ref-S
  * (3 s, 465 poses), 301 make Ref-L (30 s, 4,515 poses). The same numbers every time.
  */

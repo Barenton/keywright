@@ -6,7 +6,7 @@
 -- refused before anything is written, whatever the reason: a malformed operation, or one
 -- that does not fit the clip as the operations before it leave it. Should the real
 -- application fail all the same, its recording is cancelled, which Studio was seen to
--- revert (the experiment on undo, E6).
+-- revert.
 --
 -- What each operation does is in Operations.
 

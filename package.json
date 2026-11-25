@@ -17,10 +17,7 @@
     "test:luau": "node scripts/test-luau.mjs",
     "build:plugin": "rojo build plugin/default.project.json -o build/Keywright.rbxm",
     "build:fault": "rojo build plugin/fault.project.json -o build/KeywrightFault.rbxm",
-    "build:experiment": "rojo build plugin/experiment.project.json -o build/KeywrightExperiment.rbxm",
-    "probe:wsl": "npm run build && node scripts/wsl-loopback-check.mjs",
     "format:check": "stylua --check plugin",
-    "prepare:fixture": "node scripts/prepare-studio-fixture.mjs",
     "measure": "npm run build && node scripts/measure.mjs"
   },
   "dependencies": {

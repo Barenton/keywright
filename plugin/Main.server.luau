@@ -172,22 +172,8 @@ if fault and fault:IsA("ModuleScript") then
 end
 
 local sessionId = string.lower((string.gsub(HttpService:GenerateGUID(false), "[^%x]", "")))
-local methods, registry, panel = Handlers.create()
+local methods, _, panel = Handlers.create()
 
--- Another test build carries a module for experiments that need Studio, such as how
--- clips made of curves behave. It adds methods that only scripts reach, not the tools.
-local experiment = script.Parent:FindFirstChild("Experiment")
-if experiment and experiment:IsA("ModuleScript") then
-	(require(experiment) :: any).install(methods, {
-		registry = registry,
-		Preview = Preview,
-		Rig = require("./src/Rigs/Rig"),
-		Saves = require("./src/Storage/Saves"),
-		Recording = Recording,
-	})
-	version ..= "+experiment"
-	label("Test build: experiments enabled.")
-end
 local connection: any = nil
 
 local function start()
