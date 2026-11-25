@@ -271,7 +271,7 @@ const operations = [
 		pivot: z
 			.enum(["ankle", "toe", "heel"])
 			.optional()
-			.describe("Feet only. The point of the foot that stays put. ankle (default) holds the foot as hold says. toe or heel holds that point, the middle of the sole's front or back edge, and the foot keeps the turn its own motion gives it, so it rolls over the point: key the foot pitching toes down with the toe pinned and it peels up onto its toe, as a step pushes off; key it toes up and then down with the heel pinned and it lands heel first and rolls onto its sole. With position or on_floor, those place the point. Not with hold position."),
+			.describe("Feet only. The point of the foot that stays put. ankle (default) holds the foot as hold says. toe or heel holds that point, the middle of the sole's front or back edge, and the foot keeps the facing it has when pinned, turned further only by what its own joint is keyed to do (not by the hips or leg above it), so it rolls over the point: key the foot pitching toes down with the toe pinned and it peels up onto its toe, as a step pushes off; key it toes up and then down with the heel pinned and it lands heel first and rolls onto its sole. With position or on_floor, those place the point. Not with hold position."),
 		soft: z
 			.number()
 			.min(0)

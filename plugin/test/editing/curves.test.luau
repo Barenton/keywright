@@ -480,6 +480,11 @@ local function turnBetween(a: any, b: any): number
 	return math.deg(2 * math.asin(math.min(1, math.sqrt(squares / 8))))
 end
 
+-- Which way a part faces across the floor, in degrees.
+local function yaw(part: any): number
+	return math.deg(math.atan2(-part.LookVector.X, -part.LookVector.Z))
+end
+
 -- Hips that drop and come back up over a second, with nothing else keyed.
 local function squat(depth: number, sideways: number?): any
 	local clip = blank()
@@ -732,6 +737,10 @@ case("a pin with a toe or heel pivot lets the foot roll over that point", functi
 	local function rolling(pitch: number?): any
 		local clip = squat(0.3)
 		realRun(clip, {
+			-- The hips turn too, which a planted foot is not to follow.
+			{ type = "set_key", joint = "LowerTorso", time = 0, rotation = { 0, 0, 0 } },
+			{ type = "set_key", joint = "LowerTorso", time = 0.5, rotation = { 0, 20, 0 } },
+			{ type = "set_key", joint = "LowerTorso", time = 1, rotation = { 0, 0, 0 } },
 			{ type = "set_key", joint = "LeftFoot", time = 0, rotation = { 0, 0, 0 } },
 			{ type = "set_key", joint = "LeftFoot", time = 0.5, rotation = { pitch or 35, 0, 0 } },
 			{ type = "set_key", joint = "LeftFoot", time = 1, rotation = { 0, 0, 0 } },
@@ -749,14 +758,21 @@ case("a pin with a toe or heel pivot lets the foot roll over that point", functi
 		local changed =
 			realRun(clip, { { type = "pin", part = "LeftFoot", time_from = 0, time_to = 1, pivot = pivot } })
 		check(`{pivot}: reached at every frame`, changed.frames_out_of_reach == nil, changed.largest_miss_studs)
-		local drift, turned = 0, 0
+		local drift, pitched, twisted = 0, 0, 0
+		local heading = yaw(placedAt(clip, 0).LeftFoot)
 		for frame = 0, 30 do
-			local foot = placedAt(clip, frame / 30).LeftFoot
+			local time = frame / 30
+			local foot = placedAt(clip, time).LeftFoot
 			drift = math.max(drift, (foot:PointToWorldSpace(offset) - start).Magnitude)
-			turned = math.max(turned, turnBetween(foot, placedAt(original, frame / 30).LeftFoot))
+			-- The foot pitches by as much as its own joint is keyed to.
+			local keyed = math.deg(Curves.evaluate(keysOf(original, "LeftFoot", "rotation.x"), time))
+			local tilt = math.deg(math.asin(math.clamp(foot.LookVector.Y, -1, 1)))
+			pitched = math.max(pitched, math.abs(math.abs(tilt) - math.abs(keyed)))
+			twisted = math.max(twisted, math.abs(yaw(foot) - heading))
 		end
 		check(`{pivot}: the point stays put`, drift < 0.002, drift)
-		check(`{pivot}: the foot keeps the turn it is animated with`, turned < 0.05, turned)
+		check(`{pivot}: the foot pitches as its joint is keyed`, pitched < 0.1, pitched)
+		check(`{pivot}: and does not turn with the hips`, twisted < 0.1, twisted)
 	end
 	check(
 		"a toe pivot on a hand is refused",
@@ -1136,11 +1152,6 @@ case("aim turns a joint to face a point, or holds its facing", function()
 		) ~= nil
 	)
 end)
-
--- Which way a part faces across the floor, in degrees.
-local function yaw(part: any): number
-	return math.deg(math.atan2(-part.LookVector.X, -part.LookVector.Z))
-end
 
 -- The chest turns 60 degrees in 0.3 seconds and stops; the arm is not animated.
 local function turnAndStop(): any

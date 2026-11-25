@@ -1770,11 +1770,21 @@ local appliers: { [string]: Apply } = {
 			tipLocal = Roblox.CFrame.lookAt(standing, standing + heading.Unit)
 		end
 		-- With a toe or heel pivot, that point of the foot is what stays put, and the foot
-		-- keeps the turn its own motion gives it, so it can roll over the point.
+		-- turns by what its own joint is keyed to do, on top of the facing it has when it is
+		-- pinned, so it rolls over the point. What the hips and leg do above it is not
+		-- passed down into a planted foot.
 		local rolling = operation.pivot == "toe" or operation.pivot == "heel"
 		local offset = Roblox.Vector3.new()
 		local pointLocal = Roblox.Vector3.new()
+		local heldTurn = identity
+		local ownAt = identity
+		local _, footC1 = Rig.rest(limb[3])
+		local c1Turn = footC1 - footC1.Position
 		if rolling then
+			local atFoot = anchorOf(reference):Inverse() * reference[chain[3]]
+			heldTurn = atFoot - atFoot.Position
+			local atTransform = transformsAt(channels, operation.at or from)[chain[3]]
+			ownAt = atTransform - atTransform.Position
 			local size = joints[chain[3]].part1.Size
 			-- A rig faces along its own negative Z: the toe is the front of the sole.
 			offset = Roblox.Vector3.new(0, -size.Y / 2, if operation.pivot == "toe" then -size.Z / 2 else size.Z / 2)
@@ -1803,8 +1813,11 @@ local appliers: { [string]: Apply } = {
 			local anchor = anchorOf(placed)
 			local tip = anchor * tipLocal
 			if rolling then
-				local own = anchor:Inverse() * placed[chain[3]]
-				tip = anchor * Roblox.CFrame.new(pointLocal) * (own - own.Position) * Roblox.CFrame.new(-offset)
+				-- How far the foot's own joint has turned since it was pinned, as a turn of the
+				-- foot itself: placed = parent * C0 * transform * C1:Inverse().
+				local now = transforms[chain[3]] - transforms[chain[3]].Position
+				local since = c1Turn * ownAt:Inverse() * now * c1Turn:Inverse()
+				tip = anchor * Roblox.CFrame.new(pointLocal) * heldTurn * since * Roblox.CFrame.new(-offset)
 			end
 			local weight = 1
 			if time < from - Curves.TIME_TOLERANCE then
