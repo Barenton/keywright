@@ -131,6 +131,23 @@ const operations = [
 		name: markerName,
 	}),
 	z.object({
+		type: z
+			.literal("smooth_motion")
+			.describe(
+				"Run one smooth curve through each joint's keys in a time range and write it out as a pose at every step, replacing those keys. Roblox eases each stretch between two keys by itself, so a move made of several eased stretches stops at every key and one made of straight stretches turns a corner at every key. The curve instead carries speed through a key the motion passes on its way, comes to rest only where the motion turns round, and never goes past a key. Block out the move with a few keys per joint, then smooth it. Keyframes that hold markers are kept. Joints with fewer than two keys in the range are left as they are.",
+			),
+		time_from: rangeFrom,
+		time_to: rangeTo,
+		joints: z.array(z.string()).min(1).max(32).optional().describe("The joints to smooth. Default: every joint the clip moves."),
+		rate: z.number().int().min(10).max(60).optional().describe("Poses written per second. Default 30."),
+		snap_at: z
+			.array(time("A key time."))
+			.max(16)
+			.optional()
+			.describe("Key times that are struck, not eased into: the motion arrives there fast and stops dead, as a fist on what it hits."),
+		loop: z.boolean().optional().describe("Carry speed across from the last key to the first. Default: true when the clip loops and the range is the whole clip."),
+	}),
+	z.object({
 		type: z.literal("restore_source").describe("Reset the working copy to the clip it was opened from."),
 	}),
 ] as const;

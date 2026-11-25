@@ -61,9 +61,10 @@ function Rig.encode(cframe: CFrame): { position: { number }, rotation: { number 
 	}
 end
 
--- A rotation as a quaternion (x, y, z, w) with w not negative, worked out from the
--- rotation's nine numbers so that it is the same in Studio and in the offline tests.
-function Rig.quaternion(cframe: CFrame): { number }
+-- A rotation as the four numbers of a quaternion, x, y, z and w, with w not negative,
+-- worked out from the rotation's nine numbers so that it is the same in Studio and in
+-- the offline tests. Not rounded.
+function Rig.quaternionOf(cframe: CFrame): (number, number, number, number)
 	local _, _, _, m00, m01, m02, m10, m11, m12, m20, m21, m22 = cframe:GetComponents()
 	local x, y, z, w
 	local trace = m00 + m11 + m22
@@ -81,7 +82,13 @@ function Rig.quaternion(cframe: CFrame): { number }
 		w, x, y, z = (m10 - m01) / s, (m02 + m20) / s, (m12 + m21) / s, s / 4
 	end
 	local sign = if w < 0 then -1 else 1
-	return { round(x * sign, 6), round(y * sign, 6), round(z * sign, 6), round(w * sign, 6) }
+	return x * sign, y * sign, z * sign, w * sign
+end
+
+-- The same quaternion in its wire form: a list of four numbers, rounded.
+function Rig.quaternion(cframe: CFrame): { number }
+	local x, y, z, w = Rig.quaternionOf(cframe)
+	return { round(x, 6), round(y, 6), round(z, 6), round(w, 6) }
 end
 
 -- A transform from its wire form. The rotation is Euler angles in degrees, applied in

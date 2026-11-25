@@ -602,7 +602,7 @@ function Handlers.create(): ({ [string]: (params: any) -> any }, Registry, Panel
 			return {
 				clip_id = working.id,
 				revision = revision,
-				duration = duration,
+				duration = math.round(duration * 1000) / 1000,
 				motion = { times = sampleTimes, keyframes = keyframes, parts = paths },
 				pose = if firstPose then { parts = firstPose, rest = restPose() } else nil,
 			}

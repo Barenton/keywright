@@ -145,7 +145,7 @@ describe("MCP adapter over stdio", () => {
 		const source = readFileSync(fileURLToPath(new URL("../../plugin/src/Operations.luau", import.meta.url)), "utf8");
 		const checks = source.slice(source.indexOf("local checks:"), source.indexOf("-- The names of every operation"));
 		const applied = [...checks.matchAll(/^\t(\w+) = function/gm)].map((match) => match[1] as string).sort();
-		assert.equal(applied.length, 14);
+		assert.equal(applied.length, 15);
 		assert.deepEqual(published, applied);
 		// Which way each easing direction goes is spelt out where a client will read it.
 		assert.match(JSON.stringify(edit?.inputSchema), /In starts slowly and ends fast; Out starts fast and ends slowly/);
