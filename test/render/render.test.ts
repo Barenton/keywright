@@ -509,3 +509,21 @@ test("a preview asked for an onion skin draws one, and says why when it can't", 
 	const compared = renderResult({ render: true, onion: true }, { frames, pose: { ...pose, compare: pose.frames } });
 	assert.match(String((compared.payload as { render: { reason: string } }).render.reason), /one clip/);
 });
+
+test("a comparison at the other clip's own times labels its row with them", () => {
+	const frames = [[box("UpperTorso", [0, 0, 0], [2, 2, 1])], [box("UpperTorso", [0, 0.5, 0], [2, 2, 1])]];
+	const pose = { frames, compare: frames };
+	const labelled = (compared: unknown) => {
+		const drawn = renderResult({ render: true, times: [0.3, 0.4], compare_with: "source" }, { frames: [{ time: 0.3 }, { time: 0.4 }], compared, pose });
+		const image = decode(Buffer.from(drawn.image ?? "", "base64"));
+		const tile = image.height / 2;
+		let dark = 0;
+		for (let y = tile; y < tile + 16; y += 1) for (let x = 0; x < 40; x += 1) if ((image.at(x, y)[0] as number) < 80) dark += 1;
+		return { dark, layout: String((drawn.payload as { render: { layout: string } }).render.layout) };
+	};
+	const same = labelled({ name: "Old", differences: [{ time: 0.3 }, { time: 0.4 }] });
+	assert.equal(same.dark, 0, "at the same times, only the top row is labelled");
+	const paired = labelled({ name: "Old", differences: [{ time: 0.3, other_time: 0.2 }, { time: 0.4, other_time: 0.267 }] });
+	assert.ok(paired.dark > 0, "at its own times, the bottom row carries them");
+	assert.match(paired.layout, /compare_times/);
+});

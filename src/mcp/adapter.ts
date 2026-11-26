@@ -460,6 +460,14 @@ export function createAdapter(options: AdapterOptions): McpServer {
 					.describe(
 						'With times: also sample another clip of the same rig at the same times. "source" is the clip this working copy was opened from, "saved:" followed by a name is one of the rig\'s saved clips, anything else is the id of another working copy. The result gains compared: for each time, the largest distance in studs and turn in degrees between where the two clips put the rig\'s parts, and the part furthest apart. With render, the picture has this clip along the top row and the other along the bottom.',
 					),
+				compare_times: z
+					.array(z.number().finite().min(0).max(300))
+					.min(2)
+					.max(8)
+					.optional()
+					.describe(
+						"With compare_with: the other clip's own times, one for each of times, in the same order, for when a move has been retimed. Each column then pairs this clip at a time in times with the other clip at its time here: an impact on frame 11 now with an impact on frame 8 before. To line clips up by a marker, read both clips' marker times with read_animation and pass them. The bottom row is labelled with these times, and each entry of compared gains other_time.",
+					),
 				track: z
 					.array(z.string())
 					.max(15)

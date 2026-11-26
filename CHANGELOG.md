@@ -4,6 +4,8 @@ What changed in each release of Keywright. The plugin and the adapter are releas
 
 ## [Unreleased]
 
+- **Comparing retimed moves:** `preview_animation` takes `compare_times` with `compare_with`: the other clip's own time for each of `times`, so a before-and-after strip pairs impact with impact even when the move now lands on a different frame. The compared clip's row is labelled with its times, and each comparison reports `other_time`.
+- **Fixed, loops just off a whole frame:** in a loop whose end was typed a little off a frame (0.667 for 20/30 of a second), `pin`, `aim` and other ranges across the end put the keys that came round it just off a frame, which gave `KEY_OFF_FRAME` warnings. The loop is now cut and joined at its whole number of frames.
 - **Out-of-date plugin or adapter, flagged everywhere:** while a Studio window's plugin and the adapter are different versions, every result for that window, errors included, starts with `update_needed`, not just `get_workspace`. It says which side is older, that newer options are ignored until they match, and how to update. Agents are told to pass it on to the person straight away.
 - **Pictures say how they were drawn:** every picture's `render` reports its `style`, so an agent can tell the style it asked for was used. An adapter too old to know `style` leaves it out.
 - **Measurements:** `preview_animation` takes `measure`: one part from another, or from the root, along the rig's forward, up or right, or as a distance, at every time sampled. It returns each value with the least and greatest and when they happen, so a punch's reach past the head, how low the hips sink after a landing and when, or a planted foot's drift is one call. The parts measured are tracked automatically.

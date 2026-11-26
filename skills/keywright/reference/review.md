@@ -25,6 +25,9 @@ others miss.
 - `compare_with` draws another clip along the bottom row at the same times, and reports
   the largest distance between the two at each. Compare each revision with the last, and
   your work with the source clip.
+- After retiming a move, compare matching beats, not matching times: `compare_times`
+  gives the other clip's time for each column (its impact, its contact), read from its
+  markers or keyframes.
 - Each column is labelled with its time.
 
 ## Onion skins

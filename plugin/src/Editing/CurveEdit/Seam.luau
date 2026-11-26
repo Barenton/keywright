@@ -167,11 +167,16 @@ function Seam.apply(where: string, clip: Instance, operation: any, context: Cont
 		)
 	end
 
+	-- The loop is cut and joined at its whole number of frames. A loop that ends a little
+	-- off a frame (0.667 typed for 20/30 of a second) would otherwise put every key that
+	-- comes round the end that little off a frame too. Its stray end key, within a
+	-- millisecond of the frame, is taken as the loop's end and put back on the frame.
+	local period = math.round(frames) / rate
 	-- The loop started so that the range and its blends lie in its middle, on whole frames.
-	local offset = math.round((duration / 2 - (first + last) / 2) * rate) / rate
+	local offset = math.round((period / 2 - (first + last) / 2) * rate) / rate
 	local function onLoop(time: number): number
-		local placed = time % duration
-		return if placed > duration - tolerance then placed - duration else placed
+		local placed = time % period
+		return if placed > period - tolerance then placed - period else placed
 	end
 	local moved = table.clone(operation)
 	moved.time_from = from + offset
@@ -184,7 +189,7 @@ function Seam.apply(where: string, clip: Instance, operation: any, context: Cont
 	for _, track in Store.tracks(clip) do
 		own[track.curve] = Store.keys(track.curve)
 	end
-	startElsewhere(clip, offset, duration)
+	startElsewhere(clip, offset, period)
 	local started: { [Instance]: { Key } } = {}
 	for curve in own do
 		started[curve] = Store.keys(curve)
@@ -195,7 +200,7 @@ function Seam.apply(where: string, clip: Instance, operation: any, context: Cont
 	for curve, keys in started do
 		left[curve] = sameKeys(Store.keys(curve), keys)
 	end
-	startElsewhere(clip, -offset, duration)
+	startElsewhere(clip, -offset, period)
 	-- Where the loop was started while the operation ran; a channel it changed is cut there.
 	local cut = onLoop(-offset)
 	for curve, keys in own do

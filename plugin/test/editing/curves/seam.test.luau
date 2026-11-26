@@ -175,6 +175,40 @@ case("a planted foot is held across a loop's end", function()
 	)
 end)
 
+case("a loop that ends just off a whole frame keeps its keys on frames across the end", function()
+	-- Typed as 0.667 rather than exactly 20/30 seconds, as an agent did: near enough to a
+	-- whole number of frames for a range to run across the end, but the loop must be cut
+	-- and joined at the whole frame, or every key that comes round lands just off a frame.
+	local function made(): any
+		local clip = Kit.blank()
+		local operations = {}
+		for _, joint in { "UpperTorso", "LeftUpperArm" } do
+			table.insert(operations, { type = "set_key", joint = joint, time = 0, rotation = { 0, 0, 0 } })
+			table.insert(operations, { type = "set_key", joint = joint, time = 1 / 3, rotation = { 20, 10, 0 } })
+			table.insert(operations, { type = "set_key", joint = joint, time = 0.667, rotation = { 0, 0, 0 } })
+		end
+		table.insert(operations, { type = "set_properties", loop = true })
+		realRun(clip, operations)
+		return clip
+	end
+	local original = made()
+	local clip = made()
+	realRun(clip, {
+		{ type = "add_offset", joint = "UpperTorso", time_from = 0.6, time_to = 0.1, rotation = { 0, 30, 0 } },
+	})
+	local worst = 0
+	for _, key in keysOf(clip, "UpperTorso", "rotation.y") do
+		worst = math.max(worst, math.abs(key.time * 30 - math.round(key.time * 30)))
+	end
+	check("every key of the channel it changed is on a whole frame", worst < 1e-4, worst / 30)
+	check(
+		"a channel it does not change keeps its keys, the stray end key too",
+		sameKeys(keysOf(clip, "UpperTorso", "rotation.x"), keysOf(original, "UpperTorso", "rotation.x"))
+	)
+	local added = value(clip, "UpperTorso", "rotation.y", 2 / 30) - value(original, "UpperTorso", "rotation.y", 2 / 30)
+	check("the range across the end has the offset", math.abs(math.deg(added) - 30) < 0.1, math.deg(added))
+end)
+
 case("what a range across a loop's end cannot be", function()
 	local plain = lopsided()
 	check(

@@ -302,7 +302,7 @@ export function renderStrip(frames: PosePart[][], views: ViewName[], tile: numbe
 	if (!Number.isInteger(tile) || tile < MIN_TILE || tile > MAX_TILE || tile * frames.length > MAX_WIDTH) {
 		throw new Error("the picture size is outside the limits");
 	}
-	return drawCells(views.map((view) => frames.map((parts) => ({ parts, view }))), tile, rest, true, labels);
+	return drawCells(views.map((view) => frames.map((parts) => ({ parts, view }))), tile, rest, true, labels ? [labels] : undefined);
 }
 
 interface Cell {
@@ -333,7 +333,8 @@ export function framing(all: Box[], rest: PosePart[] | undefined, tight: boolean
 /** The colour a label is drawn in. */
 export const LABEL: Colour = [40, 40, 40];
 
-function drawCells(cells: Cell[][], tile: number, rest: PosePart[] | undefined, tight: boolean, labels?: string[]): { png: Buffer; width: number; height: number } {
+/** `labels` holds a row of labels for each row of cells, or none for a row. */
+function drawCells(cells: Cell[][], tile: number, rest: PosePart[] | undefined, tight: boolean, labels?: Array<string[] | undefined>): { png: Buffer; width: number; height: number } {
 	const drawn = cells.map((row) => row.map((cell) => boxesOf(cell.parts)));
 	const { centre, pixelsPerStud } = framing(drawn.flat(2), rest, tight, tile);
 
@@ -356,7 +357,9 @@ function drawCells(cells: Cell[][], tile: number, rest: PosePart[] | undefined, 
 	}
 	// Each column's time, in its top left corner, so that a frame can be named.
 	const dot = dotFor(tile);
-	labels?.slice(0, columns).forEach((label, column) => drawLabel(image, width, height, column * tile + 3 * dot, 3 * dot, label, LABEL, dot));
+	labels?.slice(0, rows).forEach((row, index) =>
+		row?.slice(0, columns).forEach((label, column) => drawLabel(image, width, height, column * tile + 3 * dot, index * tile + 3 * dot, label, LABEL, dot)),
+	);
 	const png = encodePng(width, height, image);
 	// What is sent on is held to the same rules as any other image the relay passes.
 	const checked = inspectPng(png);
@@ -368,10 +371,10 @@ function drawCells(cells: Cell[][], tile: number, rest: PosePart[] | undefined, 
  * Draws two clips at the same moments, one above the other: the first along the top row,
  * the second along the bottom, a column for each moment, all from one direction.
  */
-export function renderComparison(first: PosePart[][], second: PosePart[][], view: ViewName, tile: number, rest?: PosePart[], labels?: string[]): { png: Buffer; width: number; height: number } {
+export function renderComparison(first: PosePart[][], second: PosePart[][], view: ViewName, tile: number, rest?: PosePart[], labels?: string[], otherLabels?: string[]): { png: Buffer; width: number; height: number } {
 	if (first.length < 2 || first.length > MAX_FRAMES || second.length !== first.length) throw new Error("a comparison has from two to eight frames of each clip");
 	if (!Number.isInteger(tile) || tile < MIN_TILE || tile > MAX_TILE || tile * first.length > MAX_WIDTH) {
 		throw new Error("the picture size is outside the limits");
 	}
-	return drawCells([first, second].map((frames) => frames.map((parts) => ({ parts, view }))), tile, rest, true, labels);
+	return drawCells([first, second].map((frames) => frames.map((parts) => ({ parts, view }))), tile, rest, true, [labels, otherLabels]);
 }

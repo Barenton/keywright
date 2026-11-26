@@ -97,8 +97,15 @@ export function renderResult(params: unknown, payload: unknown): { payload: unkn
 				// The same moments of another clip: this clip along the top, that one below.
 				const other = pose.compare.map((parts: unknown) => parsePose({ parts }));
 				const view = rows[0] as ViewName;
-				const both = renderComparison(frames, other, view, each, resting, times);
-				rest.render = { status: "ok", layout: "one column for each time in order, labelled with the time in seconds; top row this clip, bottom row the clip it is compared with", views: [view], frames: frames.length, width: both.width, height: both.height, legend, style };
+				// When the other clip was sampled at its own times, its row is labelled with them.
+				const differences = isRecord(rest.compared) && Array.isArray(rest.compared.differences) ? rest.compared.differences : [];
+				const otherTimes = differences.map((entry) => (isRecord(entry) && typeof entry.other_time === "number" ? timeLabel(entry.other_time) : undefined));
+				const paired = otherTimes.length > 0 && otherTimes.every((label) => label !== undefined);
+				const both = renderComparison(frames, other, view, each, resting, times, paired ? (otherTimes as string[]) : undefined);
+				const layout = paired
+					? "one column for each pair of times in order; top row this clip at times, labelled with them, bottom row the clip it is compared with at compare_times, labelled with those"
+					: "one column for each time in order, labelled with the time in seconds; top row this clip, bottom row the clip it is compared with";
+				rest.render = { status: "ok", layout, views: [view], frames: frames.length, width: both.width, height: both.height, legend, style };
 				return { payload: rest, image: both.png.toString("base64") };
 			}
 			const strip = renderStrip(frames, rows, each, resting, times);

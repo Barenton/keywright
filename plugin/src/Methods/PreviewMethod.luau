@@ -53,6 +53,23 @@ function PreviewMethod.install(methods: { [string]: (params: any) -> any }, kit:
 			end
 			times = params.times
 		end
+		-- The other clip's own times, one for each of times, when a move has been retimed:
+		-- its impact compared with this clip's impact, wherever each falls.
+		local otherTimes: { number }? = nil
+		if params.compare_times ~= nil then
+			if params.compare_with == nil or times == nil then
+				Errors.throw("INVALID_ARGUMENT", "compare_times goes with times and compare_with.")
+			end
+			if type(params.compare_times) ~= "table" or #params.compare_times ~= #(times :: { number }) then
+				Errors.throw("INVALID_ARGUMENT", "compare_times must list one time for each of times.")
+			end
+			for _, value in params.compare_times do
+				if not usableTime(value) then
+					Errors.throw("INVALID_ARGUMENT", `Every time must be from 0 to {Edit.MAX_TIME} seconds.`)
+				end
+			end
+			otherTimes = params.compare_times
+		end
 		-- A number of samples asks for the motion over the whole clip: that many moments,
 		-- evenly spread, with the parts tracked at each.
 		local samples: number? = nil
@@ -254,7 +271,7 @@ function PreviewMethod.install(methods: { [string]: (params: any) -> any }, kit:
 			local frames, poses, moments = {}, {}, {}
 			local shownTimes: { number } = {}
 			local otherPoses, differences = {}, {}
-			for _, at in times do
+			for index, at in times do
 				if Clips.revisionOf(working) ~= revision then
 					Errors.throw(
 						"PREVIEW_UNAVAILABLE",
@@ -285,10 +302,11 @@ function PreviewMethod.install(methods: { [string]: (params: any) -> any }, kit:
 					table.insert(poses, Pose.parts(scan, sample.transforms, CFrame.new()))
 				end
 				if other then
+					local otherAt = if otherTimes then otherTimes[index] else at
 					local second = Preview.run({
 						model = model,
 						sequence = other,
-						time = at,
+						time = otherAt,
 						joints = sampledJoints,
 						parent = workspace,
 					})
@@ -299,6 +317,7 @@ function PreviewMethod.install(methods: { [string]: (params: any) -> any }, kit:
 					)
 					table.insert(differences, {
 						time = shown,
+						other_time = if otherTimes then otherAt else nil,
 						studs = math.round(apart.studs * 1000) / 1000,
 						degrees = math.round(apart.degrees * 100) / 100,
 						part = apart.worst,
