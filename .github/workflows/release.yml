@@ -42,12 +42,6 @@ jobs:
       - run: npm run build:release
       - name: Check the single-file adapter
         run: test "$(node build/release/keywright.mjs version)" = "${GITHUB_REF_NAME#v}"
-      - name: Publish the npm package
-        # Off until trusted publishing is set up for this repository on npmjs.com and the
-        # repository variable NPM_PUBLISH is set to true. Trusted publishing needs npm 11.5 or
-        # later, newer than the npm that comes with Node 22, so npm 11 is run through npx.
-        if: vars.NPM_PUBLISH == 'true'
-        run: npx -y npm@11 publish ./build/release --provenance --access public
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -59,3 +53,12 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             build/release/keywright.mjs build/release/Keywright.rbxm build/release/THIRD_PARTY_LICENSES.txt \
             --title "$GITHUB_REF_NAME" --notes-file build/notes.md --verify-tag $prerelease
+      - name: Publish the npm package
+        # Last, so that the GitHub release is out whatever npm says. Off until trusted
+        # publishing is set up for this repository on npmjs.com and the repository variable
+        # NPM_PUBLISH is set to true. The trusted publisher may only stage a version: a
+        # maintainer then approves it on npmjs.com before it goes live. Trusted publishing
+        # needs npm 11.5 or later, newer than the npm that comes with Node 22, so npm 11 is
+        # run through npx.
+        if: vars.NPM_PUBLISH == 'true'
+        run: npx -y npm@11 publish ./build/release --provenance --access public
