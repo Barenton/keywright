@@ -4,6 +4,8 @@ What changed in each release of Keywright. The plugin and the adapter are releas
 
 ## [Unreleased]
 
+- **The Animation Editor can block changes after all:** while it played a clip, Studio refused every Keywright change until it was closed. The docs and the plugin's message now say to close it.
+- **Keywright skill:** each problem found in an agent's run cycle is now a check, not just advice: the hips must keep sinking 2–3 frames after every landing, no limb may stop partway through a swing, a stance rolls onto the toe for the push-off, frame times are written exactly, and `reduce_keys` runs before saving.
 - **Guidance for agents:** every AI app is now sent instructions when it connects: plan the key poses, look at a pose strip after every revision as well as the motion plot, and don't take a clip that validates as finished. The tool reference shows them.
 - **Keywright skill:** `skills/keywright/` teaches an agent an animator's workflow on Keywright's tools: planning and blocking key poses, reviewing every revision, body mechanics, contacts and loops, and when an animation is done. Its references cover which way R15 joints turn, timing and method for common moves, and what to change for each kind of problem. Claude Code users can copy the folder into `~/.claude/skills/`.
 

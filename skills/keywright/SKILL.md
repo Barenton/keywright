@@ -52,8 +52,10 @@ Write the plan out, in your reply or your notes, before editing:
 - Pose **from the hips outward**: `LowerTorso` (the hips carry the weight and lead most
   moves), then `UpperTorso`, then the head, then the limbs, then the hands and feet.
 - Key **only** the key poses. Don't add in-betweens yet: you'll want to move the keys.
-- Curve clips: keys on whole frames (multiples of 1/30 s). A joint first keyed later than
-  0 starts from its rest pose at 0; key it at 0 too if it should start somewhere else.
+- Curve clips: keys on whole frames (multiples of 1/30 s), written exactly: `0.0333333`,
+  `0.6666667`, not `0.033` or `0.667`, which land between frames. A joint first keyed
+  later than 0 starts from its rest pose at 0; key it at 0 too if it should start
+  somewhere else.
 
 ### 4. Look at every key pose
 
@@ -85,6 +87,10 @@ Now make it move well between the poses. Check each with the motion plot
   freeze. In a hold, keep something drifting: breathing, a slow settle, the head adjusting.
 - **Arcs.** Hands, feet and the head travel in curves. A path with no bow is a straight,
   robotic line.
+- **No stops mid-swing.** A limb that comes to rest at a key in the middle of a swing, then
+  whips on, pops. Put each swing's extreme where the limb really turns round (a runner's
+  thigh, just after toe-off), and let the keys either side carry it through. A large
+  `largest_speed_jump` in the motion summary points at it.
 - **Anticipation.** A small move the opposite way before a big one: a dip before a jump, a
   draw back before a punch, a lean before a run.
 - **Asymmetry.** Mirror-image poses, both sides doing the same thing at once ("twinning"),
@@ -95,8 +101,16 @@ Now make it move well between the poses. Check each with the motion plot
 
 Body first, then feet: `place_on_floor` sets the hips height; then `pin` holds each foot
 while it's planted; `clear_floor` lifts a swinging foot that scuffs. Re-check the feet
-after **any** change to the hips or legs. Details for walks, landings and kneeling are in
-[reference/moves.md](reference/moves.md).
+after **any** change to the hips or legs. If `pin` reports frames out of reach, the hips
+are too far from the foot there: lower them, end the pin earlier, or roll the foot onto
+its toe (`pivot: "toe"`) for the last frames of the stance. Details for walks, landings
+and kneeling are in [reference/moves.md](reference/moves.md).
+
+**Weight on landing.** For every landing (each step of a walk or run, a jump, a fall),
+`track` `LowerTorso` through it: the hips must keep going down for 2–3 frames after the
+foot touches, be lowest then, and not hold still while the foot is planted. Hips that are
+lowest at the moment of contact, or still through the stance, make the body bounce off the
+floor as if it weighed nothing.
 
 ### 7. Check, review, and know when it's done
 
@@ -111,9 +125,12 @@ It's done when **all** of these hold:
 - The motion has no stops, pops or straight lines you didn't plan.
 - Planted feet stay planted, nothing sinks into the floor, and swinging feet clear it.
 - A loop closes: last pose equals first.
+- Every landing absorbs: the hips are lowest 2–3 frames after contact (checked with `track`).
+- No limb stops mid-swing: no large speed jump you didn't plan in the motion summary.
 - `validate_animation` has no errors, and every warning is one you meant. A strike's
   speed can be meant; a sliding foot in a walk isn't.
 - You have looked at a strip of the **final** revision, not an earlier one.
+- You've run `reduce_keys` over the clip, so a person can still edit its curves.
 
 ### 8. Save and hand over
 
@@ -123,6 +140,13 @@ It's done when **all** of these hold:
   you'd try next. Ask the person to play it in the Animation Editor: pose pictures are
   schematics, so how it really looks is their call.
 - On feedback, edit the working copy, then repeat steps 4–7 on the parts that changed.
+
+## If Studio refuses a change
+
+`STUDIO_NOT_IN_EDIT_MODE` means Studio wouldn't start an undo step, so Keywright made no
+change. Ask the person to close the Animation Editor, especially if it's playing a clip,
+then try again. If that isn't it, something else is in progress in Studio, such as a
+dialog or a drag.
 
 ## Habits that separate good results from bad
 

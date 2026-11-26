@@ -46,15 +46,32 @@ and snappier, slower as heavier or tired.
 - **Upper body:** arms swing opposite the legs, with `overlap` on the forearms. The chest
   turns opposite the hips. `aim` with `hold` steadies the head.
 - **Check:** a pose strip at contact, down, passing and up from the side; `validate` for
-  `FOOT_SLIDE` and `FOOT_SCUFF`; a motion plot for even speed through the cycle.
+  `FOOT_SLIDE` and `FOOT_SCUFF`; a motion plot for even speed through the cycle; and `track`
+  `LowerTorso` at every frame of one step: lowest 2–3 frames after contact, never holding.
 
 ## Run cycle
 
 - 14–20 frames. Faster and longer flight than a walk, with **no** frame where both feet
   touch: each foot's stance is short, and both are in the air between.
-- A forward lean (hips and chest −X), knees driven high, the heel kicking up behind after
-  push-off, arms pumping in arcs with bent elbows.
-- Hips lowest at mid-stance, highest in flight. Build and pin as for a walk.
+- A forward lean (hips and chest −X, about 10–15° together) with the head tipped back to
+  stay level, the chest twisting against the hips, arms pumping in arcs with the elbows
+  bent near 90°.
+- **The hips' height over one step** (contact at frame 0, a 10-frame step): coming down
+  at contact, still sinking for 2 frames (the absorb, lowest at frame 2), rising through
+  push-off, highest in mid-flight, falling to the next contact. Key the hips' position
+  and run `auto_tangents` on them; don't leave it to the legs.
+- **The stance:** pin the foot flat from contact for about two-thirds of the stance, then
+  `pivot: "toe"` with a `roll` of 25–35 for the push-off, both with the same `travel`.
+  Pinning flat through toe-off leaves the leg out of reach as the hips rise.
+- **The swing:** the thigh turns round just after toe-off and swings forward smoothly; it
+  must not stop partway. The knee folds as the foot passes under the body, the foot well
+  clear of the floor (a few tenths of a stud on a standard rig), then the leg reaches
+  forward and pulls back so the foot lands moving with the floor.
+- Build the cycle as for a walk.
+- **Check:** `track` `LowerTorso` over a step (lowest 2–3 frames after contact); `track`
+  the feet at passing for clearance; the motion summary for a speed jump in the feet (a
+  thigh stopping mid-swing); and that the head doesn't simply ride the hips (`aim` with
+  `hold`, about half weight, steadies it).
 
 ## Idle
 
@@ -88,6 +105,8 @@ and snappier, slower as heavier or tired.
 
 - The hips must rise **with** the legs straightening, or the feet push into the floor just
   before take-off. Add hip keys there if a strip or `track` shows it.
+- **Check the absorb** with `track` on `LowerTorso`: lowest several frames after
+  touchdown, not at it.
 - Pin a landing at the **settled** pose (`at` set to the end of the range), not at
   touchdown, or the foot is held where it first touched. End the pin, and any `blend_out`,
   where the foot leaves the floor, or it slides.

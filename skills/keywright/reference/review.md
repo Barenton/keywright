@@ -60,6 +60,9 @@ in curve clips: that is Studio's frame rate, not a problem.
 | Frozen in places | Every part easing to rest at the same moment | Keep something moving through holds; offset the settles |
 | Floaty | Too slow, or too even, especially falls and landings | Fewer frames on the fall, faster into contact, a stronger absorb |
 | Weightless | No anticipation, no absorb, hips not over the support | Add a load before and a settle after; fix the balance in the key poses |
+| Bouncy, landing on a hard floor | Hips lowest at the moment of contact and rising at once, or holding still through the stance | Keep the hips sinking 2–3 frames after contact; key their height and `auto_tangents` them |
+| A pop at the end of a swing | A limb at rest at a key mid-swing, then whipping on (a zero tangent where it doesn't turn round) | Move the extreme to where the limb really turns round; let the next key sit on the way through |
+| A leg out of reach near toe-off | The foot pinned flat while the hips rise away from it | End the flat pin earlier and roll onto the toe for the push-off |
 | Popping | A key far from its neighbours, or a joint flipping through a big angle | Look at the motion plot's speed jump; add a breakdown key or reduce the angle |
 | Swimming | Too much `overlap`, or noise on everything | Lower the lag or weight; keep noise on a few joints |
 | Like a pendulum | Limbs swinging from one joint only | Bend the next joint too: elbows with shoulders, knees with hips |
