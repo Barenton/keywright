@@ -2,7 +2,7 @@
 
 | What you see | What to do |
 |---|---|
-| Edits or saves fail with `STUDIO_NOT_IN_EDIT_MODE` | Studio refused to start an undo step, and Keywright makes no change you couldn't undo. Finish whatever is in progress in Studio, such as a dialog or a drag, and try again. If it says an earlier Keywright change hasn't finished, wait for it, or reload the plugin. |
+| Edits or saves fail with `STUDIO_NOT_IN_EDIT_MODE` | Studio refused to start an undo step, and Keywright makes no change you couldn't undo. Close the Animation Editor if it's open, especially if it's playing a clip, then try again. Otherwise finish whatever is in progress in Studio, such as a dialog or a drag. If it says an earlier Keywright change hasn't finished, wait for it, or reload the plugin. |
 | The agent can't find a Studio window | Check that the Keywright panel says **Connected to the broker**. If you just reinstalled the plugin, reconnect Keywright in your AI app. |
 | The panel says the plugin or the adapter is older | Update the one it names, as in [Updating](guide.md#updating). The panel reconnects on its own once they match. |
 | The panel says **Pairing is needed again** | Turn agent access off and on to get a new code, then pair again: tell your AI app the code, or run `npx -y keywright pair <code>`. |

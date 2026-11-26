@@ -20,7 +20,7 @@ The agent will usually:
 4. look at pictures of poses, and check the clip for problems such as feet sliding or sinking into the floor;
 5. save it as a new clip.
 
-To see the result, select the rig, open the **Animation Editor**, and load the saved clip. You can keep the Animation Editor open while the agent works. One Studio undo (**Ctrl+Z**) reverts any single batch of edits or a save.
+To see the result, select the rig, open the **Animation Editor**, and load the saved clip. Close the Animation Editor while the agent works: while it plays a clip, Studio can refuse the agent's changes. One Studio undo (**Ctrl+Z**) reverts any single batch of edits or a save.
 
 ### Tips
 

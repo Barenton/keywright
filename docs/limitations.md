@@ -40,7 +40,7 @@ What Keywright doesn't do, or doesn't do yet, and what has not been tried.
 ## Working copies and Studio
 
 - **One request at a time per Studio window.** A Studio window answers requests in order. The plugin stops waiting for a request after 90 seconds and moves on to the next one.
-- **Studio can refuse undo steps.** Keywright makes no change it couldn't undo, so when Studio won't start an undo step, the change is refused. This was seen once, with the Animation Editor open, but not again when retried on 2026-11-26 with the editor open, with a clip loaded and with it playing, so the cause isn't known.
+- **Studio can refuse undo steps.** Keywright makes no change it couldn't undo, so when Studio won't start an undo step, the change is refused. It happens with the Animation Editor open: on 2026-11-26, while it played a clip (probably a looping one, which keeps it playing), every change was refused until it was closed. Undo was not greyed out. With the editor open and a clip loaded, or after it had played a short clip through, changes went through. Closing the editor while the agent works avoids it.
 - **Playtests don't see edits.** During Play or Run, Studio runs a copy of the place. The agent's edits go to the place being edited, not to the running copy, and show once the playtest stops.
 - **Revisions jump after an undo.** Undoing an edit gives the working copy a new revision, and the number can jump by more than one. Read the clip again before the next edit.
 - **A working copy outlives its rig.** If the rig is deleted, its working copies stay in the place, but `get_workspace` no longer lists them; it counts them in `unassigned_working_copies`. They are listed again if the rig comes back, for example by an undo.

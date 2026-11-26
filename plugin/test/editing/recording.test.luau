@@ -110,7 +110,11 @@ case("a refusal that is not ours points at what Studio has in progress", functio
 		Recording.begin("Name", "Display")
 	end)
 	check("refused", type(problem) == "table" and problem.code == "STUDIO_NOT_IN_EDIT_MODE")
-	check("hint says to finish what is in progress", string.find(problem.hint, "in progress in Studio") ~= nil)
+	check(
+		"hint names the Animation Editor and what else may be in progress",
+		string.find(problem.hint, "Animation Editor", 1, true) ~= nil
+			and string.find(problem.hint, "in progress in Studio", 1, true) ~= nil
+	)
 	check("nothing of ours is open", not Recording.isOpen())
 	check("nothing to abandon", Recording.abandon() == false and state.open == "someone else's")
 end)
