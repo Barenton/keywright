@@ -22,6 +22,9 @@ and snappier, slower as heavier or tired.
 - A kick's **chamber** (knee up, foot tucked) comes before the extension and again before
   the foot comes down. Without the second, the leg swings like a pendulum.
 - The non-striking arm guards the face or pulls back to balance the strike.
+- **Check:** the reach at impact with `measure` (the fist from the head, `forward`, the
+  impact's time in `times`); and an onion skin of the drive with the fist tracked: the arm
+  should turn round once, at the load, and the fist travel in a slight arc to the target.
 - Keep the planted foot pinned; let the rear heel lift on a punch (`pin` with `pivot: "toe"`).
 
 ## Walk cycle (looping, made on the spot)
@@ -46,8 +49,8 @@ and snappier, slower as heavier or tired.
 - **Upper body:** arms swing opposite the legs, with `overlap` on the forearms. The chest
   turns opposite the hips. `aim` with `hold` steadies the head.
 - **Check:** a pose strip at contact, down, passing and up from the side; `validate` for
-  `FOOT_SLIDE` and `FOOT_SCUFF`; a motion plot for even speed through the cycle; and `track`
-  `LowerTorso` at every frame of one step: lowest 2–3 frames after contact, never holding.
+  `FOOT_SLIDE` and `FOOT_SCUFF`; a motion plot for even speed through the cycle; and `measure`
+  `LowerTorso` `up` at every frame of one step: lowest 2–3 frames after contact, never holding.
 
 ## Run cycle
 
@@ -75,8 +78,8 @@ and snappier, slower as heavier or tired.
   clear of the floor (a few tenths of a stud on a standard rig), then the leg reaches
   forward and pulls back so the foot lands moving with the floor.
 - Build the cycle as for a walk.
-- **Check:** `track` `LowerTorso` over a step (lowest 2–3 frames after contact); `track`
-  the feet at passing for clearance; the motion summary for a speed jump in the feet (a
+- **Check:** `measure` `LowerTorso` `up` over a step (lowest 2–3 frames after contact);
+  the feet's height at passing for clearance; the motion summary for a speed jump in the feet (a
   thigh stopping mid-swing); that the head doesn't simply ride the hips (`aim` with
   `hold`, about half weight, steadies it); a side strip at the arms' extremes, where the
   back hand should reach the hip or behind it; and a front strip for how far apart the
@@ -114,7 +117,7 @@ and snappier, slower as heavier or tired.
 
 - The hips must rise **with** the legs straightening, or the feet push into the floor just
   before take-off. Add hip keys there if a strip or `track` shows it.
-- **Check the absorb** with `track` on `LowerTorso`: lowest several frames after
+- **Check the absorb** with `measure` `LowerTorso` `up`: lowest several frames after
   touchdown, not at it.
 - Pin a landing at the **settled** pose (`at` set to the end of the range), not at
   touchdown, or the foot is held where it first touched. End the pin, and any `blend_out`,

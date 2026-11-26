@@ -7,7 +7,8 @@ others miss.
 |---|---|---|
 | Pose strip: `preview_animation` with `times` and `render: true` | Whether each pose reads, silhouettes, clipping, balance | Timing and spacing between the frames |
 | Motion plot: `preview_animation` with `samples` and `render: true` | Paths, speed over time, holds, pops, straight lines | Whether any pose reads |
-| Numbers: `track`, `compare_with`, `validate_animation` | Exact heights, positions, differences, contacts | Everything about taste |
+| Onion skin: `preview_animation` with `times`, `render: true` and `onion: true` | How a limb travels between poses: where it turns round, arcs, spacing | Each pose on its own |
+| Numbers: `measure`, `track`, `compare_with`, `validate_animation` | Exact reach, heights, drift, differences, contacts | Everything about taste |
 
 ## Pose strips
 
@@ -24,6 +25,31 @@ others miss.
 - `compare_with` draws another clip along the bottom row at the same times, and reports
   the largest distance between the two at each. Compare each revision with the last, and
   your work with the source clip.
+- Each column is labelled with its time.
+
+## Onion skins
+
+`onion: true` with 3–7 neighbouring `times` draws them over each other in one picture: the
+last solid, earlier ones fainter. Name the limb you're judging in `track` (a hand or foot):
+its whole arm or leg is drawn stronger, with its path through the frames and a numbered
+dot at each (1 is the first time). Use `style: "slim"`, and the view that shows the move.
+Look for where the limb turns round (is it where the plan says?), whether the path bows
+into an arc, and the spacing of the dots: bunched is slow, spread out is fast.
+
+## Measurements
+
+`measure` turns a check into a number at every time sampled, with the least and greatest
+and when they happen:
+
+| Check | Measure |
+|---|---|
+| A punch's reach at impact | `{part: "RightHand", relative_to: "Head", along: "forward"}`, with the impact's time in `times` |
+| The absorb after a landing | `{part: "LowerTorso", along: "up"}` over the landing: `least` should come 2–3 frames after contact |
+| A planted foot's drift | `{part: "LeftFoot", along: "forward"}` over its stance: `change` near zero (or steady in a cycle on the spot) |
+| How far apart the feet land | `{part: "LeftFoot", relative_to: "RightFoot", along: "right"}` at each contact |
+| Swing-foot clearance | `{part: "RightFoot", along: "up"}` at passing, against its height when planted |
+
+To read a value at a marker, put the marker's time in `times`.
 
 ## Motion summary
 

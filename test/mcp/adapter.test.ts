@@ -97,6 +97,10 @@ describe("MCP adapter over stdio", () => {
 					// As Studio encodes an empty table.
 					joints: [],
 					...(input.render === true ? { pose } : {}),
+					// Each tracked part, as the plugin places it: the head above, a hand in front.
+					...(Array.isArray(input.track)
+						? { parts: Object.fromEntries(input.track.map((name) => [name, { position: name === "Head" ? [0, 2, 0] : [1, 1, -1.5] }])) }
+						: {}),
 				};
 			}
 			return { method, params };
@@ -145,7 +149,7 @@ describe("MCP adapter over stdio", () => {
 		);
 		// A picture and a save are both asked for through documented inputs.
 		const properties = (name: string) => Object.keys((tools.find((tool) => tool.name === name)?.inputSchema.properties ?? {}) as object);
-		assert.ok(["render", "views", "render_size", "check_placement", "times", "track", "compare_with", "samples"].every((key) => properties("preview_animation").includes(key)));
+		assert.ok(["render", "views", "render_size", "check_placement", "times", "track", "compare_with", "samples", "style", "measure", "onion"].every((key) => properties("preview_animation").includes(key)));
 		assert.deepEqual(properties("save_animation").sort(), ["clip_id", "expected_revision", "name", "replace_source", "studio_session"]);
 		// An edit can be checked in the same call.
 		assert.deepEqual(properties("edit_animation").sort(), ["clip_id", "expected_revision", "operations", "studio_session", "validate"]);
@@ -399,6 +403,21 @@ describe("MCP adapter over stdio", () => {
 		assert.equal(isError, true);
 		assert.doesNotMatch(content[0]?.text ?? "", /iVBORw0KGgo|data:image/);
 		assert.match(content[0]?.text ?? "", /UNSUPPORTED_RIG/);
+	});
+
+	test("a measurement asks the plugin to track its parts and is worked out from their positions", async () => {
+		const { json } = await callTool("preview_animation", {
+			studio_session: SESSION,
+			clip_id: "clip_1",
+			time: 0.5,
+			track: ["LeftFoot"],
+			measure: [{ part: "RightHand", relative_to: "Head", along: "forward" }],
+		});
+		const sent = plugin.received.at(-1)?.params as { track?: string[] };
+		assert.deepEqual(sent.track, ["LeftFoot", "RightHand", "Head"]);
+		assert.deepEqual(json.measured, [
+			{ part: "RightHand", relative_to: "Head", along: "forward", values: [[0.5, 1.5]], least: { value: 1.5, time: 0.5 }, greatest: { value: 1.5, time: 0.5 }, change: 0 },
+		]);
 	});
 
 	test("a picture of the pose is drawn by the relay and returned as an image block", async () => {

@@ -1,9 +1,12 @@
 # Changelog
 
-What changed in each release of Keywright. The plugin and the adapter are released together under one version number. Before 1.0, a new minor version (0.2, 0.3, ...) may change how things work; a new patch version (0.2.1) only fixes things.
+What changed in each release of Keywright. The plugin and the adapter are released together under one version number. Before 1.0, a new minor version (0.2, 0.3, ...) may change how things work; a new patch version (0.2.1) only fixes things. New features always come in a new minor version, even when nothing else changes. A change that needs something done after upgrading is marked **Breaking**.
 
 ## [Unreleased]
 
+- **Measurements:** `preview_animation` takes `measure`: one part from another, or from the root, along the rig's forward, up or right, or as a distance, at every time sampled. It returns each value with the least and greatest and when they happen, so a punch's reach past the head, how low the hips sink after a landing and when, or a planted foot's drift is one call. The parts measured are tracked automatically.
+- **Onion skin:** `preview_animation` with `times`, `render` and `onion: true` draws the moments over each other, the last solid and earlier ones fainter. Each tracked part's arm or leg is drawn stronger, with its path through the frames and a numbered dot at each, which shows where a limb turns round and whether it moves in an arc.
+- **Labelled strips:** each column of a pose strip, and of a comparison, now shows its time.
 ## [0.5.0] - 2026-11-26
 
 - **Slim pose pictures:** `preview_animation` takes `style: "slim"`, which draws the arms and legs thin along their length, so limb angles, elbow and knee bends and arm swings read; on a blocky rig, boxes hide them. The default boxes are unchanged.

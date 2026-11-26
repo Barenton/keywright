@@ -10,6 +10,7 @@
 // a dark mark on its front, and each view is drawn without perspective at one common scale.
 
 import { inspectPng } from "./image.js";
+import { dotFor, drawLabel } from "./label.js";
 import { encodePng } from "./png.js";
 import { add, type Colour, cross, dot, isRecord, scale, sub, unit, type Vec } from "./vector.js";
 
@@ -203,8 +204,13 @@ export class Tile {
 	}
 }
 
-export function drawView(boxes: Box[], view: ViewName, size: number, centre: Vec, pixelsPerStud: number): Tile {
-	const tile = new Tile(size);
+/**
+ * Draws boxes from one direction. Into a new tile, or over what `into` already holds: then
+ * what was there before stays where these boxes don't cover it, whatever its depth.
+ */
+export function drawView(boxes: Box[], view: ViewName, size: number, centre: Vec, pixelsPerStud: number, into?: Tile): Tile {
+	const tile = into ?? new Tile(size);
+	if (into) tile.depth.fill(Infinity);
 	const { right, up, forward } = basisOf(view);
 	const light = unit(add(scale(forward, -0.7), add(scale(up, 0.6), scale(right, -0.35))));
 	const project = (point: Vec): Vec => {
@@ -290,13 +296,13 @@ export const MAX_STRIP_VIEWS = 2;
  * given, and one row for each view. Every tile has the same framing, so a part that does
  * not move is in the same place in every column.
  */
-export function renderStrip(frames: PosePart[][], views: ViewName[], tile: number, rest?: PosePart[]): { png: Buffer; width: number; height: number } {
+export function renderStrip(frames: PosePart[][], views: ViewName[], tile: number, rest?: PosePart[], labels?: string[]): { png: Buffer; width: number; height: number } {
 	if (frames.length < 2 || frames.length > MAX_FRAMES) throw new Error("a filmstrip has from two to eight frames");
 	if (views.length === 0 || views.length > MAX_STRIP_VIEWS) throw new Error("a filmstrip is drawn from one or two views");
 	if (!Number.isInteger(tile) || tile < MIN_TILE || tile > MAX_TILE || tile * frames.length > MAX_WIDTH) {
 		throw new Error("the picture size is outside the limits");
 	}
-	return drawCells(views.map((view) => frames.map((parts) => ({ parts, view }))), tile, rest, true);
+	return drawCells(views.map((view) => frames.map((parts) => ({ parts, view }))), tile, rest, true, labels);
 }
 
 interface Cell {
@@ -309,16 +315,27 @@ interface Cell {
  * `tight` frames the grid to hold just its own poses and the rest pose; otherwise room is
  * left around the rest pose so that separate pictures line up with each other.
  */
-function drawCells(cells: Cell[][], tile: number, rest: PosePart[] | undefined, tight: boolean): { png: Buffer; width: number; height: number } {
-	const drawn = cells.map((row) => row.map((cell) => boxesOf(cell.parts)));
-	const all = drawn.flat(2);
+/**
+ * Where to centre a set of boxes, and at what scale, to fit them in a tile. With the rig's
+ * rest pose, it is framed on that; `tight` then leaves just enough room for these boxes,
+ * and otherwise room is left around the rest pose so that separate pictures line up.
+ */
+export function framing(all: Box[], rest: PosePart[] | undefined, tight: boolean, tile: number): { centre: Vec; pixelsPerStud: number } {
 	let { centre, reach } = extentOf(all);
 	if (rest && rest.length > 0) {
 		const frame = extentOf(boxesOf(rest));
 		centre = frame.centre;
 		reach = tight ? Math.max(frame.reach, extentOf(all, centre).reach) * 1.05 : Math.max(frame.reach * REST_MARGIN, extentOf(all, centre).reach);
 	}
-	const pixelsPerStud = (tile / 2 - tile * 0.06) / Math.max(reach, 0.5);
+	return { centre, pixelsPerStud: (tile / 2 - tile * 0.06) / Math.max(reach, 0.5) };
+}
+
+/** The colour a label is drawn in. */
+export const LABEL: Colour = [40, 40, 40];
+
+function drawCells(cells: Cell[][], tile: number, rest: PosePart[] | undefined, tight: boolean, labels?: string[]): { png: Buffer; width: number; height: number } {
+	const drawn = cells.map((row) => row.map((cell) => boxesOf(cell.parts)));
+	const { centre, pixelsPerStud } = framing(drawn.flat(2), rest, tight, tile);
 
 	const rows = cells.length;
 	const columns = (cells[0] as Cell[]).length;
@@ -337,6 +354,9 @@ function drawCells(cells: Cell[][], tile: number, rest: PosePart[] | undefined, 
 			if (row > 0) for (let x = 0; x < tile; x += 1) image.set(SEPARATOR, (row * tile * width + column * tile + x) * 3);
 		}
 	}
+	// Each column's time, in its top left corner, so that a frame can be named.
+	const dot = dotFor(tile);
+	labels?.slice(0, columns).forEach((label, column) => drawLabel(image, width, height, column * tile + 3 * dot, 3 * dot, label, LABEL, dot));
 	const png = encodePng(width, height, image);
 	// What is sent on is held to the same rules as any other image the relay passes.
 	const checked = inspectPng(png);
@@ -348,10 +368,10 @@ function drawCells(cells: Cell[][], tile: number, rest: PosePart[] | undefined, 
  * Draws two clips at the same moments, one above the other: the first along the top row,
  * the second along the bottom, a column for each moment, all from one direction.
  */
-export function renderComparison(first: PosePart[][], second: PosePart[][], view: ViewName, tile: number, rest?: PosePart[]): { png: Buffer; width: number; height: number } {
+export function renderComparison(first: PosePart[][], second: PosePart[][], view: ViewName, tile: number, rest?: PosePart[], labels?: string[]): { png: Buffer; width: number; height: number } {
 	if (first.length < 2 || first.length > MAX_FRAMES || second.length !== first.length) throw new Error("a comparison has from two to eight frames of each clip");
 	if (!Number.isInteger(tile) || tile < MIN_TILE || tile > MAX_TILE || tile * first.length > MAX_WIDTH) {
 		throw new Error("the picture size is outside the limits");
 	}
-	return drawCells([first, second].map((frames) => frames.map((parts) => ({ parts, view }))), tile, rest, true);
+	return drawCells([first, second].map((frames) => frames.map((parts) => ({ parts, view }))), tile, rest, true, labels);
 }

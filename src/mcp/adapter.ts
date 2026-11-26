@@ -7,6 +7,7 @@ import { IMAGE_METHOD, screenResult, scrub } from "../render/image.js";
 import { compareVersions, ensureBroker } from "../broker/launcher.js";
 import { isValidPairingCode, normalizePairingCode } from "../broker/auth.js";
 import { BridgeError, PAIRING_TTL_MS, type SessionInfo } from "../broker/protocol.js";
+import { ALONG, MAX_MEASURES, measureResult, trackFor } from "../render/measure.js";
 import { MAX_TILE, MAX_VIEWS, MIN_TILE, renderResult, STYLES, VIEWS } from "../render/render.js";
 
 import { studioSession, clipId, time, joint } from "./schemas/common.js";
@@ -27,7 +28,7 @@ export const SERVER_INSTRUCTIONS = `Keywright makes animations for rigs in Roblo
 1. Start with get_workspace. Use pair_studio only with a code the person gives you. Call inspect_rig before posing: its turns say which way each joint moves for a positive rotation about X, Y and Z.
 2. Plan before editing. Write down the key poses, when each happens, and what each must read as: for a kick, the chamber, the contact (leg extended, hips turned over) and the recovery. Use curve clips (format "curves") for motion that should flow, with keys on whole frames (multiples of 1/30 s).
 3. Block the key poses first and check them. Then add the in-betweens, overlap, and contacts with the floor (pin, place_on_floor).
-4. After every revision, look at it. preview_animation with times at the key moments and render: true gives a pose strip, which shows whether each silhouette reads. With samples and render: true it gives motion paths and a speed plot, which show stops, pops and corners. Use both: a speed plot cannot tell you whether a pose reads, and a pose strip cannot show timing. Use compare_with to see what a revision changed.
+4. After every revision, look at it. preview_animation with times at the key moments and render: true gives a pose strip, which shows whether each silhouette reads. With samples and render: true it gives motion paths and a speed plot, which show stops, pops and corners. Use both: a speed plot cannot tell you whether a pose reads, and a pose strip cannot show timing. Use compare_with to see what a revision changed, onion: true to see how a limb travels between poses, and measure to turn a check (a punch's reach, how low the hips sink after a landing) into numbers.
 5. validate_animation finds structural errors and measures loops, speeds and feet. Passing it is necessary, not enough. The animation is done when every key moment reads in the pose strip, the motion has no stops you did not plan, feet that should stay planted do, and a loop closes.
 6. Save with save_animation under a new name. Replace a clip the person already has only when they ask, and then they approve it in Studio. Tell the person what you made and ask them to play it in the Animation Editor: the pictures are schematics, not the rig's real look.`;
 
@@ -38,7 +39,8 @@ export const SERVER_INSTRUCTIONS = `Keywright makes animations for rigs in Roblo
 // the relay's own check (see image.ts).
 function ok(method: string, params: unknown, result: unknown): CallToolResult {
 	const screened = screenResult(method, params, result);
-	const drawn = method === IMAGE_METHOD ? renderResult(params, screened.payload) : { payload: screened.payload };
+	// Measurements come first: they use the raw sampled positions, which drawing boils down.
+	const drawn = method === IMAGE_METHOD ? renderResult(params, measureResult(params, screened.payload)) : { payload: screened.payload };
 	// Studio writes an empty set of joints as an empty list; clients are promised an object.
 	const shaped = drawn.payload as { joints?: unknown } | null;
 	if (method === IMAGE_METHOD && shaped !== null && typeof shaped === "object" && Array.isArray(shaped.joints) && shaped.joints.length === 0) {
@@ -150,9 +152,10 @@ export function createAdapter(options: AdapterOptions): McpServer {
 	};
 	// `signal` is the MCP client's own cancellation of the tool call. It is passed on, so
 	// that a call nobody is waiting for stops in Studio too.
-	const call = async (method: string, session: string, params: unknown, signal?: AbortSignal, timeoutMs?: number) => {
+	// `asked` is what the agent asked for, when the plugin is sent more than that.
+	const call = async (method: string, session: string, params: unknown, signal?: AbortSignal, timeoutMs?: number, asked: unknown = params) => {
 		try {
-			return ok(method, params, await (await broker()).request(method, params, session, timeoutMs, signal));
+			return ok(method, asked, await (await broker()).request(method, params, session, timeoutMs, signal));
 		} catch (error) {
 			return fail(error);
 		}
@@ -419,6 +422,12 @@ export function createAdapter(options: AdapterOptions): McpServer {
 					.describe(
 						'How the picture draws the rig. "boxes" (default) draws every part as a box of its size: best for contact with the floor and for parts passing through each other. "slim" draws the arms and legs thin along their length, keeping the hands, feet, torso and head as boxes: best for reading limb angles, elbow and knee bends, and arm swings, which bulky boxes hide.',
 					),
+				onion: z
+					.boolean()
+					.optional()
+					.describe(
+						"With times and render: draw the moments over each other in one picture for each view (at most two), the last solid and earlier ones fainter the earlier they are, instead of a filmstrip. Each part in track has its whole arm or leg drawn stronger and its path drawn through the frames, a dot at each numbered in the order of the times. Shows how a limb travels between poses: where an elbow turns round, whether a fist or foot moves in an arc. Pass a few neighbouring times, 3 to 7, and one or two tracked parts; slim style reads best.",
+					),
 				capture: z.boolean().optional().describe("Ask for a Studio screenshot. Off unless approved in Studio; see the tool description."),
 				max_edge: z.number().int().min(64).max(1536).optional().describe("Longest edge of the screenshot in pixels. Default 768."),
 				joints: z.array(z.string()).max(32).optional().describe("Joints to sample. Default: none."),
@@ -436,6 +445,22 @@ export function createAdapter(options: AdapterOptions): McpServer {
 					.describe(
 						"Parts whose place in the rig to report as numbers, for example LeftFoot and RightFoot. Each gets position (x toward the rig's right, y up, z toward its back; forward is negative z), in studs from the root part, and lowest, the height of its lowest point, measured as validate_animation does: a box of the part's size with its corners rounded. With times, each frame after the first also has velocity (studs per second along x, y, z since the frame before) and speed, and the result has ranges: for each part, the least, greatest and difference of x, y, z and lowest over the frames. A foot that is planted keeps the same lowest; in a cycle made on the spot it moves steadily backward while planted.",
 					),
+				measure: z
+					.array(
+						z.object({
+							part: z.string().min(1).max(64).describe("The part measured, for example RightHand."),
+							relative_to: z.string().min(1).max(64).optional().describe("The part it is measured from, for example Head. Default: the root part."),
+							along: z
+								.enum(ALONG)
+								.describe('"forward" (toward where the rig faces at rest), "up" or "right" (the rig\'s right), each in the rig\'s own directions, or "distance", the straight-line distance.'),
+						}),
+					)
+					.min(1)
+					.max(MAX_MEASURES)
+					.optional()
+					.describe(
+						"Measure one part from another, or from the root part, along one of the rig's directions, at every time sampled (with time, times or samples). The parts are tracked for you. The result has measured: for each measurement, values (time and studs at each moment), least and greatest (each with its time), and change, the difference between them. Examples: how far a fist reaches past the head at impact ({part: \"RightHand\", relative_to: \"Head\", along: \"forward\"}, with the impact's time among times); how low the hips sink after a foot lands and when they are lowest ({part: \"LowerTorso\", along: \"up\"}); how far a planted foot drifts ({part: \"LeftFoot\", along: \"forward\"} over its stance). To read a value at a marker, include the marker's time in times.",
+					),
 				check_placement: z
 					.boolean()
 					.optional()
@@ -445,7 +470,12 @@ export function createAdapter(options: AdapterOptions): McpServer {
 			},
 			annotations: { readOnlyHint: true },
 		},
-		async ({ studio_session, ...params }, extra) => call("preview_animation", studio_session, params, extra.signal, 60_000),
+		async ({ studio_session, ...params }, extra) => {
+			// The plugin is asked to track the parts measured, as well as any named. The
+			// result is shaped by what was asked: only the named parts get onion-skin paths.
+			const sent = params.measure ? { ...params, track: trackFor(params.measure, params.track, params.samples !== undefined) } : params;
+			return call("preview_animation", studio_session, sent, extra.signal, 60_000, params);
+		},
 	);
 
 	return server;

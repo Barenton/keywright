@@ -4,10 +4,15 @@
 
 export * from "./pose.js";
 export * from "./motion.js";
+export * from "./measure.js";
+export * from "./label.js";
+export * from "./onion.js";
 export { encodePng } from "./png.js";
 
 import { DEFAULT_TILE, DEFAULT_VIEWS, LEGEND, MAX_STRIP_VIEWS, MAX_TILE, MAX_VIEWS, MAX_WIDTH, MIN_TILE, type PosePart, SLIM_LEGEND, VIEWS, type ViewName, parsePose as parseParts, renderComparison, renderPose, renderStrip, slimParts } from "./pose.js";
-import { type Motion, parseMotion, renderMotion, summariseMotion, trackColours } from "./motion.js";
+import { timeLabel } from "./label.js";
+import { type Motion, MAX_TRACKS, parseMotion, renderMotion, summariseMotion, trackColour, trackColours } from "./motion.js";
+import { renderOnion } from "./onion.js";
 import { isRecord } from "./vector.js";
 
 /**
@@ -57,21 +62,43 @@ export function renderResult(params: unknown, payload: unknown): { payload: unkn
 			};
 			return { payload: rest, image: drawn.png.toString("base64") };
 		}
+		if (input.onion === true && !(isRecord(pose) && Array.isArray(pose.frames))) throw new Error("onion needs times: the moments to draw over each other");
 		if (isRecord(pose) && Array.isArray(pose.frames)) {
 			// Several moments of the clip: a filmstrip, one column for each.
 			const frames = pose.frames.map((parts: unknown) => parsePose({ parts }));
 			const rows = views.slice(0, MAX_STRIP_VIEWS);
+			// Each moment's time, as the plugin reports it, to label it by.
+			const times = Array.isArray(rest.frames) ? rest.frames.map((frame) => (isRecord(frame) && typeof frame.time === "number" ? timeLabel(frame.time) : "")) : [];
+			if (input.onion === true) {
+				if (Array.isArray(pose.compare)) throw new Error("onion draws one clip: leave out compare_with");
+				const names = new Set((frames[0] ?? []).map((part) => part.name));
+				const follow = (Array.isArray(input.track) ? input.track : []).filter((name): name is string => typeof name === "string" && names.has(name)).slice(0, MAX_TRACKS);
+				const tile = Math.min(size, Math.floor(MAX_WIDTH / rows.length));
+				const drawn = renderOnion(frames, rows, tile, resting, follow);
+				rest.render = {
+					status: "ok",
+					layout: "one picture for each view: every time drawn over the others in order, the last solid and the earlier ones fainter the earlier they are. Each tracked part's arm or leg is drawn stronger, with its path through the frames: a dot at each, numbered in the order of the times (1 is the first)",
+					views: rows,
+					frames: frames.length,
+					numbered: times.map((time, index) => ({ number: index + 1, time: Number(time) })),
+					paths: follow.map((part, index) => ({ part, colour: trackColour(index).name })),
+					width: drawn.width,
+					height: drawn.height,
+					legend,
+				};
+				return { payload: rest, image: drawn.png.toString("base64") };
+			}
 			const each = Math.max(MIN_TILE, Math.min(size, Math.floor(MAX_WIDTH / Math.max(frames.length, 1))));
 			if (Array.isArray(pose.compare)) {
 				// The same moments of another clip: this clip along the top, that one below.
 				const other = pose.compare.map((parts: unknown) => parsePose({ parts }));
 				const view = rows[0] as ViewName;
-				const both = renderComparison(frames, other, view, each, resting);
-				rest.render = { status: "ok", layout: "one column for each time in order; top row this clip, bottom row the clip it is compared with", views: [view], frames: frames.length, width: both.width, height: both.height, legend };
+				const both = renderComparison(frames, other, view, each, resting, times);
+				rest.render = { status: "ok", layout: "one column for each time in order, labelled with the time in seconds; top row this clip, bottom row the clip it is compared with", views: [view], frames: frames.length, width: both.width, height: both.height, legend };
 				return { payload: rest, image: both.png.toString("base64") };
 			}
-			const strip = renderStrip(frames, rows, each, resting);
-			rest.render = { status: "ok", layout: "one column for each time in order, one row for each view", views: rows, frames: frames.length, width: strip.width, height: strip.height, legend };
+			const strip = renderStrip(frames, rows, each, resting, times);
+			rest.render = { status: "ok", layout: "one column for each time in order, labelled with the time in seconds, one row for each view", views: rows, frames: frames.length, width: strip.width, height: strip.height, legend };
 			return { payload: rest, image: strip.png.toString("base64") };
 		}
 		const tile = Math.min(size, Math.floor(MAX_WIDTH / views.length));

@@ -91,7 +91,8 @@ Now make it move well between the poses. Check each with the motion plot
 - **Never stop everything at once.** A whole body easing to rest together reads as a
   freeze. In a hold, keep something drifting: breathing, a slow settle, the head adjusting.
 - **Arcs.** Hands, feet and the head travel in curves. A path with no bow is a straight,
-  robotic line.
+  robotic line. An onion skin (`onion: true`) of the move shows the arc and where each
+  limb turns round.
 - **No stops mid-swing.** A limb that comes to rest at a key in the middle of a swing, then
   whips on, pops. Put each swing's extreme where the limb really turns round (a runner's
   thigh, just after toe-off), and let the keys either side carry it through. A large
@@ -112,7 +113,7 @@ its toe (`pivot: "toe"`) for the last frames of the stance. Details for walks, l
 and kneeling are in [reference/moves.md](reference/moves.md).
 
 **Weight on landing.** For every landing (each step of a walk or run, a jump, a fall),
-`track` `LowerTorso` through it: the hips must keep going down for 2–3 frames after the
+`measure` `{part: "LowerTorso", along: "up"}` through it: the hips must keep going down for 2–3 frames after the
 foot touches, be lowest then, and not hold still while the foot is planted. Hips that are
 lowest at the moment of contact, or still through the stance, make the body bounce off the
 floor as if it weighed nothing.
@@ -130,7 +131,7 @@ It's done when **all** of these hold:
 - The motion has no stops, pops or straight lines you didn't plan.
 - Planted feet stay planted, nothing sinks into the floor, and swinging feet clear it.
 - A loop closes: last pose equals first.
-- Every landing absorbs: the hips are lowest 2–3 frames after contact (checked with `track`).
+- Every landing absorbs: the hips are lowest 2–3 frames after contact (checked with `measure`).
 - No limb stops mid-swing: no large speed jump you didn't plan in the motion summary.
 - `validate_animation` has no errors, and every warning is one you meant. A strike's
   speed can be meant; a sliding foot in a walk isn't.
@@ -157,8 +158,8 @@ dialog or a drag.
 
 - **Look after every change.** Revisions break things away from where you were working.
 - **Change one thing at a time** when fixing, then look, so you know what fixed it.
-- **Use numbers to settle what pictures can't:** `track` for a foot's height or a hand's
-  position, `compare_with` for exactly how much changed.
+- **Use numbers to settle what pictures can't:** `measure` for a reach, a height or a drift
+  between parts, `track` for a part's position, `compare_with` for exactly how much changed.
 - **Reuse.** Start related moves from one shared pose; build cycles from half a cycle with
   `mirror`; close loops with `copy_pose`.
 - **Keep keys editable.** After `pin`, `aim`, `overlap` or `add_noise` write a key every

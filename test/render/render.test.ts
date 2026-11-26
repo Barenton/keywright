@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { inflateSync } from "node:zlib";
 import { inspectPng } from "../../src/render/image.js";
-import { DEFAULT_TILE, LEGEND, MAX_PARTS, type PosePart, parsePose, renderComparison, renderPose, renderResult, renderStrip, SLIM_LEGEND, SLIM_THICKNESS, slimParts, type ViewName } from "../../src/render/render.js";
+import { DEFAULT_TILE, LEGEND, limbOf, MAX_PARTS, type PosePart, parsePose, renderComparison, renderOnion, renderPose, renderResult, renderStrip, SLIM_LEGEND, SLIM_THICKNESS, slimParts, strengthOf, type ViewName } from "../../src/render/render.js";
 
 type Pixel = [number, number, number];
 const BACKGROUND: Pixel = [245, 245, 245];
@@ -457,4 +457,53 @@ test("a preview asked for in the slim style is drawn so, and says so", () => {
 	assert.equal((plain.payload as { render: { legend: string } }).render.legend, LEGEND);
 	assert.equal((slim.payload as { render: { legend: string } }).render.legend, SLIM_LEGEND);
 	assert.ok(slim.image && plain.image && slim.image !== plain.image);
+});
+
+test("a filmstrip labels each column with its time", () => {
+	const frames = [[box("UpperTorso", [0, 0, 0], [2, 2, 1])], [box("UpperTorso", [0, 0.5, 0], [2, 2, 1])]];
+	const plain = decode(renderStrip(frames, ["front"], 128).png);
+	const labelled = decode(renderStrip(frames, ["front"], 128, undefined, ["0.5", "1"]).png);
+	const dark = (image: ReturnType<typeof decode>, column: number) => {
+		let count = 0;
+		for (let y = 0; y < 16; y += 1) for (let x = column * 128; x < column * 128 + 40; x += 1) if ((image.at(x, y)[0] as number) < 80) count += 1;
+		return count;
+	};
+	assert.equal(dark(plain, 0), 0);
+	assert.ok(dark(labelled, 0) > 0 && dark(labelled, 1) > 0, "both columns carry a label");
+});
+
+test("an onion skin draws every frame, the last in full colour and earlier ones fainter", () => {
+	const frames = [0, 1, 2].map((step) => [box("UpperTorso", [0, 0, 0], [2, 2, 1]), box("RightUpperArm", [1.5, step * 0.8 - 0.8, 0], [1, 1, 1])]);
+	const image = decode(renderOnion(frames, ["front"], 128).png);
+	const oranges = new Set<string>();
+	for (let y = 0; y < image.height; y += 1) for (let x = 0; x < image.width; x += 1) if (isOrange(image.at(x, y))) oranges.add(image.at(x, y).join());
+	// A full-strength orange face, and paler ones from the earlier frames.
+	const saturations = [...oranges].map((rgb) => { const [r, , b] = rgb.split(",").map(Number) as [number, number, number]; return r - b; });
+	assert.ok(Math.max(...saturations) > 120, "the last frame is solid");
+	assert.ok(saturations.some((value) => value > 0 && value < 80), "an earlier frame is faint");
+});
+
+test("an onion skin draws a tracked limb stronger than the rest of an earlier frame", () => {
+	assert.deepEqual(limbOf("RightHand"), ["RightUpperArm", "RightLowerArm", "RightHand"]);
+	assert.deepEqual(limbOf("LeftLowerLeg"), ["LeftUpperLeg", "LeftLowerLeg", "LeftFoot"]);
+	assert.deepEqual(limbOf("Head"), ["Head"]);
+	assert.equal(strengthOf(2, 3, false), 1);
+	assert.ok(strengthOf(0, 3, true) > strengthOf(0, 3, false));
+	assert.ok(strengthOf(0, 3, false) < strengthOf(1, 3, false), "earlier is fainter");
+});
+
+test("a preview asked for an onion skin draws one, and says why when it can't", () => {
+	const parts = (y: number) => [box("UpperTorso", [0, y, 0], [2, 2, 1]), box("RightHand", [1.5, y, 0], [0.5, 0.5, 0.5])];
+	const pose = { frames: [parts(0), parts(0.5), parts(1)] };
+	const frames = [0, 0.1, 0.2].map((time) => ({ time }));
+	const drawn = renderResult({ render: true, times: [0, 0.1, 0.2], onion: true, track: ["RightHand"] }, { frames, pose });
+	const render = (drawn.payload as { render: Record<string, unknown> }).render;
+	assert.equal(render.status, "ok");
+	assert.deepEqual(render.paths, [{ part: "RightHand", colour: "red" }]);
+	assert.deepEqual(render.numbered, [{ number: 1, time: 0 }, { number: 2, time: 0.1 }, { number: 3, time: 0.2 }]);
+	assert.ok(drawn.image);
+	const single = renderResult({ render: true, onion: true }, { pose: { parts: parts(0) } });
+	assert.match(String((single.payload as { render: { reason: string } }).render.reason), /needs times/);
+	const compared = renderResult({ render: true, onion: true }, { frames, pose: { ...pose, compare: pose.frames } });
+	assert.match(String((compared.payload as { render: { reason: string } }).render.reason), /one clip/);
 });

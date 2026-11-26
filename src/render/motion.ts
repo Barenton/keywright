@@ -28,6 +28,11 @@ const TRACK_COLOURS: Array<{ name: string; rgb: Colour }> = [
 	{ name: "black", rgb: [45, 45, 45] },
 ];
 
+/** The colour the part at this place in a list of tracked parts is drawn in, and its name. */
+export function trackColour(index: number): { name: string; rgb: Colour } {
+	return TRACK_COLOURS[index % TRACK_COLOURS.length] as { name: string; rgb: Colour };
+}
+
 export interface Motion {
 	/** The time of each sample, in order. */
 	times: number[];
