@@ -162,7 +162,7 @@ export function renderReference(tools: ListedTool[]): string {
 		"",
 		"<!-- Written by `npm run docs:tools` from the tools the adapter offers. Do not edit by hand. -->",
 		"",
-		"These are the tools Keywright gives an AI app, with the descriptions and arguments the app is given, word for word. Every tool except `get_workspace` takes `studio_session`, the id of a Studio window from `get_workspace`. A tool that fails returns an error with a `code`, a `message` and often a `hint`; the codes are listed in [Errors and findings](errors.md).",
+		"These are the tools Keywright gives an AI app, with the descriptions and arguments the app is given, word for word. Every tool except `get_workspace` and `pair_studio` takes `studio_session`, the id of a Studio window from `get_workspace`. A tool that fails returns an error with a `code`, a `message` and often a `hint`; the codes are listed in [Errors and findings](errors.md).",
 		"",
 		...tools.map((tool) => `- [\`${tool.name}\`](#${tool.name})`),
 		"",

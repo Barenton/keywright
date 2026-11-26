@@ -4,6 +4,9 @@ What changed in each release of Keywright. The plugin and the adapter are releas
 
 ## [Unreleased]
 
+- **Install without building:** each release now carries `keywright.mjs`, the adapter in one file that Node runs as it is, beside `Keywright.rbxm`. Download both into one folder, run `node keywright.mjs install-plugin`, and point your AI app at `node /path/to/keywright.mjs`. The panel's pairing command and the update advice give this form first. `THIRD_PARTY_LICENSES.txt` lists the licences of the packages built into it.
+- **Pair through your AI app:** tell it "Pair Keywright with code …" and its adapter registers the code with the new `pair_studio` tool, so pairing needs no terminal. The panel shows the code and the terminal command in boxes that a click selects for copying.
+- **Versions** read `v0.2.0` in the panel and the CLI, as the releases are titled.
 - **Tested:** WSL with mirrored networking, and the beta demonstration in Claude Desktop and Codex. The README and the limitations page say so.
 
 ## [0.1.2] - 2026-11-26

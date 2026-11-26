@@ -77,7 +77,7 @@ if fault and fault:IsA("ModuleScript") then
 	version ..= "+fault"
 	view.addNotice("Test build: some edits fail on purpose.")
 end
-view.setVersion(`Keywright {version}`)
+view.setVersion(`v{version}`)
 local settings = Settings.new(store)
 
 local sessionId = string.lower((string.gsub(HttpService:GenerateGUID(false), "[^%x]", "")))
@@ -89,8 +89,7 @@ local function start()
 	local port = settings.read(Settings.PORT)
 	local credential = settings.credential()
 	local code = if credential then nil else newPairingCode()
-	-- The command as the README gives it, run from the keywright folder.
-	view.setPairing(if code then `node dist/src/cli.js pair {code}` else nil)
+	view.setPairing(code)
 	view.setNote("")
 	connection = Connection.start({
 		port = if type(port) == "number" then port else DEFAULT_PORT,

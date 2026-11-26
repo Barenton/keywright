@@ -24,9 +24,10 @@ describe("MCP adapter over stdio", () => {
 	let mcp: Client;
 	let revision = 1;
 	let bigRevision = 3;
+	let port = 0;
 
 	before(async () => {
-		const port = await freePort();
+		port = await freePort();
 		broker = new Broker({ home: temp.home, port });
 		await broker.start();
 		const admin = await connectAdapter(port, loadOrCreateSecret(temp.home));
@@ -128,7 +129,7 @@ describe("MCP adapter over stdio", () => {
 		const { tools } = await mcp.listTools();
 		assert.deepEqual(
 			tools.map((tool) => tool.name).sort(),
-			["discard_animation", "edit_animation", "get_workspace", "inspect_rig", "open_animation", "preview_animation", "read_animation", "save_animation", "validate_animation"],
+			["discard_animation", "edit_animation", "get_workspace", "inspect_rig", "open_animation", "pair_studio", "preview_animation", "read_animation", "save_animation", "validate_animation"],
 		);
 		// A picture and a save are both asked for through documented inputs.
 		const properties = (name: string) => Object.keys((tools.find((tool) => tool.name === name)?.inputSchema.properties ?? {}) as object);
@@ -139,6 +140,27 @@ describe("MCP adapter over stdio", () => {
 		// No tool approves a replacement: that is for a person in Studio.
 		assert.equal(tools.some((tool) => /approve|decide|accept/.test(tool.name)), false);
 		for (const tool of tools) assert.equal(tool.inputSchema.type, "object");
+	});
+
+	test("pair_studio registers the code a Studio window shows, so that the window can pair", async () => {
+		const shown = "PQRS234WXY";
+		const registered = await callTool("pair_studio", { code: "pqrs-234 wxy" });
+		assert.equal(registered.isError, false);
+		assert.equal(registered.json.registered, true);
+		assert.equal(registered.json.valid_for_seconds, 300);
+		const second = await FakePlugin.pair(port, shown, "e".repeat(16));
+		try {
+			const workspace = await callTool("get_workspace", {});
+			assert.ok((workspace.json.sessions as Array<{ session: { id: string } }>).some((entry) => entry.session.id === "e".repeat(16)));
+		} finally {
+			second.close();
+		}
+	});
+
+	test("pair_studio refuses what cannot be a code, before the broker hears of it", async () => {
+		const refused = await callTool("pair_studio", { code: "abc" });
+		assert.equal(refused.isError, true);
+		assert.equal(refused.json.error.code, "INVALID_ARGUMENT");
 	});
 
 	test("edit_animation publishes the same operations the plugin applies", async () => {
@@ -423,7 +445,8 @@ describe("MCP adapter over stdio", () => {
 		for (const tool of tools) {
 			const schema = tool.inputSchema as { properties?: Record<string, unknown>; required?: string[] };
 			assert.equal(Object.hasOwn(schema.properties ?? {}, "session_id"), false, tool.name);
-			if (tool.name !== "get_workspace") assert.ok(schema.required?.includes("studio_session"), tool.name);
+			// These two talk to the broker, not to one Studio window.
+			if (tool.name !== "get_workspace" && tool.name !== "pair_studio") assert.ok(schema.required?.includes("studio_session"), tool.name);
 		}
 		// A call without it is refused before anything is sent to Studio.
 		const refused = await mcp.callTool({ name: "read_animation", arguments: { clip_id: "clip_1" } });

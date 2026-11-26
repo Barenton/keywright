@@ -25,9 +25,9 @@ A failed tool call returns `{"error": {"code": ..., "message": ..., "hint": ...}
 | `SESSION_NOT_FOUND` | No Studio window with that session id is connected. | Call `get_workspace`. In Studio, check that agent access is on in the Keywright panel. |
 | `TIMEOUT` | Studio did not answer in time. The plugin stops waiting for a request after 90 seconds, and the adapter waits 30 seconds for most tools and 60 for previews. | Try again. If it keeps happening, reload the plugin. A change that timed out may still have been made, so read the clip before retrying an edit. |
 | `CANCELLED` | The AI app cancelled the call. | Nothing to do. |
-| `BROKER_UNAVAILABLE` | The adapter could not reach the broker, or lost its connection to it. | Try again: the adapter starts the broker when it is not running. `node dist/src/cli.js status` shows its state. |
+| `BROKER_UNAVAILABLE` | The adapter could not reach the broker, or lost its connection to it. | Try again: the adapter starts the broker when it is not running. `node keywright.mjs status` shows its state. |
 | `BROKER_PORT_CONFLICT` | Another program is using the broker's port, 47318. | Close that program, then turn agent access off and on in the panel. |
-| `INSTALL_FAILED` | `install-plugin` could not find Studio's plugins folder, or there is no built plugin to install. | Build the plugin first (`npm run build:plugin`), or pass the folder: `node dist/src/cli.js install-plugin --folder <path>`. |
+| `INSTALL_FAILED` | `install-plugin` could not find Studio's plugins folder, or there is no built plugin to install. | Put `Keywright.rbxm` from the same release beside `keywright.mjs` (in a source checkout, build it with `npm run build:plugin`), or pass the folder: `node keywright.mjs install-plugin --folder <path>`. |
 | `INTERNAL` | Something went wrong that Keywright did not expect. | Try again, and report it if it keeps happening. |
 
 ## Findings

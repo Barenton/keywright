@@ -2,9 +2,10 @@
 
 <!-- Written by `npm run docs:tools` from the tools the adapter offers. Do not edit by hand. -->
 
-These are the tools Keywright gives an AI app, with the descriptions and arguments the app is given, word for word. Every tool except `get_workspace` takes `studio_session`, the id of a Studio window from `get_workspace`. A tool that fails returns an error with a `code`, a `message` and often a `hint`; the codes are listed in [Errors and findings](errors.md).
+These are the tools Keywright gives an AI app, with the descriptions and arguments the app is given, word for word. Every tool except `get_workspace` and `pair_studio` takes `studio_session`, the id of a Studio window from `get_workspace`. A tool that fails returns an error with a `code`, a `message` and often a `hint`; the codes are listed in [Errors and findings](errors.md).
 
 - [`get_workspace`](#get_workspace)
+- [`pair_studio`](#pair_studio)
 - [`inspect_rig`](#inspect_rig)
 - [`open_animation`](#open_animation)
 - [`read_animation`](#read_animation)
@@ -21,6 +22,14 @@ These are the tools Keywright gives an AI app, with the descriptions and argumen
 List connected Roblox Studio sessions with their rigs, working copies and revisions, the current selection, and whether screenshots are available. A session whose plugin is a different version from this adapter carries update_needed, saying what to ask the person to update.
 
 No arguments.
+
+## pair_studio
+
+Pair a Studio window with Keywright, once per Studio install. When a person turns on agent access in a Studio that has never been paired, the Keywright panel shows a one-time code, and the person may give it to you. Register only a code the person gave you; never guess one. Codes last 5 minutes and work once. Afterwards the panel says it is connected, and the window appears in get_workspace within a few seconds. Studio remembers the pairing, so this is not needed again.
+
+| Argument | Type | Required | Description |
+|---|---|---|---|
+| `code` | text, 1 to 64 characters | yes | The code the Keywright panel shows, as the person gave it. Spaces, dashes and case do not matter. |
 
 ## inspect_rig
 

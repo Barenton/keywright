@@ -21,7 +21,8 @@ export type View = {
 	reject: TextButton,
 	setAccess: (on: boolean) -> (),
 	setStatus: (text: string, tone: Tone) -> (),
-	setPairing: (command: string?) -> (),
+	-- The pairing code to show, or nil to hide pairing.
+	setPairing: (code: string?) -> (),
 	setNote: (text: string) -> (),
 	setProposal: (text: string?) -> (),
 	setOutcome: (text: string) -> (),
@@ -57,10 +58,10 @@ function Panel.describe(state: string, detail: string?): (string, Tone)
 	elseif state == "foreign" then
 		return "Another program is using the broker port. Nothing was sent to it.", "problem"
 	elseif state == "denied" and detail == "plugin_older" then
-		return 'This plugin is older than the Keywright adapter, and the two cannot work together. Update the plugin: run "npm run install:plugin" in the keywright folder.',
+		return 'This plugin is older than the Keywright adapter, and the two cannot work together. Update the plugin: with the latest release, run "node keywright.mjs install-plugin" (in a source checkout, "npm run install:plugin").',
 			"problem"
 	elseif state == "denied" and detail == "adapter_older" then
-		return "The Keywright adapter is older than this plugin, and the two cannot work together. Update the adapter (git pull, npm install, npm run build in the keywright folder), then reconnect it in your AI app.",
+		return "The Keywright adapter is older than this plugin, and the two cannot work together. Update the adapter: download keywright.mjs from the latest release (in a source checkout, git pull, npm install and npm run build), then reconnect it in your AI app.",
 			"problem"
 	elseif state == "denied" then
 		return `The broker refused the connection ({detail or "unknown"}).`, "problem"
@@ -346,39 +347,53 @@ function Panel.new(widget: DockWidgetPluginGui): View
 	toggle.Size = UDim2.fromOffset(TOGGLE_WIDTH, BUTTON_HEIGHT)
 	flexible(toggle)
 
-	-- Pairing: the command to run, in a box it can be selected and copied from.
+	-- Pairing: the code, and the command that registers it, each in a box it can be selected
+	-- and copied from. Plugins cannot write to the clipboard, so a click selects the whole
+	-- box for Ctrl+C.
 	local pairing = group(40)
 	pairing.Visible = false
 	list(pairing, 6)
+	local selections: { RBXScriptConnection } = {}
+	local function copyable(order: number, size: number): TextBox
+		local box = Instance.new("TextBox")
+		box.Size = UDim2.fromScale(1, 0)
+		box.AutomaticSize = Enum.AutomaticSize.Y
+		box.FontFace = CODE
+		box.TextSize = size
+		box.TextWrapped = true
+		box.TextXAlignment = Enum.TextXAlignment.Left
+		box.TextEditable = false
+		box.ClearTextOnFocus = false
+		box.LayoutOrder = order
+		pad(box, 6, 8)
+		rounded(box, UDim.new(0, 4))
+		local edge = edged(box)
+		widest(box, TEXT_WIDTH)
+		painted(function()
+			box.BackgroundColor3 = color(Enum.StudioStyleGuideColor.InputFieldBackground)
+			box.TextColor3 = color(Enum.StudioStyleGuideColor.MainText)
+			edge.Color = color(Enum.StudioStyleGuideColor.InputFieldBorder)
+		end)
+		table.insert(
+			selections,
+			box.Focused:Connect(function()
+				box.SelectionStart = 1
+				box.CursorPosition = #box.Text + 1
+			end)
+		)
+		box.Parent = pairing
+		return box
+	end
 	local pairingText = text(1, pairing)
-	say(pairingText, "Pair once. Within 5 minutes, run this in a terminal, in the keywright folder:")
-	local command = Instance.new("TextBox")
-	command.Size = UDim2.fromScale(1, 0)
-	command.AutomaticSize = Enum.AutomaticSize.Y
-	command.FontFace = CODE
-	command.TextSize = 14
-	command.TextWrapped = true
-	command.TextXAlignment = Enum.TextXAlignment.Left
-	command.TextEditable = false
-	command.ClearTextOnFocus = false
-	command.LayoutOrder = 2
-	pad(command, 6, 8)
-	rounded(command, UDim.new(0, 4))
-	local commandEdge = edged(command)
-	widest(command, TEXT_WIDTH)
-	painted(function()
-		command.BackgroundColor3 = color(Enum.StudioStyleGuideColor.InputFieldBackground)
-		command.TextColor3 = color(Enum.StudioStyleGuideColor.MainText)
-		commandEdge.Color = color(Enum.StudioStyleGuideColor.InputFieldBorder)
-	end)
-	-- A click selects the whole command, ready to be copied.
-	local selecting = command.Focused:Connect(function()
-		command.SelectionStart = 1
-		command.CursorPosition = #command.Text + 1
-	end)
-	command.Parent = pairing
-	local copyHint = text(3, pairing, SMALL_TEXT_SIZE)
-	say(copyHint, "Click the command to select it, then copy it with Ctrl+C (Cmd+C on a Mac).")
+	local code = copyable(2, 20)
+	local orText = text(3, pairing)
+	say(orText, "Or run this in a terminal, in the folder with keywright.mjs:")
+	local command = copyable(4, 14)
+	local copyHint = text(5, pairing, SMALL_TEXT_SIZE)
+	say(
+		copyHint,
+		"Click a box to select it, then copy it with Ctrl+C (Cmd+C on a Mac). In a source checkout, the command is node dist/src/cli.js pair with the same code."
+	)
 	painted(function()
 		copyHint.TextColor3 = color(Enum.StudioStyleGuideColor.DimmedText)
 	end)
@@ -418,9 +433,16 @@ function Panel.new(widget: DockWidgetPluginGui): View
 			say(status, words)
 			paintDot()
 		end,
-		setPairing = function(line: string?)
-			pairing.Visible = line ~= nil
-			command.Text = line or ""
+		setPairing = function(given: string?)
+			pairing.Visible = given ~= nil
+			say(
+				pairingText,
+				if given
+					then `Pair once, within 5 minutes. Tell your AI app: "Pair Keywright with code {given}". The code is:`
+					else ""
+			)
+			code.Text = given or ""
+			command.Text = if given then `node keywright.mjs pair {given}` else ""
 		end,
 		setNote = function(words: string)
 			say(note, words)
@@ -442,7 +464,9 @@ function Panel.new(widget: DockWidgetPluginGui): View
 		destroy = function()
 			fitting:Disconnect()
 			repainting:Disconnect()
-			selecting:Disconnect()
+			for _, selecting in selections do
+				selecting:Disconnect()
+			end
 			frame:Destroy()
 		end,
 	}

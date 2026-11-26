@@ -5,7 +5,8 @@ import { z } from "zod";
 import type { BrokerClient } from "../broker/client.js";
 import { IMAGE_METHOD, screenResult, scrub } from "../render/image.js";
 import { compareVersions, ensureBroker } from "../broker/launcher.js";
-import { BridgeError, type SessionInfo } from "../broker/protocol.js";
+import { isValidPairingCode, normalizePairingCode } from "../broker/auth.js";
+import { BridgeError, PAIRING_TTL_MS, type SessionInfo } from "../broker/protocol.js";
 import { MAX_TILE, MAX_VIEWS, MIN_TILE, renderResult, VIEWS } from "../render/render.js";
 
 import { studioSession, clipId, time, joint } from "./schemas/common.js";
@@ -112,8 +113,8 @@ export function versionCheck(session: SessionInfo): { update_needed?: string } {
 	const older = compareVersions(plugin, VERSION) < 0 ? "plugin" : "adapter";
 	const how =
 		older === "plugin"
-			? "Ask the person to update the plugin: npm run install:plugin in the keywright folder."
-			: "Ask the person to update the adapter (git pull, npm install, npm run build in the keywright folder) and then reconnect it.";
+			? "Ask the person to update the plugin: node keywright.mjs install-plugin with the latest release, or npm run install:plugin in a source checkout."
+			: "Ask the person to update the adapter: download keywright.mjs from the latest release (in a source checkout, git pull, npm install and npm run build), then reconnect it.";
 	return {
 		update_needed: `This Studio window's Keywright plugin is ${session.pluginVersion || "unnumbered"} and the adapter is ${VERSION}; the ${older} is older. Tools may fail or behave differently until they match. ${how}`,
 	};
@@ -160,6 +161,32 @@ export function createAdapter(options: AdapterOptions): McpServer {
 					}),
 				);
 				return ok("get_workspace", {}, { adapter_version: VERSION, sessions: workspaces });
+			} catch (error) {
+				return fail(error);
+			}
+		},
+	);
+
+	server.registerTool(
+		"pair_studio",
+		{
+			description:
+				"Pair a Studio window with Keywright, once per Studio install. When a person turns on agent access in a Studio that has never been paired, the Keywright panel shows a one-time code, and the person may give it to you. Register only a code the person gave you; never guess one. Codes last 5 minutes and work once. Afterwards the panel says it is connected, and the window appears in get_workspace within a few seconds. Studio remembers the pairing, so this is not needed again.",
+			inputSchema: {
+				code: z.string().min(1).max(64).describe("The code the Keywright panel shows, as the person gave it. Spaces, dashes and case do not matter."),
+			},
+		},
+		async ({ code }) => {
+			try {
+				if (!isValidPairingCode(code)) {
+					throw new BridgeError("INVALID_ARGUMENT", "That is not a pairing code: codes are 8 to 32 letters and digits.", "Ask the person for the code the Keywright panel shows.");
+				}
+				await (await broker()).request("broker.pair_register", { code: normalizePairingCode(code) });
+				return ok("pair_studio", { code }, {
+					registered: true,
+					valid_for_seconds: PAIRING_TTL_MS / 1000,
+					next: "The Studio window connects on its own within a few seconds. Call get_workspace to see it. If it does not appear, the code may have expired: ask the person to turn agent access off and on for a new one.",
+				});
 			} catch (error) {
 				return fail(error);
 			}

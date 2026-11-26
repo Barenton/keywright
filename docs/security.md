@@ -29,11 +29,11 @@ AI app ── adapter ──┘                      └── Keywright plugin 
 - **Adapters** prove they hold your **secret**: 32 random bytes made the first time Keywright runs, kept in a file in your own user folder. On macOS and Linux the file and its folder can be read only by you; on Windows, your user folder is closed to other users. It lives in `%APPDATA%\keywright` on Windows, `~/Library/Application Support/keywright` on macOS, and `~/.config/keywright` on Linux and WSL. It never crosses the connection.
 - **Studio windows** prove they hold a **credential** made by pairing, once per Studio install:
   1. When agent access is turned on and there is no credential yet, the panel shows a one-time code.
-  2. You run `node dist/src/cli.js pair <code>`. The command proves it holds your secret, then registers the code with the broker. A code that hasn't been registered this way is worth nothing.
+  2. You run `node keywright.mjs pair <code>`, or give the code to your AI app, whose adapter registers it with the `pair_studio` tool. Either way, the program registering it proves it holds your secret first. A code that hasn't been registered this way is worth nothing, and an agent can't make one up: only the panel shows it, and it works once.
   3. The plugin connects using the code as a key. From the code and the handshake's nonces, the two sides each work out the same new credential key, so the key itself is never sent.
 
   A code lasts 5 minutes, is used once, and is given up after 5 wrong proofs. The broker keeps credentials beside the secret, and Studio keeps its credential in its plugin settings.
-- **Starting over:** `node dist/src/cli.js rotate` replaces the secret, and every stored credential stops working with it. Every Studio window must then pair again.
+- **Starting over:** `node keywright.mjs rotate` replaces the secret, and every stored credential stops working with it. Every Studio window must then pair again.
 
 ## What an agent can do in Studio
 

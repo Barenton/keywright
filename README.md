@@ -40,49 +40,55 @@ The plugin and the broker trust each other through a one-time **pairing** step, 
 ## What you need
 
 - **Roblox Studio**, on Windows. macOS has not been tried yet.
-- **[Node.js](https://nodejs.org) 22 or later**, to build and run the adapter.
-- **[Rokit](https://github.com/rojo-rbx/rokit)**, which installs the Roblox tools this project pins in `rokit.toml`, including [Rojo](https://rojo.space), which builds the plugin.
+- **[Node.js](https://nodejs.org) 22 or later**, to run the adapter.
 - **An AI app that supports MCP**, such as [Claude Code](https://claude.com/claude-code).
 
 You can run the AI app and the adapter on Windows itself, or inside WSL while Studio runs on Windows. Both work, with WSL's default (NAT) networking and with mirrored networking.
 
 ## Setup
 
-### 1. Get the code and build it
+### 1. Download Keywright
+
+From the [latest release](https://github.com/Barenton/keywright/releases/latest), download these two files into one folder of their own, such as `C:\Tools\keywright` or `~/keywright`:
+
+- `keywright.mjs`: the adapter, in one file that Node runs as it is;
+- `Keywright.rbxm`: the Studio plugin.
+
+Keep them together: Keywright looks for the plugin beside itself. The release also has `THIRD_PARTY_LICENSES.txt`, the licences of the open-source packages built into `keywright.mjs`.
+
+With the [GitHub CLI](https://cli.github.com), from that folder:
 
 ```sh
-git clone https://github.com/Barenton/keywright.git
-cd keywright
-rokit install          # fetches Rojo and the other Roblox tools
-npm install            # fetches the adapter's dependencies
-npm run build          # builds the adapter into dist/
+gh release download --repo Barenton/keywright --pattern keywright.mjs --pattern Keywright.rbxm
 ```
 
 ### 2. Install the plugin in Studio
 
+From the folder with the two files:
+
 ```sh
-npm run install:plugin
+node keywright.mjs install-plugin
 ```
 
-This builds the plugin and copies it into Studio's plugins folder as `Keywright.rbxm`. It finds the folder on Windows, from WSL, and on macOS. If you had saved the plugin from Studio before, as `Keywright.rbxmx`, it replaces that copy. It doesn't change anything else in the folder, but it tells you if it finds other copies of Keywright there, since Studio would load those too.
+This copies the plugin into Studio's plugins folder as `Keywright.rbxm`. It finds the folder on Windows, from WSL, and on macOS. If you had saved the plugin from Studio before, as `Keywright.rbxmx`, it replaces that copy. It doesn't change anything else in the folder, but it tells you if it finds other copies of Keywright there, since Studio would load those too.
 
 Studio picks up the new plugin on its own. If the **Keywright** button doesn't appear on the Plugins tab, restart Studio.
 
 <details>
 <summary>Installing by hand instead</summary>
 
-Run `npm run build:plugin`, which writes `build/Keywright.rbxm`. In Studio, on the **Plugins** tab, click **Plugins Folder**. Studio opens its plugins folder, which is usually `%LOCALAPPDATA%\Roblox\Plugins`. Copy `Keywright.rbxm` into it. If you built it inside WSL, the file is at `\\wsl$\<your distro>\<path to keywright>\build\Keywright.rbxm`.
+In Studio, on the **Plugins** tab, click **Plugins Folder**. Studio opens its plugins folder, which is usually `%LOCALAPPDATA%\Roblox\Plugins`. Copy `Keywright.rbxm` into it.
 
 </details>
 
 ### 3. Add Keywright to your AI app
 
-Your AI app starts the adapter with `node`, using the full path to `dist/src/cli.js` in your copy of the code.
+Your AI app starts the adapter with `node`, using the full path to `keywright.mjs`.
 
 **Claude Code:**
 
 ```sh
-claude mcp add keywright -- node /full/path/to/keywright/dist/src/cli.js
+claude mcp add keywright -- node /full/path/to/keywright.mjs
 ```
 
 **Other MCP apps:** most of them take a JSON entry like this one in their MCP settings:
@@ -92,7 +98,7 @@ claude mcp add keywright -- node /full/path/to/keywright/dist/src/cli.js
   "mcpServers": {
     "keywright": {
       "command": "node",
-      "args": ["/full/path/to/keywright/dist/src/cli.js"]
+      "args": ["/full/path/to/keywright.mjs"]
     }
   }
 }
@@ -107,15 +113,33 @@ Agent access is off by default, and it is turned on separately for each place.
 1. Open a place in Studio. While you're learning, use a place you don't mind changing; see [Safety](#safety).
 2. Click the **Keywright** button on the Plugins tab to show the panel.
 3. Click **Turn on agent access**.
-4. **The first time only:** the panel shows a command like this one. Within 5 minutes, run it in a terminal, from the `keywright` folder:
+4. **The first time only:** the panel shows a pairing code. Within 5 minutes, either tell your AI app:
+
+   > Pair Keywright with code ABCD234XYZ
+
+   or run this in a terminal, from the folder with `keywright.mjs`:
 
    ```sh
-   node dist/src/cli.js pair ABCD234XYZ
+   node keywright.mjs pair ABCD234XYZ
    ```
 
-   Click the command in the panel to select it, then copy it with Ctrl+C (Cmd+C on a Mac). Use the code your panel shows, not this one. It works once.
+   The panel shows the code and the command in boxes: click one to select it, then copy it with Ctrl+C (Cmd+C on a Mac). Use the code your panel shows, not this one. It works once.
 
 The panel then says **Connected to the broker.** Studio remembers the pairing, and which places you turned agent access on for, so you only do this once.
+
+### Building from source instead
+
+You also need **[Rokit](https://github.com/rojo-rbx/rokit)**, which installs the Roblox tools this project pins in `rokit.toml`, including [Rojo](https://rojo.space), which builds the plugin.
+
+```sh
+git clone https://github.com/Barenton/keywright.git
+cd keywright
+rokit install            # fetches Rojo and the other Roblox tools
+npm install              # fetches the adapter's dependencies
+npm run install:plugin   # builds the adapter and the plugin, and installs the plugin
+```
+
+Then follow steps 3 and 4 with `dist/src/cli.js` in your copy of the code in place of `keywright.mjs`: `node /full/path/to/keywright/dist/src/cli.js` for the AI app, and, if you pair from a terminal, `node dist/src/cli.js pair <code>` from the `keywright` folder.
 
 ## Your first animation
 
@@ -145,17 +169,17 @@ Some tips:
 
 ## Updating
 
-From the `keywright` folder:
+Download `keywright.mjs` and `Keywright.rbxm` from the [latest release](https://github.com/Barenton/keywright/releases/latest) over the old ones, then, from that folder:
 
 ```sh
-git pull
-npm install
-npm run install:plugin   # rebuilds the adapter and the plugin, and installs the plugin
+node keywright.mjs install-plugin
 ```
+
+In a source checkout, run `git pull`, `npm install` and `npm run install:plugin` instead.
 
 Then reconnect Keywright in your AI app, for example with `/mcp` in Claude Code, so that it starts the new adapter. The old broker is replaced automatically the next time the adapter needs it.
 
-The plugin and the adapter are released together and share one version number. The panel shows the plugin's version at the bottom, and `node dist/src/cli.js version` prints the adapter's. If they differ, the agent is told to ask you to update the older one. What changed in each version is in [CHANGELOG.md](CHANGELOG.md). Each release on the [Releases](https://github.com/Barenton/keywright/releases) page also has the built plugin attached, if you'd rather download it than build it.
+The plugin and the adapter are released together and share one version number. The panel shows the plugin's version at the bottom, and `node keywright.mjs version` prints the adapter's. If they differ, the agent is told to ask you to update the older one. What changed in each version is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Troubleshooting
 
@@ -164,12 +188,12 @@ The plugin and the adapter are released together and share one version number. T
 | Edits or saves fail with `STUDIO_NOT_IN_EDIT_MODE` | Studio refused to start an undo step, and Keywright makes no change you couldn't undo. Finish whatever is in progress in Studio, such as a dialog or a drag, then try again. If it says an earlier Keywright change hasn't finished, wait for it, or reload the plugin. |
 | The agent can't find a Studio session | Check that the Keywright panel says **Connected to the broker.** If you just reinstalled the plugin, reconnect the MCP server in your AI app. |
 | The panel says the plugin or the adapter is older | Update the one it names, as in [Updating](#updating). The panel reconnects on its own once they match. |
-| The panel says **Pairing is needed again** | Turn agent access off and on to get a new code, then run `node dist/src/cli.js pair <code>` again. |
+| The panel says **Pairing is needed again** | Turn agent access off and on to get a new code, then pair again: tell your AI app the code, or run `node keywright.mjs pair <code>`. |
 | The pairing code stopped working | Codes last 5 minutes and work once. Turn agent access off and on for a fresh one. |
 | The panel says **Another program is using the broker port**, or the agent gets `BROKER_PORT_CONFLICT` | Another program is using port 47318, which Keywright needs. Close that program, then turn agent access off and on. |
-| You want to check the broker | Run `node dist/src/cli.js status`. |
+| You want to check the broker | Run `node keywright.mjs status`. |
 
-Other commands are listed by `node dist/src/cli.js --help`. One worth knowing is `rotate`, which replaces the secret the broker uses. Every Studio window must pair again after it.
+Other commands are listed by `node keywright.mjs --help`. (In a source checkout, use `node dist/src/cli.js` in place of `node keywright.mjs` throughout.) One worth knowing is `rotate`, which replaces the secret the broker uses. Every Studio window must pair again after it.
 
 ## What the agent can do
 
@@ -180,6 +204,7 @@ These are the tools your AI app sees. The [tool reference](docs/tools.md) lists 
 | Tool | What it does |
 |---|---|
 | `get_workspace` | Lists the connected Studio windows, with their rigs, saved clips and working copies. |
+| `pair_studio` | Pairs a Studio window, once per Studio install, with the code its panel shows. |
 | `inspect_rig` | Describes a rig: its joints, how they connect, and their rest positions. |
 | `open_animation` | Opens a working copy: blank, or a copy of an existing clip. The original is never changed. |
 | `read_animation` | Reads a working copy: its length, settings, and the poses or keys of the joints asked for. |
@@ -260,7 +285,7 @@ How the connection is secured, and what an agent can and cannot do, is in [Secur
 | `test/` | TypeScript tests, in folders that match `src`. |
 | `docs/` | The documentation. `docs/tools.md` is written from the adapter's tools by `npm run docs:tools`. |
 | `.github/workflows/` | CI, and the release workflow that runs when a version tag is pushed. |
-| `scripts/` | The Luau test runner, the version and release-notes scripts, the tool reference writer, and the Studio measuring script. |
+| `scripts/` | The Luau test runner, the version and release-notes scripts, the tool reference writer, the single-file bundler, and the Studio measuring script. |
 
 The plugin holds all of the animation logic. The TypeScript side only checks inputs, routes requests and draws pictures.
 
@@ -273,6 +298,7 @@ npm run format:check      # check Luau formatting with StyLua
 npm run build:plugin      # build/Keywright.rbxm
 npm run install:plugin    # build both, then install the plugin into Studio
 npm run build:fault       # build/KeywrightFault.rbxm, the fault test build
+npm run build:release     # build/release/: keywright.mjs, Keywright.rbxm and the bundled licences
 npm run docs:tools        # write docs/tools.md from the adapter's tools
 npm run measure -- --place-id <id>   # measure against a connected Studio session
 ```
@@ -291,7 +317,7 @@ The plugin and the adapter share one version number, kept in `package.json`. `sc
 2. Run `npm version 0.2.0 -m "Release %s"`. This sets the version in `package.json` and the plugin, then commits and tags `v0.2.0`.
 3. Run `git push --follow-tags`.
 
-Pushing the tag starts the release workflow (`.github/workflows/release.yml`). It checks that the tag matches `package.json`, runs every test, builds the plugin, and publishes a GitHub release with `Keywright.rbxm` attached and that version's changelog section as its notes. Separately, the CI workflow runs the same tests on every push to `main` and every pull request.
+Pushing the tag starts the release workflow (`.github/workflows/release.yml`). It checks that the tag matches `package.json`, runs every test, builds the plugin and the single-file adapter, and publishes a GitHub release titled with the tag. Attached are `keywright.mjs`, `Keywright.rbxm` and `THIRD_PARTY_LICENSES.txt`, and the notes are that version's changelog section. Separately, the CI workflow runs the same tests on every push to `main` and every pull request.
 
 ## What has been tested
 
