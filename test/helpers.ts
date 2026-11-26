@@ -96,14 +96,21 @@ export class FakePlugin {
 		return FakePlugin.finish(result.ws, sessionId, credential, handler);
 	}
 
-	private static finish(
+	private static async finish(
 		ws: WebSocket,
 		sessionId: string,
 		credential: { id: string; keyHex: string },
 		handler: Handler,
-	): FakePlugin {
+	): Promise<FakePlugin> {
 		const session: SessionInfo = { id: sessionId, placeName: "Test Place", placeId: 0, pluginVersion: "test" };
 		ws.send(JSON.stringify({ t: "session", session }));
+		// A request from another connection could otherwise reach the broker before this
+		// session does. The broker handles a connection's messages in order, so once it has
+		// answered a ping sent after the session, the session is registered.
+		await new Promise<void>((resolve) => {
+			ws.once("pong", () => resolve());
+			ws.ping();
+		});
 		return new FakePlugin(ws, session, credential, handler);
 	}
 

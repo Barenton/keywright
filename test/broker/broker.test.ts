@@ -255,12 +255,14 @@ describe("broker", () => {
 		const pending = adapter.request("preview_animation", { capture: true }, SESSION_A, 1500);
 		await sleep(50);
 		const asked = original.requestIds[0] as string;
+		// The old request fails as soon as the replacement registers, so this is watched first.
+		const refused = expectBridgeError(pending, "SESSION_NOT_FOUND");
 		// A second authenticated plugin takes over the same session id and answers the old request.
 		const replacement = await FakePlugin.connect(port, original.credential as { id: string; keyHex: string }, SESSION_A, () => ({
 			from: "replacement",
 		}));
 		replacement.ws.send(JSON.stringify({ t: "res", id: asked, ok: true, result: { from: "replacement", images: [] } }));
-		await expectBridgeError(pending, "SESSION_NOT_FOUND");
+		await refused;
 		assert.deepEqual(replacement.requestIds, []);
 		// The replacement serves new requests as itself.
 		assert.deepEqual(await adapter.request("read_animation", {}, SESSION_A), { from: "replacement" });
