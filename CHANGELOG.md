@@ -4,28 +4,35 @@ What changed in each release of Keywright. The plugin and the adapter are releas
 
 ## [Unreleased]
 
-**Fixed, from an independent review of earlier releases**
+## [0.6.0] - 2026-11-26
 
+**New**
+
+- **Measurements:** `preview_animation` takes `measure`: one part from another, or from the root, along the rig's forward, up or right, or as a distance, at every time sampled. It returns each value with the least and greatest and when they happen, so a punch's reach past the head, how low the hips sink after a landing and when, or a planted foot's drift is one call. The parts measured are tracked automatically.
+- **Onion skin:** `preview_animation` with `times`, `render` and `onion: true` draws the moments over each other, the last solid and earlier ones fainter. Each tracked part's arm or leg is drawn stronger, with its path through the frames and a numbered dot at each, which shows where a limb turns round and whether it moves in an arc.
+- **Labelled strips:** each column of a pose strip, and of a comparison, now shows its time.
+- **Comparing retimed moves:** `preview_animation` takes `compare_times` with `compare_with`: the other clip's own time for each of `times`, so a before-and-after strip pairs impact with impact even when the move now lands on a different frame. The compared clip's row is labelled with its times, and each comparison reports `other_time`.
+- **Out-of-date plugin or adapter, flagged everywhere:** while a Studio window's plugin and the adapter are different versions, every result for that window, errors included, starts with `update_needed`, not just `get_workspace`. It says which side is older, that newer options are ignored until they match, and how to update. Agents are told to pass it on to the person straight away.
+- **Pictures say how they were drawn:** every picture's `render` reports its `style`, so an agent can tell the style it asked for was used. An adapter too old to know `style` leaves it out.
+
+**Fixed**
+
+Most of these were found by independent reviews of this release and earlier ones.
+
+- **Setup runs the published package, not a project's own.** Apps are now told to start Keywright with `npx -y keywright@latest`: with a bare `npx -y keywright`, a project with its own `keywright` program (a package of that name, or one in `node_modules/.bin`) ran that instead whenever the app started in it. If your app was set up with `npx -y keywright`, run `npx -y keywright@latest setup` again, or add `@latest` to its entry yourself.
 - **A place's access stays off when its setting can't be read.** Before, an unreadable setting of its own let the older shared list turn access back on in a place that had been turned off.
 - **Requests still waiting when the connection drops are dropped with it.** Before, a request queued behind a running one could still run after the connection was lost, with nowhere to send the answer: the agent, told the call had failed, could send it again and the change be made twice.
 - **Rotating the secret stops every broker using it,** on any port: each broker now stops as soon as its secret file changes. Before, a second broker started with another `KEYWRIGHT_PORT` could keep accepting the old secret.
-- **Setup runs the published package, not a project's own.** Apps are now told to start Keywright with `npx -y keywright@latest`: with a bare `npx -y keywright`, a project with its own `keywright` program (a package of that name, or one in `node_modules/.bin`) ran that instead whenever the app started in it.
 - **Setup's entry for Windows apps using Keywright in WSL works with node from nvm:** it puts node's folder on the `PATH`, which `wsl.exe --exec` doesn't set up.
-- **A working copy moved to another rig's shelf** is no longer edited with the first rig's joints for the rest of the session; it is found again on its new shelf after a reload.
+- **Loops just off a whole frame:** in a loop whose end was typed a little off a frame (0.667 for 20/30 of a second), `pin`, `aim` and other ranges across the end put the keys that came round it just off a frame, which gave `KEY_OFF_FRAME` warnings. The loop is now cut and joined at its whole number of frames.
 - **Replacing a clip notices attributes changed in it since,** as it notices other changes: attributes now count in the source's fingerprint and are watched. Fingerprints written by earlier versions are still checked the way they were made.
+- **A working copy moved to another rig's shelf** is no longer edited with the first rig's joints for the rest of the session; it is found again on its new shelf after a reload.
 - **State files are created afresh,** so a link left at a temporary file's path, in a folder copied in, is never written through.
 - **After pairing, a later refusal needs one off-and-on, not two.**
 - **Slim pictures keep a limb's longest side,** on a custom rig whose arms or legs run along another direction.
 - **Releases:** a release whose npm step failed can be rerun: the GitHub release already made gets this run's files. A prerelease goes to npm with the `next` tag, which npm requires.
 - **Security page:** what the pairing command line exposes on a shared computer, why wrong pairing proofs count from any connection, and two limits: changing the port, and `KEYWRIGHT_HOME` on Windows.
 
-- **Comparing retimed moves:** `preview_animation` takes `compare_times` with `compare_with`: the other clip's own time for each of `times`, so a before-and-after strip pairs impact with impact even when the move now lands on a different frame. The compared clip's row is labelled with its times, and each comparison reports `other_time`.
-- **Fixed, loops just off a whole frame:** in a loop whose end was typed a little off a frame (0.667 for 20/30 of a second), `pin`, `aim` and other ranges across the end put the keys that came round it just off a frame, which gave `KEY_OFF_FRAME` warnings. The loop is now cut and joined at its whole number of frames.
-- **Out-of-date plugin or adapter, flagged everywhere:** while a Studio window's plugin and the adapter are different versions, every result for that window, errors included, starts with `update_needed`, not just `get_workspace`. It says which side is older, that newer options are ignored until they match, and how to update. Agents are told to pass it on to the person straight away.
-- **Pictures say how they were drawn:** every picture's `render` reports its `style`, so an agent can tell the style it asked for was used. An adapter too old to know `style` leaves it out.
-- **Measurements:** `preview_animation` takes `measure`: one part from another, or from the root, along the rig's forward, up or right, or as a distance, at every time sampled. It returns each value with the least and greatest and when they happen, so a punch's reach past the head, how low the hips sink after a landing and when, or a planted foot's drift is one call. The parts measured are tracked automatically.
-- **Onion skin:** `preview_animation` with `times`, `render` and `onion: true` draws the moments over each other, the last solid and earlier ones fainter. Each tracked part's arm or leg is drawn stronger, with its path through the frames and a numbered dot at each, which shows where a limb turns round and whether it moves in an arc.
-- **Labelled strips:** each column of a pose strip, and of a comparison, now shows its time.
 ## [0.5.0] - 2026-11-26
 
 - **Slim pose pictures:** `preview_animation` takes `style: "slim"`, which draws the arms and legs thin along their length, so limb angles, elbow and knee bends and arm swings read; on a blocky rig, boxes hide them. The default boxes are unchanged.
@@ -106,7 +113,8 @@ The first numbered release.
 - **Setup:** `npm run install:plugin` installs the plugin into Studio. The panel and `node dist/src/cli.js version` show the version, and the agent is told when the plugin and the adapter don't match.
 - **Panel:** fits whatever size it is docked or floated at, follows Studio's theme, and shows the pairing command ready to copy.
 
-[Unreleased]: https://github.com/Barenton/keywright/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/Barenton/keywright/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/Barenton/keywright/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/Barenton/keywright/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Barenton/keywright/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Barenton/keywright/compare/v0.2.0...v0.3.0
