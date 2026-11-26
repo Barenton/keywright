@@ -1,6 +1,6 @@
 {
   "name": "keywright",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "MCP relay for the Keywright Roblox Studio animation plugin",
   "license": "MIT",
   "private": true,
