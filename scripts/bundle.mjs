@@ -4,8 +4,8 @@
 // its own folder), and THIRD_PARTY_LICENSES.txt, the licences of the packages bundled.
 //
 // The folder is also the npm package: a package.json of its own, with no dependencies,
-// since everything is in the bundle, and the README and LICENSE. `npm publish build/release`
-// publishes it, and `npx -y keywright` then runs it.
+// since everything is in the bundle, and the README and LICENSE. `npm publish ./build/release`
+// publishes it (with the ./, or npm takes the path for a GitHub repository), and `npx -y keywright` then runs it.
 //
 // Usage: npm run build:release        (builds the plugin first)
 //        node scripts/bundle.mjs [--out <folder>] [--no-plugin]
