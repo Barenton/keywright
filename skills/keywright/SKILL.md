@@ -165,6 +165,8 @@ dialog or a drag.
 - **Use numbers to settle what pictures can't:** `measure` for a reach, a height or a drift
   between parts, `track` for a part's position, `compare_with` for exactly how much changed.
 - **Reuse.** Start related moves from one shared pose; build cycles from half a cycle with
-  `mirror`; close loops with `copy_pose`.
+  `mirror`; close loops with `copy_pose`. When a shared pose changes (a guard lowered in
+  the ready clip), carry it into every move with `copy_pose` and `from_clip`, naming only
+  the joints that changed, so each move keeps its own feet, timing and markers.
 - **Keep keys editable.** After `pin`, `aim`, `overlap` or `add_noise` write a key every
   frame, run `reduce_keys` so a person can still work with the curves.

@@ -7,7 +7,12 @@ What changed in each release of Keywright. The plugin and the adapter are releas
 **New**
 
 - **`update`:** `npx -y keywright@latest update` installs the newest plugin, checks that it is the newest release, and says what is left: reconnecting Keywright in the AI app. Run from a downloaded file that is older than the newest release, it says where to get that first. Update advice in the panel and in `update_needed` now gives this command.
+- **Copy a pose from another clip:** `copy_pose` takes `from_clip`, naming another clip of the same rig as `compare_with` does. A revised guard in a ready clip can be carried into every attack's start and recovery, copying only the joints and channels named, so each attack keeps its feet, timing and markers. A keyframe clip can be the source; it is only read.
 - **Told when a newer release is out:** once a day, in the background, the adapter asks npm's registry for the latest version of Keywright. When it is newer, `get_workspace` carries `update_available` with the steps, and agents are told to mention it once. The request carries nothing about you or your work; `KEYWRIGHT_NO_UPDATE_CHECK=1` turns it off.
+
+**Fixed**
+
+- **A curve read at a key just after a step:** operations that read a curve (`copy_pose`, `pin`, `aim` and others) took the value before a key, at that key's own time, when the stretch before it was Constant. They now take the key's own value, as Studio plays it.
 
 ## [0.6.0] - 2026-11-26
 

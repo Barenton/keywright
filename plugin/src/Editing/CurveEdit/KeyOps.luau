@@ -250,6 +250,12 @@ Ops.copy_pose = {
 		needTime(where, operation.from, "from")
 		needTime(where, operation.to, "to")
 		needJoints(where, operation.joints, joints)
+		if
+			operation.from_clip ~= nil
+			and (type(operation.from_clip) ~= "string" or #operation.from_clip == 0 or #operation.from_clip > 120)
+		then
+			refuse(where, "from_clip must name a clip.")
+		end
 		if operation.mirror ~= nil and type(operation.mirror) ~= "boolean" then
 			refuse(where, "mirror must be true or false.")
 		end
@@ -283,9 +289,27 @@ Ops.copy_pose = {
 			kinds[kind] = true
 		end
 		local names: { string } = operation.joints or Rig.R15_ORDER
+		-- The pose comes from this clip, or from another of the same rig: the guard of a
+		-- ready pose carried into an attack, say. The other clip is only read.
+		local origin = clip
+		if operation.from_clip ~= nil then
+			local found = context.clips and context.clips[operation.from_clip]
+			if not found then
+				refuse(where, `the clip "{operation.from_clip}" to copy the pose from was not found.`)
+			end
+			origin = found :: Instance
+			-- A keyframe clip comes as its pose sampled at `from`, its length checked already.
+			local length = Store.duration(origin)
+			if origin:GetAttribute(Store.SAMPLED) ~= true and operation.from > length + Store.TIME_TOLERANCE then
+				refuse(where, `the clip to copy from ends at {Need.milliseconds(length)} seconds, before from.`)
+			end
+		end
 		-- Everything is read before anything is written, so a mirrored pose copied onto
 		-- the time it came from swaps the sides instead of copying one onto itself.
-		local channels = readChannels(clip)
+		local channels = readChannels(origin)
+		-- Which channels this clip animates: a channel it animates that the other clip
+		-- leaves at rest is keyed to rest, so no part of the old pose is left behind.
+		local own = if origin == clip then channels else readChannels(clip)
 		local plan: { { joint: string, channel: string, value: number } } = {}
 		for _, joint in names do
 			local source = if mirrored then counterpart(joint) else joint
@@ -294,7 +318,7 @@ Ops.copy_pose = {
 					continue
 				end
 				local from = channels[source] and channels[source][channel]
-				local to = channels[joint] and channels[joint][channel]
+				local to = own[joint] and own[joint][channel]
 				if (from == nil or #from == 0) and (to == nil or #to == 0) then
 					-- Neither moves on this channel: it is at rest at both times already.
 					continue

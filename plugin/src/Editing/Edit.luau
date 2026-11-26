@@ -40,7 +40,8 @@ function Edit.apply(
 	joints: { [string]: Rig.Joint },
 	expectedRevision: any,
 	operations: any,
-	sample: Sample?
+	sample: Sample?,
+	clips: { [string]: Instance }?
 ): any
 	if not RunService:IsEdit() then
 		Errors.throw("STUDIO_NOT_IN_EDIT_MODE", "Studio is running a playtest.", "Stop the playtest and try again.")
@@ -54,7 +55,7 @@ function Edit.apply(
 		)
 	end
 	if working.instance:IsA("CurveAnimation") then
-		return Edit.applyCurves(working, joints, operations)
+		return Edit.applyCurves(working, joints, operations, clips)
 	end
 	Operations.check(operations, joints)
 	local held: { [number]: { [string]: CFrame } } = {}
@@ -114,9 +115,14 @@ end
 
 -- The same, for a clip made of curves: its own operations, tried on a copy first, then
 -- applied in one undo recording.
-function Edit.applyCurves(working: Clips.Working, joints: { [string]: Rig.Joint }, operations: any): any
+function Edit.applyCurves(
+	working: Clips.Working,
+	joints: { [string]: Rig.Joint },
+	operations: any,
+	clips: { [string]: Instance }?
+): any
 	Curves.check(operations, joints)
-	local context: Curves.Context = { joints = joints, source = working.source }
+	local context: Curves.Context = { joints = joints, source = working.source, clips = clips }
 	local trial = working.instance:Clone()
 	local tried, problem = pcall(Curves.run, trial, operations, context)
 	trial:Destroy()

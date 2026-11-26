@@ -5,6 +5,7 @@ local Selection = game:GetService("Selection")
 local ServerStorage = game:GetService("ServerStorage")
 
 local Clips = require("../Storage/Clips")
+local Curves = require("../Editing/Curves")
 local Digest = require("../Inspection/Digest")
 local Edit = require("../Editing/Edit")
 local Errors = require("../Core/Errors")
@@ -133,7 +134,114 @@ function ClipMethods.install(methods: { [string]: (params: any) -> any }, kit: S
 			end
 			return Preview.run({ model = model, sequence = sequence, time = time, joints = joints, parent = workspace }).transforms
 		end
-		local result = Edit.apply(working, scan.joints, params.expected_revision, params.operations, sample)
+		-- Other clips of the rig that copy_pose reads a pose from. They are looked up only
+		-- for an edit that can go ahead, so a stale revision is still reported as such, and
+		-- only for a curve clip, the only kind copy_pose edits.
+		local clips: { [string]: Instance } = {}
+		local made: { Instance } = {}
+		local function sources()
+			if params.expected_revision ~= Clips.revisionOf(working) or not working.instance:IsA("CurveAnimation") then
+				return
+			end
+			if type(params.operations) ~= "table" then
+				return
+			end
+			-- Each keyframe clip named, and the times read from it with where each goes.
+			local sampled: { [string]: { source: Instance, times: { { from: number, to: number } } } } = {}
+			for index, operation in params.operations do
+				local name = type(operation) == "table" and operation.type == "copy_pose" and operation.from_clip
+				if type(name) ~= "string" or type(operation.from) ~= "number" or type(operation.to) ~= "number" then
+					continue
+				end
+				local found = clips[name] or (sampled[name] and sampled[name].source)
+				if not found then
+					found = Shared.otherClip(working, name, model, `operations[{index}].from_clip`)
+					if found == working.instance then
+						Errors.throw(
+							"INVALID_ARGUMENT",
+							`operations[{index}].from_clip names this working copy itself.`,
+							"Leave from_clip out to copy a pose within the clip."
+						)
+					end
+				end
+				if found:IsA("KeyframeSequence") then
+					local length = Clips.duration(found)
+					if operation.from > length + Clips.TIME_TOLERANCE then
+						Errors.throw(
+							"INVALID_ARGUMENT",
+							`operations[{index}]: the clip to copy from ends at {math.round(length * 1000) / 1000} seconds, before from.`
+						)
+					end
+					sampled[name] = sampled[name] or { source = found, times = {} }
+					table.insert(sampled[name].times, { from = operation.from, to = operation.to })
+				else
+					clips[name] = found
+				end
+			end
+			-- A keyframe clip is read as the engine plays it, at each time asked for, into a
+			-- curve clip made for the purpose and thrown away after: the clip itself is never
+			-- touched, and the pose is exactly the one it plays, between keys too.
+			local names: { string } = {}
+			for name in scan.joints do
+				table.insert(names, name)
+			end
+			for name, entry in sampled do
+				local holder = Instance.new("CurveAnimation")
+				holder:SetAttribute(Curves.SAMPLED, true)
+				table.insert(made, holder)
+				local keys: { [string]: { [string]: { any } } } = {}
+				for _, moment in entry.times do
+					for joint, transform in sample(entry.source, moment.from, names) do
+						local position = transform.Position
+						local x, y, z = transform:ToEulerAnglesXYZ()
+						local values: { [string]: number } = {
+							["position.x"] = position.X,
+							["position.y"] = position.Y,
+							["position.z"] = position.Z,
+							["rotation.x"] = x,
+							["rotation.y"] = y,
+							["rotation.z"] = z,
+						}
+						for channel, value in values do
+							if string.sub(channel, 1, 8) == "rotation" then
+								-- The same turn, taken nearest where this clip is at `to`, so
+								-- its curve does not spin the long way round to reach it.
+								local curve = Curves.channel(working.instance, joint, channel, false)
+								local here = if curve then Curves.evaluate(Curves.keys(curve), moment.to) else 0
+								value += 2 * math.pi * math.round((here - value) / (2 * math.pi))
+							end
+							if math.abs(value) > 1e-9 then
+								keys[joint] = keys[joint] or {}
+								keys[joint][channel] = keys[joint][channel] or {}
+								table.insert(
+									keys[joint][channel],
+									{ time = moment.from, value = value, interpolation = "Linear" }
+								)
+							end
+						end
+					end
+				end
+				for joint, channels in keys do
+					for channel, list in channels do
+						table.sort(list, function(a, b)
+							return a.time < b.time
+						end)
+						Curves.setKeys(Curves.channel(holder, joint, channel, true) :: Instance, list)
+					end
+				end
+				clips[name] = holder
+			end
+		end
+		local applied, result = pcall(function()
+			sources()
+			return Edit.apply(working, scan.joints, params.expected_revision, params.operations, sample, clips)
+		end)
+		for _, copy in made do
+			copy:Destroy()
+		end
+		if not applied then
+			error(result, 0)
+		end
 		if params.validate == true then
 			-- The checks on the clip as the edit leaves it, cut short: the full list is
 			-- validate_animation's.

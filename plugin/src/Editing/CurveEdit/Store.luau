@@ -265,6 +265,9 @@ end
 
 -- The value of a channel at a time, as Studio plays it: the first key's value before it,
 -- the last key's after it, and between two keys by the first one's interpolation.
+-- An attribute on a curve clip made only to hold poses sampled from a keyframe clip.
+Store.SAMPLED = "KeywrightSampled"
+
 function Store.evaluate(keys: { Key }, time: number): number
 	local count = #keys
 	if count == 0 then
@@ -276,7 +279,9 @@ function Store.evaluate(keys: { Key }, time: number): number
 	end
 	for index = 1, count - 1 do
 		local a, b = keys[index], keys[index + 1]
-		if time <= b.time then
+		-- At a key's own time, the curve has that key's value, whatever comes before it:
+		-- after a Constant stretch it is where the step lands.
+		if time < b.time then
 			local length = b.time - a.time
 			if length <= 0 or a.interpolation == "Constant" then
 				return a.value

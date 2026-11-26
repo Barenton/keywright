@@ -96,6 +96,7 @@ Curves.markerCurves = Store.markerCurves
 Curves.keys = Store.keys
 Curves.setKeys = Store.setKeys
 Curves.evaluate = Store.evaluate
+Curves.SAMPLED = Store.SAMPLED
 Curves.duration = Store.duration
 Curves.keyTimes = Store.keyTimes
 

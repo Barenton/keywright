@@ -15,7 +15,9 @@ type Key = Store.Key
 
 local Frames = {}
 
-export type Context = { joints: { [string]: any }, source: Instance? }
+-- `clips`: other curve clips of the same rig an operation may read from, by the name the
+-- operation gives them (copy_pose's from_clip).
+export type Context = { joints: { [string]: any }, source: Instance?, clips: { [string]: Instance }? }
 
 export type Changed = { [string]: number }
 

@@ -318,12 +318,13 @@ Curve clips only. Remove every key in a time range, ends included, from the join
 
 #### copy_pose
 
-Curve clips only. Copy the pose the clip has at one time to a key at another, for every joint or those named: end a loop in exactly the pose it starts with, come back to a guard pose, hold a pose. With mirror, the pose is copied as its mirror image, left onto right: a walk's left contact pose becomes the right one. A key already at `to` gets the new value and keeps its tangents; a new one starts flat, as with set_key, so run auto_tangents afterwards for smooth motion. The result counts keys_created and keys_changed.
+Curve clips only. Copy the pose the clip has at one time to a key at another, for every joint or those named: end a loop in exactly the pose it starts with, come back to a guard pose, hold a pose. With from_clip, the pose comes from another clip of the same rig: carry a revised guard from a ready clip into each attack's start and recovery, copying only the joints and channels named, so the attack's feet, timing and markers stay as they are. With mirror, the pose is copied as its mirror image, left onto right: a walk's left contact pose becomes the right one. A key already at `to` gets the new value and keeps its tangents; a new one starts flat, as with set_key, so run auto_tangents afterwards for smooth motion. The result counts keys_created and keys_changed.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `from` | number, 0 to 300 | yes | The time whose pose is copied, in seconds. |
+| `from` | number, 0 to 300 | yes | The time whose pose is copied, in seconds: in from_clip when it is given. |
 | `to` | number, 0 to 300 | yes | The time to put it at, in seconds. |
+| `from_clip` | text, 1 to 120 characters |  | Another clip of the same rig to copy the pose from, named as compare_with names one: "source" (the clip this working copy was opened from), "saved:" and the name of one of the rig's saved clips, or another working copy's clip id. It is only read; a keyframe clip is read as it plays. Default: this clip. |
 | `joints` | list of texts (1 to 32 items) |  | The joints to key at `to`. Default: every joint. With mirror, each takes the pose of its counterpart on the other side. |
 | `mirror` | true or false |  | Copy the pose as its mirror image. Default false. |
 | `channels` | list of any of `rotation`, `position` (1 to 2 items) |  | Default: both. |

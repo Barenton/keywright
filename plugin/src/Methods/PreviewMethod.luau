@@ -2,8 +2,6 @@
 -- Previewing a working copy: sampling it at times or over the whole clip, with a picture,
 -- numbers and comparisons.
 
-local ServerStorage = game:GetService("ServerStorage")
-
 local Capture = require("../Preview/Capture")
 local Clips = require("../Storage/Clips")
 local Codec = require("../Core/Codec")
@@ -12,7 +10,6 @@ local Errors = require("../Core/Errors")
 local Pose = require("../Rigs/Pose")
 local Preview = require("../Preview/Preview")
 local Rig = require("../Rigs/Rig")
-local Saves = require("../Storage/Saves")
 local Shared = require("./Shared")
 
 local MAX_FRAMES = Shared.MAX_FRAMES
@@ -239,35 +236,7 @@ function PreviewMethod.install(methods: { [string]: (params: any) -> any }, kit:
 			-- The other clip's length: it is sampled no later than its own end.
 			local otherDuration = 0
 			if params.compare_with ~= nil then
-				local wanted = params.compare_with
-				if wanted == "source" then
-					if Clips.sourceState(working) == "none" or Clips.sourceState(working) == "missing" then
-						Errors.throw("INVALID_ARGUMENT", "This working copy has no source to compare with.")
-					end
-					other = working.source
-				elseif type(wanted) == "string" and string.sub(wanted, 1, 6) == "saved:" then
-					local container = Saves.container(model, ServerStorage)
-					local found = container and container:FindFirstChild(string.sub(wanted, 7))
-					if not found or not (found:IsA("KeyframeSequence") or found:IsA("CurveAnimation")) then
-						Errors.throw(
-							"NOT_FOUND",
-							`The rig has no saved clip "{string.sub(wanted, 7)}".`,
-							"get_workspace lists a rig's saved clips."
-						)
-					end
-					other = found :: Instance
-				elseif type(wanted) == "string" then
-					local second = Clips.get(wanted)
-					if second.rigId ~= working.rigId then
-						Errors.throw("INVALID_ARGUMENT", "The two clips are for different rigs.")
-					end
-					other = second.instance
-				else
-					Errors.throw(
-						"INVALID_ARGUMENT",
-						'compare_with must be "source", "saved:" and a name, or a clip id.'
-					)
-				end
+				other = Shared.otherClip(working, params.compare_with, model, "compare_with")
 				otherName = (other :: Instance).Name
 				otherDuration = Clips.duration(other :: Instance)
 			end
