@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: CompeyDev/setup-rokit@v0.2.1
+      - name: Install the Roblox tools in rokit.toml
+        run: |
+          echo "$HOME/.rokit/bin" >> "$GITHUB_PATH"
+          "$HOME/.rokit/bin/rokit" install --no-trust-check
+      - run: npm ci
+      - run: npm run format:check
+      - run: npm test
+      - run: npm run test:luau
+      - run: npm run build:plugin

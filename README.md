@@ -154,7 +154,7 @@ npm run install:plugin   # rebuilds the adapter and the plugin, and installs the
 
 Then reconnect Keywright in your AI app, for example with `/mcp` in Claude Code, so that it starts the new adapter. The old broker is replaced automatically the next time the adapter needs it.
 
-The plugin and the adapter are released together and share one version number. The panel shows the plugin's version at the bottom, and `node dist/src/cli.js version` prints the adapter's. If they differ, the agent is told to ask you to update the older one. What changed in each version is in [CHANGELOG.md](CHANGELOG.md).
+The plugin and the adapter are released together and share one version number. The panel shows the plugin's version at the bottom, and `node dist/src/cli.js version` prints the adapter's. If they differ, the agent is told to ask you to update the older one. What changed in each version is in [CHANGELOG.md](CHANGELOG.md). Each release on the [Releases](https://github.com/Barenton/keywright/releases) page also has the built plugin attached, if you'd rather download it than build it.
 
 ## Troubleshooting
 
@@ -244,7 +244,8 @@ While you're getting started, try Keywright in a copy of your place or a fresh b
 | `src/mcp/` | The MCP adapter: the tools and their input schemas. |
 | `src/render/` | Drawing pose pictures. |
 | `test/` | TypeScript tests, in folders that match `src`. |
-| `scripts/` | The Luau test runner, the version sync and the Studio measuring script. |
+| `.github/workflows/` | CI, and the release workflow that runs when a version tag is pushed. |
+| `scripts/` | The Luau test runner, the version and release-notes scripts, and the Studio measuring script. |
 
 The plugin holds all of the animation logic. The TypeScript side only checks inputs, routes requests and draws pictures.
 
@@ -265,6 +266,16 @@ The Luau tests run outside Studio, against [Lune](https://lune-org.github.io/doc
 **`npm run measure`** drives the tools against a Studio session that is already connected, and writes its results to `build/measurements/`. It creates working copies, and saved clips named "Measure ...", in the open place. So it must be given that place's id, and it refuses any other. Use a place you can throw away.
 
 **The fault test build** adds `plugin/fault/Fault.luau`, which makes an edit fail or stall on purpose. This lets you check in Studio that a failed batch leaves nothing behind. The fault is chosen by the working copy's name: "Fault fail", "Fault stall" or "Fault stall raw". Any other name behaves normally. Install it in place of the normal plugin, never alongside it, and only in a place you can throw away: "Fault stall raw" leaves that Studio window refusing undo steps until Studio restarts.
+
+### Releasing
+
+The plugin and the adapter share one version number, kept in `package.json`. `scripts/sync-version.mjs` copies it into `plugin/src/Version.luau`, and a test fails if the two differ. To release version 0.2.0:
+
+1. In `CHANGELOG.md`, rename `## [Unreleased]` to `## [0.2.0] - <today's date>`, start a new empty `## [Unreleased]` above it, and update the links at the bottom. Commit that.
+2. Run `npm version 0.2.0 -m "Release %s"`. This sets the version in `package.json` and the plugin, then commits and tags `v0.2.0`.
+3. Run `git push --follow-tags`.
+
+Pushing the tag starts the release workflow (`.github/workflows/release.yml`). It checks that the tag matches `package.json`, runs every test, builds the plugin, and publishes a GitHub release with `Keywright.rbxm` attached and that version's changelog section as its notes. Separately, the CI workflow runs the same tests on every push to `main` and every pull request.
 
 ## What has been tested
 
