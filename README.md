@@ -44,7 +44,7 @@ The plugin and the broker trust each other through a one-time **pairing** step, 
 - **[Rokit](https://github.com/rojo-rbx/rokit)**, which installs the Roblox tools this project pins in `rokit.toml`, including [Rojo](https://rojo.space), which builds the plugin.
 - **An AI app that supports MCP**, such as [Claude Code](https://claude.com/claude-code).
 
-You can run the AI app and the adapter on Windows itself, or inside WSL while Studio runs on Windows. Both work.
+You can run the AI app and the adapter on Windows itself, or inside WSL while Studio runs on Windows. Both work, with WSL's default (NAT) networking and with mirrored networking.
 
 ## Setup
 
@@ -316,13 +316,13 @@ Pushing the tag starts the release workflow (`.github/workflows/release.yml`). I
 - two Studio windows on two places, each remembering its own access, also when both are switched on at the same moment;
 - one undo reverting exactly one batch;
 - pose pictures that match the Animation Editor;
-- saved clips that load and play in the Animation Editor.
+- saved clips that load and play in the Animation Editor;
+- the beta demonstration (a three-second wave with a hold, adjusted from the pose pictures, validated and saved) in Claude Code, Claude Desktop and Codex, with Claude Code and Codex running in WSL;
+- WSL with mirrored networking: Studio reaches the broker in WSL with no extra step, and the broker still can't be reached from the network.
 
 **Not tested yet:**
 
 - macOS;
-- WSL with mirrored networking;
-- MCP apps other than Claude Code showing the pose pictures;
 - Studio screenshots, which are switched off.
 
 ## License

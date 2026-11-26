@@ -4,6 +4,8 @@ What changed in each release of Keywright. The plugin and the adapter are releas
 
 ## [Unreleased]
 
+- **Tested:** WSL with mirrored networking, and the beta demonstration in Claude Desktop and Codex. The README and the limitations page say so.
+
 ## [0.1.2] - 2026-11-26
 
 - **Documentation:** a tool reference written from the tools themselves, and pages on errors and findings, security, limitations, and measured performance, in `docs/`.

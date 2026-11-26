@@ -65,7 +65,7 @@ The fingerprint is `read_animation`'s `content_hash`, a hash of everything that 
 - **Screenshots**, which are switched off. The target for taking one is 3 seconds.
 - **What 100 previews leave behind:** that Studio's instance and connection counts come back to where they started. No tool reports them. Each preview is checked to remove its copy of the rig, but the totals haven't been counted.
 - **An idle broker's CPU use.** The broker exits by itself 10 minutes after its last adapter disconnects.
-- **macOS**, and Studio on Windows with WSL's mirrored networking.
+- **macOS.**
 
 ## Measuring it yourself
 

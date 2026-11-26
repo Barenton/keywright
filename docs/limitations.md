@@ -5,8 +5,8 @@ What Keywright doesn't do, or doesn't do yet, and what has not been tried.
 ## Where it runs
 
 - **Studio on Windows only, so far.** macOS should work, but nobody has tried it yet.
-- **WSL's default networking.** Running the AI app and adapter inside WSL works with WSL's default (NAT) networking. Mirrored networking hasn't been tried.
-- **AI apps.** Keywright has been used fully from Claude Code. Claude Desktop and Codex have connected and shown a pose picture, but haven't been through a whole animation.
+- **WSL networking.** Running the AI app and adapter inside WSL works with both WSL's default (NAT) networking and mirrored networking. Right after WSL restarted in mirrored mode, the broker's port was once briefly held by something else, and the adapter reported `BROKER_PORT_CONFLICT` until it freed a few minutes later; the cause isn't known.
+- **AI apps.** Claude Code, Claude Desktop and Codex have each made and saved an animation through Keywright. Cursor and other MCP apps haven't been tried.
 - **Built from source.** There is no npm package, app bundle or Creator Store plugin yet. Setup needs Node.js and Rokit.
 
 ## Rigs
