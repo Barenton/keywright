@@ -14,6 +14,8 @@ export const MAX_MEASURES = 4;
 
 /** The parts a preview with samples follows when none are named, as the plugin does. */
 export const DEFAULT_FOLLOWED = ["Head", "LeftFoot", "LeftHand", "LowerTorso", "RightFoot", "RightHand"];
+/** The most parts the plugin follows over a whole clip. */
+export const MAX_FOLLOWED = 8;
 
 export interface Measure {
 	part: string;
@@ -24,12 +26,16 @@ export interface Measure {
 /**
  * The parts the plugin has to track for these measurements, added to the ones already
  * asked for. With samples and no parts named, the plugin's own default parts are kept, so
- * the motion summary still covers them.
+ * the motion summary still covers them, as many as fit beside the parts measured: the
+ * plugin follows at most eight over a clip.
  */
 export function trackFor(measures: Measure[], track: string[] | undefined, samples: boolean): string[] {
-	const parts = [...(track ?? (samples ? DEFAULT_FOLLOWED : []))];
+	const parts = [...(track ?? [])];
 	for (const measure of measures) {
 		for (const name of [measure.part, measure.relative_to]) if (name !== undefined && !parts.includes(name)) parts.push(name);
+	}
+	if (samples && track === undefined) {
+		for (const name of DEFAULT_FOLLOWED) if (parts.length < MAX_FOLLOWED && !parts.includes(name)) parts.push(name);
 	}
 	return parts;
 }

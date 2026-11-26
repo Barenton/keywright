@@ -75,7 +75,8 @@ export function renderResult(params: unknown, payload: unknown): { payload: unkn
 			if (input.onion === true) {
 				if (Array.isArray(pose.compare)) throw new Error("onion draws one clip: leave out compare_with");
 				const names = new Set((frames[0] ?? []).map((part) => part.name));
-				const follow = (Array.isArray(input.track) ? input.track : []).filter((name): name is string => typeof name === "string" && names.has(name)).slice(0, MAX_TRACKS);
+				const named = (Array.isArray(input.track) ? input.track : []).filter((name): name is string => typeof name === "string" && names.has(name));
+				const follow = named.slice(0, MAX_TRACKS);
 				const tile = Math.min(size, Math.floor(MAX_WIDTH / rows.length));
 				const drawn = renderOnion(frames, rows, tile, resting, follow);
 				rest.render = {
@@ -85,6 +86,7 @@ export function renderResult(params: unknown, payload: unknown): { payload: unkn
 					frames: frames.length,
 					numbered: times.map((time, index) => ({ number: index + 1, time: Number(time) })),
 					paths: follow.map((part, index) => ({ part, colour: trackColour(index).name })),
+					...(named.length > follow.length ? { paths_left_out: named.slice(MAX_TRACKS), reason: `at most ${MAX_TRACKS} paths are drawn` } : {}),
 					width: drawn.width,
 					height: drawn.height,
 					legend,
@@ -97,13 +99,14 @@ export function renderResult(params: unknown, payload: unknown): { payload: unkn
 				// The same moments of another clip: this clip along the top, that one below.
 				const other = pose.compare.map((parts: unknown) => parsePose({ parts }));
 				const view = rows[0] as ViewName;
-				// When the other clip was sampled at its own times, its row is labelled with them.
+				// When the other clip was sampled at other times than this one, its own (from
+				// compare_times, or held at its end), its row is labelled with them.
 				const differences = isRecord(rest.compared) && Array.isArray(rest.compared.differences) ? rest.compared.differences : [];
 				const otherTimes = differences.map((entry) => (isRecord(entry) && typeof entry.other_time === "number" ? timeLabel(entry.other_time) : undefined));
-				const paired = otherTimes.length > 0 && otherTimes.every((label) => label !== undefined);
+				const paired = otherTimes.length === times.length && otherTimes.every((label) => label !== undefined) && otherTimes.some((label, index) => label !== times[index]);
 				const both = renderComparison(frames, other, view, each, resting, times, paired ? (otherTimes as string[]) : undefined);
 				const layout = paired
-					? "one column for each pair of times in order; top row this clip at times, labelled with them, bottom row the clip it is compared with at compare_times, labelled with those"
+					? "one column for each pair of times in order; top row this clip, labelled with its times, bottom row the clip it is compared with, labelled with the times it was sampled at"
 					: "one column for each time in order, labelled with the time in seconds; top row this clip, bottom row the clip it is compared with";
 				rest.render = { status: "ok", layout, views: [view], frames: frames.length, width: both.width, height: both.height, legend, style };
 				return { payload: rest, image: both.png.toString("base64") };

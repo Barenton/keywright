@@ -170,8 +170,20 @@ function Seam.apply(where: string, clip: Instance, operation: any, context: Cont
 	-- The loop is cut and joined at its whole number of frames. A loop that ends a little
 	-- off a frame (0.667 typed for 20/30 of a second) would otherwise put every key that
 	-- comes round the end that little off a frame too. Its stray end key, within a
-	-- millisecond of the frame, is taken as the loop's end and put back on the frame.
+	-- millisecond of the frame, is taken as the loop's end and put back on the frame. But
+	-- only where no other key is that near the frame: a key just before an end that is
+	-- just after the frame is a key of its own, and would be lost as the end. Such a loop
+	-- is cut at its own length, as it is; keys that come round it may then land a little
+	-- off a frame, which validation points out, but no motion is lost.
 	local period = math.round(frames) / rate
+	for _, track in Store.tracks(clip) do
+		local keys = Store.keys(track.curve)
+		for index = 1, #keys - 1 do
+			if keys[index].time >= period - tolerance then
+				period = duration
+			end
+		end
+	end
 	-- The loop started so that the range and its blends lie in its middle, on whole frames.
 	local offset = math.round((period / 2 - (first + last) / 2) * rate) / rate
 	local function onLoop(time: number): number

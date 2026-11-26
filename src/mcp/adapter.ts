@@ -307,7 +307,10 @@ export function createAdapter(options: AdapterOptions): McpServer {
 		},
 		async ({ studio_session, cursor, max_bytes, ...params }, extra) => {
 			try {
-				const budget = max_bytes ?? DEFAULT_READ_BYTES;
+				// A version notice goes in the same text, so it counts against the size asked for.
+				const notice = await updateNeeded(studio_session);
+				const noticeBytes = notice === undefined ? 0 : Buffer.byteLength(JSON.stringify({ update_needed: notice })) + 2;
+				const budget = Math.max(512, (max_bytes ?? DEFAULT_READ_BYTES) - noticeBytes);
 				const from = cursor === undefined ? undefined : /^(r\d+):(\d+)$/.exec(cursor);
 				if (from === null) throw new BridgeError("INVALID_ARGUMENT", "cursor is not one that read_animation gave.", "Read again without a cursor.");
 				const offset = from ? Number(from[2]) : 0;
@@ -317,9 +320,9 @@ export function createAdapter(options: AdapterOptions): McpServer {
 				if (from && result.revision !== from[1]) {
 					throw new BridgeError("INVALID_ARGUMENT", "The clip has changed since this cursor was given.", "Read again without a cursor.");
 				}
-				return ok("read_animation", params, boundRead(result, offset, budget));
+				return ok("read_animation", params, boundRead(result, offset, budget), notice);
 			} catch (error) {
-				return fail(error);
+				return fail(error, await updateNeeded(studio_session));
 			}
 		},
 	);

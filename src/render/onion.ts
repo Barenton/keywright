@@ -88,6 +88,9 @@ export function renderOnion(frames: PosePart[][], views: ViewName[], tile: numbe
 		for (const entry of [...dots.filter((dot) => dot.keep), ...dots.filter((dot) => !dot.keep)]) {
 			const box = { x: Math.round(entry.at[0]) + 4, y: Math.round(entry.at[1]) - 9 * label, ...labelSize(entry.text, label) };
 			if (!entry.keep && overlaps(box)) continue;
+			// The first and last frames' numbers are both kept: where a path comes back to
+			// where it began, the second goes below the first instead of over it.
+			while (entry.keep && overlaps(box)) box.y += box.height + label;
 			drawnAt.push(box);
 			drawLabel(picture.pixels, tile, tile, box.x, box.y, entry.text, entry.colour, label);
 		}

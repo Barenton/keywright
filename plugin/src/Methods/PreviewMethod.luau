@@ -236,6 +236,8 @@ function PreviewMethod.install(methods: { [string]: (params: any) -> any }, kit:
 			-- Another clip of the same rig to sample at the same times, for comparison.
 			local other: Instance? = nil
 			local otherName: string? = nil
+			-- The other clip's length: it is sampled no later than its own end.
+			local otherDuration = 0
 			if params.compare_with ~= nil then
 				local wanted = params.compare_with
 				if wanted == "source" then
@@ -267,6 +269,7 @@ function PreviewMethod.install(methods: { [string]: (params: any) -> any }, kit:
 					)
 				end
 				otherName = (other :: Instance).Name
+				otherDuration = Clips.duration(other :: Instance)
 			end
 			local frames, poses, moments = {}, {}, {}
 			local shownTimes: { number } = {}
@@ -317,7 +320,9 @@ function PreviewMethod.install(methods: { [string]: (params: any) -> any }, kit:
 					)
 					table.insert(differences, {
 						time = shown,
-						other_time = if otherTimes then otherAt else nil,
+						-- When the other clip was sampled, its end allowing: with compare_times or
+						-- not, it can differ from this clip's time.
+						other_time = math.min(otherAt, otherDuration),
 						studs = math.round(apart.studs * 1000) / 1000,
 						degrees = math.round(apart.degrees * 100) / 100,
 						part = apart.worst,

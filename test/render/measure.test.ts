@@ -9,6 +9,17 @@ test("the parts measured are tracked as well as those named, keeping the default
 	const sampled = trackFor(measures, undefined, true);
 	assert.ok(sampled.includes("LowerTorso") && sampled.includes("LeftHand"), "the plugin's default parts stay");
 	assert.equal(sampled.filter((name) => name === "Head").length, 1, "no part twice");
+	// Over a whole clip the plugin follows at most eight parts: the measured ones come first.
+	const many = trackFor(
+		[
+			{ part: "UpperTorso", relative_to: "RightUpperArm", along: "up" },
+			{ part: "LeftLowerArm", relative_to: "LeftLowerLeg", along: "up" },
+		],
+		undefined,
+		true,
+	);
+	assert.equal(many.length, 8);
+	assert.deepEqual(many.slice(0, 4), ["UpperTorso", "RightUpperArm", "LeftLowerArm", "LeftLowerLeg"]);
 });
 
 test("forward is the rig's negative Z, measured from another part or from the root", () => {

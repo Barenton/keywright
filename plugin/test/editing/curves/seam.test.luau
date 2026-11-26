@@ -209,6 +209,30 @@ case("a loop that ends just off a whole frame keeps its keys on frames across th
 	check("the range across the end has the offset", math.abs(math.deg(added) - 30) < 0.1, math.deg(added))
 end)
 
+case("a key just before a loop's off-frame end is kept when a range crosses the end", function()
+	-- A key at 0.666 and the loop's end at 0.6676: both within a frame's slack of 20/30
+	-- seconds, but 1.6 ms apart, so they are two keys. Cutting the loop at 20/30 must not
+	-- take the first for the end.
+	local function made(): any
+		local clip = Kit.blank()
+		realRun(clip, {
+			{ type = "set_key", joint = "UpperTorso", time = 0, rotation = { 0, 0, 0 } },
+			{ type = "set_key", joint = "UpperTorso", time = 0.666, rotation = { 0, 60, 0 } },
+			{ type = "set_key", joint = "UpperTorso", time = 0.6676, rotation = { 0, 0, 0 } },
+			{ type = "set_properties", loop = true },
+		})
+		return clip
+	end
+	local original = made()
+	local clip = made()
+	realRun(clip, {
+		{ type = "add_offset", joint = "UpperTorso", time_from = 0, time_to = 0.1, rotation = { 0, 10, 0 } },
+	})
+	local before = math.deg(value(original, "UpperTorso", "rotation.y", 19 / 30))
+	local after = math.deg(value(clip, "UpperTorso", "rotation.y", 19 / 30))
+	check("the motion well outside the range is as it was", math.abs(after - before) < 1e-3, `{before} then {after}`)
+end)
+
 case("what a range across a loop's end cannot be", function()
 	local plain = lopsided()
 	check(

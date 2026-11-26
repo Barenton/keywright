@@ -504,6 +504,10 @@ test("a preview asked for an onion skin draws one, and says why when it can't", 
 	assert.deepEqual(render.paths, [{ part: "RightHand", colour: "red" }]);
 	assert.deepEqual(render.numbered, [{ number: 1, time: 0 }, { number: 2, time: 0.1 }, { number: 3, time: 0.2 }]);
 	assert.ok(drawn.image);
+	// Paths beyond what can be drawn are named, not dropped without a word.
+	const nine = ["RightHand", "UpperTorso", "RightHand", "UpperTorso", "RightHand", "UpperTorso", "RightHand", "UpperTorso", "RightHand"];
+	const crowded = renderResult({ render: true, times: [0, 0.1, 0.2], onion: true, track: nine }, { frames, pose });
+	assert.deepEqual((crowded.payload as { render: { paths_left_out: string[] } }).render.paths_left_out, ["RightHand"]);
 	const single = renderResult({ render: true, onion: true }, { pose: { parts: parts(0) } });
 	assert.match(String((single.payload as { render: { reason: string } }).render.reason), /needs times/);
 	const compared = renderResult({ render: true, onion: true }, { frames, pose: { ...pose, compare: pose.frames } });
@@ -521,9 +525,12 @@ test("a comparison at the other clip's own times labels its row with them", () =
 		for (let y = tile; y < tile + 16; y += 1) for (let x = 0; x < 40; x += 1) if ((image.at(x, y)[0] as number) < 80) dark += 1;
 		return { dark, layout: String((drawn.payload as { render: { layout: string } }).render.layout) };
 	};
-	const same = labelled({ name: "Old", differences: [{ time: 0.3 }, { time: 0.4 }] });
+	const same = labelled({ name: "Old", differences: [{ time: 0.3, other_time: 0.3 }, { time: 0.4, other_time: 0.4 }] });
 	assert.equal(same.dark, 0, "at the same times, only the top row is labelled");
+	// The other clip held at its end, shorter than this one: its row says so.
+	const held = labelled({ name: "Old", differences: [{ time: 0.3, other_time: 0.3 }, { time: 0.4, other_time: 0.35 }] });
+	assert.ok(held.dark > 0, "a time held at the other clip's end is labelled");
 	const paired = labelled({ name: "Old", differences: [{ time: 0.3, other_time: 0.2 }, { time: 0.4, other_time: 0.267 }] });
 	assert.ok(paired.dark > 0, "at its own times, the bottom row carries them");
-	assert.match(paired.layout, /compare_times/);
+	assert.match(paired.layout, /times it was sampled at/);
 });

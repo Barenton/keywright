@@ -401,6 +401,11 @@ describe("MCP adapter over stdio", () => {
 		assert.equal(plugin.received.length, before);
 	});
 
+	test("a read of a window whose plugin differs says so", async () => {
+		const { json } = await callTool("read_animation", { studio_session: SESSION, clip_id: "clip_big" });
+		assert.match(json.update_needed, /plugin is test/);
+	});
+
 	test("an error for a window whose plugin differs says so too", async () => {
 		const { isError, content } = await callTool("open_animation", { studio_session: SESSION, rig_id: "rig_leaky" });
 		assert.equal(isError, true);
