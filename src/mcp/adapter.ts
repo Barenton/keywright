@@ -8,6 +8,7 @@ import { compareVersions, ensureBroker } from "../broker/launcher.js";
 import { isValidPairingCode, normalizePairingCode } from "../broker/auth.js";
 import { BridgeError, PAIRING_TTL_MS, type SessionInfo } from "../broker/protocol.js";
 import { ALONG, MAX_MEASURES, measureResult, trackFor } from "../render/measure.js";
+import { refreshLatest, updateAvailable } from "../updates.js";
 import { MAX_TILE, MAX_VIEWS, MIN_TILE, renderResult, STYLES, VIEWS } from "../render/render.js";
 
 import { studioSession, clipId, time, joint } from "./schemas/common.js";
@@ -25,7 +26,7 @@ export const ADAPTER_VERSION = VERSION;
  */
 export const SERVER_INSTRUCTIONS = `Keywright makes animations for rigs in Roblox Studio. How to work with it:
 
-1. Start with get_workspace. If it, or any result, carries update_needed, tell the person straight away, with what it says to do: until the plugin and the adapter match, tools may fail or ignore options. Use pair_studio only with a code the person gives you. Call inspect_rig before posing: its turns say which way each joint moves for a positive rotation about X, Y and Z.
+1. Start with get_workspace. If it, or any result, carries update_needed, tell the person straight away, with what it says to do: until the plugin and the adapter match, tools may fail or ignore options. If get_workspace carries update_available, a newer release is out: mention it once, with its steps; it is not urgent. Use pair_studio only with a code the person gives you. Call inspect_rig before posing: its turns say which way each joint moves for a positive rotation about X, Y and Z.
 2. Plan before editing. Write down the key poses, when each happens, and what each must read as: for a kick, the chamber, the contact (leg extended, hips turned over) and the recovery. Use curve clips (format "curves") for motion that should flow, with keys on whole frames (multiples of 1/30 s).
 3. Block the key poses first and check them. Then add the in-betweens, overlap, and contacts with the floor (pin, place_on_floor).
 4. After every revision, look at it. preview_animation with times at the key moments and render: true gives a pose strip, which shows whether each silhouette reads. With samples and render: true it gives motion paths and a speed plot, which show stops, pops and corners. Use both: a speed plot cannot tell you whether a pose reads, and a pose strip cannot show timing. Use compare_with to see what a revision changed, onion: true to see how a limb travels between poses, and measure to turn a check (a punch's reach, how low the hips sink after a landing) into numbers.
@@ -136,10 +137,10 @@ export function versionCheck(session: Pick<SessionInfo, "pluginVersion">): { upd
 	const how =
 		older === "plugin"
 			? viaNpx()
-				? "Ask the person to update the plugin: npx -y keywright@latest install-plugin."
-				: "Ask the person to update the plugin: node keywright.mjs install-plugin with the latest release, or npm run install:plugin in a source checkout."
+				? "Ask the person to update: npx -y keywright@latest update."
+				: "Ask the person to update the plugin: node keywright.mjs update with the latest release, or npm run install:plugin in a source checkout."
 			: viaNpx()
-				? "Ask the person to reconnect Keywright in their AI app, so that npx starts the latest; if it stays older, to run npx -y keywright@latest setup."
+				? "Ask the person to run npx -y keywright@latest update, then reconnect Keywright in their AI app so that npx starts the latest; if it stays older, to run npx -y keywright@latest setup and use the entry it prints."
 				: "Ask the person to update the adapter: download keywright.mjs from the latest release (in a source checkout, git pull, npm install and npm run build), then reconnect it.";
 	return {
 		update_needed: `This Studio window's Keywright plugin is ${session.pluginVersion || "unnumbered"} and the adapter is ${VERSION}; the ${older} is older. Tell the person: until they match, tools may fail, and options newer than the ${older} are ignored. ${how}`,
@@ -205,7 +206,9 @@ export function createAdapter(options: AdapterOptions): McpServer {
 						}
 					}),
 				);
-				return ok("get_workspace", {}, { adapter_version: VERSION, sessions: workspaces });
+				// An adapter that runs for days asks again once a day; this call shows the last answer.
+				void refreshLatest(options.home);
+				return ok("get_workspace", {}, { adapter_version: VERSION, ...updateAvailable(options.home, VERSION), sessions: workspaces });
 			} catch (error) {
 				return fail(error);
 			}
@@ -515,6 +518,8 @@ export function createAdapter(options: AdapterOptions): McpServer {
 }
 
 export async function runAdapter(options: AdapterOptions): Promise<void> {
+	// In the background: whether a newer release is out, asked of npm at most once a day.
+	void refreshLatest(options.home);
 	const server = createAdapter(options);
 	await server.connect(new StdioServerTransport());
 }

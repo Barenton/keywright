@@ -58,7 +58,7 @@ function Panel.describe(state: string, detail: string?): (string, Tone)
 	elseif state == "foreign" then
 		return "Another program is using the broker port. Nothing was sent to it.", "problem"
 	elseif state == "denied" and detail == "plugin_older" then
-		return 'This plugin is older than the Keywright adapter, and the two cannot work together. Update the plugin: run "npx -y keywright@latest install-plugin", or with the files from the latest release, "node keywright.mjs install-plugin" (in a source checkout, "npm run install:plugin").',
+		return 'This plugin is older than the Keywright adapter, and the two cannot work together. Update the plugin: run "npx -y keywright@latest update", or with the files from the latest release, "node keywright.mjs install-plugin" (in a source checkout, "npm run install:plugin").',
 			"problem"
 	elseif state == "denied" and detail == "adapter_older" then
 		return "The Keywright adapter is older than this plugin, and the two cannot work together. Update the adapter: reconnect it in your AI app if it runs through npx, or download keywright.mjs from the latest release (in a source checkout, git pull, npm install and npm run build), then reconnect it.",

@@ -18,6 +18,7 @@ What each error code means is in [Errors and findings](errors.md).
 | Command | What it does |
 |---|---|
 | `npx -y keywright@latest setup` | Installs the plugin and prints the settings for your AI app. |
+| `npx -y keywright@latest update` | Updates: installs the newest plugin and says what is left, which is reconnecting Keywright in your AI app. |
 | `npx -y keywright@latest install-plugin` | Installs or updates the plugin only. Add `--folder <path>` to install somewhere else. |
 | `npx -y keywright@latest pair <code>` | Pairs a Studio window, with the code its panel shows. |
 | `npx -y keywright@latest status` | Starts the broker if needed and prints its state. |

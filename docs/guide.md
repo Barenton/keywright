@@ -62,9 +62,11 @@ In a looping clip, an edit whose time range touches the end also changes the sta
 ## Updating
 
 ```sh
-npx -y keywright@latest install-plugin
+npx -y keywright@latest update
 ```
 
-Then reconnect Keywright in your AI app, for example with `/mcp` in Claude Code, so that it starts the new adapter. The old broker is replaced the next time it's needed. With the downloaded files instead, download `keywright.mjs` and `Keywright.rbxm` from the [latest release](https://github.com/Barenton/keywright/releases/latest) over the old ones, and run `node keywright.mjs install-plugin` in their folder.
+It installs the newest plugin and tells you what's left: reconnect Keywright in your AI app, for example with `/mcp` in Claude Code, so that it starts the new adapter. The old broker is replaced the next time it's needed. With the downloaded files instead, download `keywright.mjs` and `Keywright.rbxm` from the [latest release](https://github.com/Barenton/keywright/releases/latest) over the old ones, and run `node keywright.mjs update` in their folder.
+
+You don't have to watch for releases: once a day Keywright checks whether a newer one is out, and your AI app mentions it. To turn that check off, set `KEYWRIGHT_NO_UPDATE_CHECK=1` in the app's settings for Keywright; [Security](security.md) says what it sends.
 
 The plugin and the adapter share one version number. The panel shows the plugin's at the bottom, and `npx -y keywright@latest version` prints the adapter's. If they differ, the agent is told to ask you to update the older one.

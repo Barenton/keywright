@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { after, before, describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -250,6 +251,16 @@ describe("MCP adapter over stdio", () => {
 		assert.equal(accepted.isError, false);
 		assert.equal(accepted.json.revision, `r${start + 1}`);
 		assert.equal(plugin.received.length, before + 1);
+	});
+
+	test("get_workspace says when a newer release is out", async () => {
+		writeFileSync(join(temp.home, "release-check.json"), JSON.stringify({ checkedAt: Date.now(), latest: "999.0.0", answeredAt: Date.now() }));
+		try {
+			const { json } = await callTool("get_workspace", {});
+			assert.match(json.update_available, /Keywright 999\.0\.0 is out/);
+		} finally {
+			rmSync(join(temp.home, "release-check.json"), { force: true });
+		}
 	});
 
 	test("get_workspace merges broker sessions with each session's workspace", async () => {

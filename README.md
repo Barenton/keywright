@@ -103,7 +103,7 @@ Keywright tells every AI app how to work with it when it connects. For better an
 - **Claude Code:** copy the `skills/keywright` folder into `~/.claude/skills/`.
 - **Other apps** that support skills in this format (a folder with a `SKILL.md`): put the folder where the app's documentation says.
 
-To update later, run `npx -y keywright@latest install-plugin` and reconnect Keywright in your AI app. To build from source instead, see [Contributing](CONTRIBUTING.md).
+To update later, run `npx -y keywright@latest update` and reconnect Keywright in your AI app. Your AI app tells you when a newer release is out. To build from source instead, see [Contributing](CONTRIBUTING.md).
 
 ## How it works
 

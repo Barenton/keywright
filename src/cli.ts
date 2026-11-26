@@ -9,6 +9,8 @@ import { configuredPort, readBrokerState, rotateSecret, stateDir } from "./broke
 import { builtPlugin, installPlugin, robloxFolder, thisMachine, type Installed } from "./install.js";
 import { cliPath, command as howToRun, viaNpx } from "./layout.js";
 import { setupGuide } from "./setup.js";
+import { compareVersions } from "./broker/launcher.js";
+import { checkDisabled, refreshLatest, updateSteps } from "./updates.js";
 import { VERSION } from "./version.js";
 
 const USAGE = `Keywright v${VERSION}
@@ -23,6 +25,9 @@ Usage: ${howToRun()} [command]
   setup [--folder <path>]
                  Install the plugin, then print how to add Keywright to an AI app,
                  with this copy's path filled in, and what is left for the person.
+  update [--folder <path>]
+                 Update: install this copy's plugin, check for a newer release, and
+                 say what is left (reconnecting the AI app).
   install-plugin [--folder <path>]
                  Copy the plugin built from this copy of Keywright into Studio's
                  plugins folder, replacing an older one.
@@ -30,7 +35,9 @@ Usage: ${howToRun()} [command]
 
 Environment:
   KEYWRIGHT_PORT   Loopback port (default 47318).
-  KEYWRIGHT_HOME   Directory for the secret, state file and log.`;
+  KEYWRIGHT_HOME   Directory for the secret, state file and log.
+  KEYWRIGHT_NO_UPDATE_CHECK=1
+                   Never ask npm whether a newer release is out.`;
 
 async function runBroker(): Promise<number> {
 	const home = stateDir();
@@ -131,6 +138,37 @@ function install(args: string[]): number {
 	return 0;
 }
 
+/**
+ * Updates: run as npx -y keywright@latest update, this copy is the newest release, so its
+ * plugin is installed and what is left is said. A copy older than the newest release
+ * installs nothing, which could replace a newer plugin, and says how to get the newest.
+ */
+async function update(args: string[]): Promise<number> {
+	if (args.length > 0 && (args[0] !== "--folder" || args.length !== 2)) {
+		process.stderr.write(`Usage: ${howToRun()} update [--folder <path>]\n`);
+		return 2;
+	}
+	const checked = checkDisabled() ? { fresh: false } : await refreshLatest(stateDir(), { force: true });
+	if (checked.fresh && checked.latest && compareVersions(checked.latest, VERSION) > 0) {
+		process.stdout.write(`Keywright ${checked.latest} is out, and this copy is ${VERSION}, so nothing was installed. To update, ${updateSteps()}.\n`);
+		return 1;
+	}
+	const installed = installFrom("update", args);
+	if (!installed) return 2;
+	const lines = [`Installed the Keywright plugin (v${VERSION}) at ${installed.path}. Studio loads it on its own; if the panel still shows an older version at the bottom, restart Studio.`];
+	if (installed.replaced) lines.push(`It replaces ${installed.replaced}, the copy saved from Studio.`);
+	if (installed.others.length > 0) {
+		lines.push(`This folder also has ${installed.others.join(", ")}. Studio loads every plugin in it, so remove ${installed.others.length === 1 ? "that file" : "those files"} to run only this one.`);
+	}
+	lines.push(
+		"",
+		checked.fresh ? "No newer release is out." : "Whether a newer release is out could not be checked, so this copy's own version was installed.",
+		"Now reconnect Keywright in your AI app (in Claude Code, /mcp), so that it starts this version too. The broker is replaced the next time it is needed.",
+	);
+	process.stdout.write(`${lines.join("\n")}\n`);
+	return 0;
+}
+
 async function main(argv: string[]): Promise<number> {
 	const [command, ...rest] = argv;
 	if (command === undefined || command === "serve") {
@@ -139,6 +177,7 @@ async function main(argv: string[]): Promise<number> {
 	}
 	if (command === "broker") return runBroker();
 	if (command === "install-plugin") return install(rest);
+	if (command === "update") return update(rest);
 	if (command === "setup") return setup(rest);
 	if (command === "version" || command === "--version") {
 		process.stdout.write(`${VERSION}\n`);

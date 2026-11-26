@@ -137,6 +137,12 @@ function writeAtomic(file: string, text: string): void {
 	renameSync(temp, file);
 }
 
+/** Writes a small file of Keywright's own into the state folder, whole or not at all. */
+export function writeStateFile(dir: string, name: string, text: string): void {
+	ensureDir(dir);
+	writeAtomic(join(dir, name), text);
+}
+
 export function writeBrokerState(dir: string, state: BrokerState): void {
 	ensureDir(dir);
 	writeAtomic(join(dir, "broker.json"), JSON.stringify(state));
