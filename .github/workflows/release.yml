@@ -46,4 +46,4 @@ jobs:
           prerelease=""
           case "$version" in *-*) prerelease="--prerelease" ;; esac
           gh release create "$GITHUB_REF_NAME" build/Keywright.rbxm \
-            --title "Keywright $version" --notes-file build/notes.md --verify-tag $prerelease
+            --title "$GITHUB_REF_NAME" --notes-file build/notes.md --verify-tag $prerelease
