@@ -4,9 +4,12 @@ What changed in each release of Keywright. The plugin and the adapter are releas
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-26
+
 - **Install without building:** each release now carries `keywright.mjs`, the adapter in one file that Node runs as it is, beside `Keywright.rbxm`. Download both into one folder, run `node keywright.mjs install-plugin`, and point your AI app at `node /path/to/keywright.mjs`. The panel's pairing command and the update advice give this form first. `THIRD_PARTY_LICENSES.txt` lists the licences of the packages built into it.
 - **Pair through your AI app:** tell it "Pair Keywright with code …" and its adapter registers the code with the new `pair_studio` tool, so pairing needs no terminal. The panel shows the code and the terminal command in boxes that a click selects for copying.
 - **Versions** read `v0.2.0` in the panel and the CLI, as the releases are titled.
+- **Fixed:** under WSL's mirrored networking, after the broker stopped (for example after `rotate`), a new one was never started and Studio kept trying to connect; the adapter reported `BROKER_PORT_CONFLICT`. A port that only hangs now counts as free.
 - **Tested:** WSL with mirrored networking, and the beta demonstration in Claude Desktop and Codex. The README and the limitations page say so.
 
 ## [0.1.2] - 2026-11-26
@@ -33,7 +36,8 @@ The first numbered release.
 - **Setup:** `npm run install:plugin` installs the plugin into Studio. The panel and `node dist/src/cli.js version` show the version, and the agent is told when the plugin and the adapter don't match.
 - **Panel:** fits whatever size it is docked or floated at, follows Studio's theme, and shows the pairing command ready to copy.
 
-[Unreleased]: https://github.com/Barenton/keywright/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/Barenton/keywright/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Barenton/keywright/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/Barenton/keywright/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/Barenton/keywright/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Barenton/keywright/releases/tag/v0.1.0
