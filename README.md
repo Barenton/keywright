@@ -1,127 +1,278 @@
 # Keywright
 
-Keywright lets AI agents author Roblox animations through the Model Context Protocol (MCP). A Roblox Studio plugin holds the animation engine; a small local relay connects MCP clients to it.
+Keywright lets an AI agent make Roblox animations in Roblox Studio. You describe the motion you want, such as "a looping walk cycle", "a wave" or "getting hit and falling over". The agent then builds the animation on your rig, checks it, and saves it where Roblox's Animation Editor can open it.
 
-**Status: early development. Nothing is released.** The plugin has been run in Studio on Windows by hand and by a measuring script; see [What is tested](#what-is-tested).
+It works with any AI app that supports the [Model Context Protocol](https://modelcontextprotocol.io) (MCP), such as Claude Code.
 
-## How it fits together
+> **Status: early development.** Nothing has been released yet, and you build it from source. It has been used in Studio on Windows; see [What has been tested](#what-has-been-tested).
+
+## Contents
+
+- [How it works](#how-it-works)
+- [What you need](#what-you-need)
+- [Setup](#setup)
+- [Your first animation](#your-first-animation)
+- [Troubleshooting](#troubleshooting)
+- [What the agent can do](#what-the-agent-can-do)
+- [Safety](#safety)
+- [For contributors](#for-contributors)
+- [What has been tested](#what-has-been-tested)
+- [License](#license)
+
+## How it works
+
+Keywright has three parts:
 
 ```
-MCP client ──stdio──> adapter ──loopback──> broker <──WebSocket── Studio plugin
-(one adapter per client)        (one per OS user)           (opens the connection)
+AI app  ──>  adapter  ──>  broker  <──  Studio plugin
+             (started by    (one per       (inside Roblox
+             the AI app)    computer user)  Studio)
 ```
 
-- **Plugin** (`plugin/`, Luau): rig inspection, working copies of clips made of keyframes (`KeyframeSequence`) or curves (`CurveAnimation`), atomic edits with undo, sampling a clip on a disposable copy of the rig, and saving clips where Roblox's Animation Editor keeps them.
-- **Adapter and broker** (`src/`, TypeScript): MCP tools, schema validation, session routing and authentication. The adapter also draws the picture of a pose from the joint positions the plugin samples. They contain no animation logic.
+- **The Studio plugin** does all the animation work: it reads your rig, edits clips, plays them back to measure them, and saves them. Your animations never leave Studio.
+- **The adapter** is what your AI app starts. It gives the agent a set of tools (listed [below](#tools)) and passes each request on.
+- **The broker** is a small background program that connects adapters to Studio. The adapter starts it for you, and it only listens on your own computer (`127.0.0.1`).
 
-Studio is the only place animation data lives. The broker holds routing state and can restart without losing anything.
+The plugin and the broker trust each other through a one-time **pairing** step, which you do once per Studio install. After that they connect on their own.
+
+## What you need
+
+- **Roblox Studio**, on Windows. macOS has not been tried yet.
+- **[Node.js](https://nodejs.org) 22 or later**, to build and run the adapter.
+- **[Rokit](https://github.com/rojo-rbx/rokit)**, which installs the Roblox tools this project pins in `rokit.toml`, including [Rojo](https://rojo.space), which builds the plugin.
+- **An AI app that supports MCP**, such as [Claude Code](https://claude.com/claude-code).
+
+You can run the AI app and the adapter on Windows itself, or inside WSL while Studio runs on Windows. Both work.
+
+## Setup
+
+### 1. Get the code and build it
+
+```sh
+git clone https://github.com/Barenton/keywright.git
+cd keywright
+rokit install          # fetches Rojo and the other Roblox tools
+npm install            # fetches the adapter's dependencies
+npm run build          # builds the adapter into dist/
+npm run build:plugin   # builds the plugin into build/Keywright.rbxm
+```
+
+### 2. Install the plugin in Studio
+
+1. Open Roblox Studio.
+2. On the **Plugins** tab, click **Plugins Folder**. Studio opens its plugins folder, which is usually `%LOCALAPPDATA%\Roblox\Plugins`.
+3. Copy `build/Keywright.rbxm` into that folder. If you built it inside WSL, the file is at `\\wsl$\<your distro>\<path to keywright>\build\Keywright.rbxm`.
+4. Restart Studio. A **Keywright** button now appears on the Plugins tab.
+
+When you change the code later, rebuild with `npm run build:plugin` and copy the file over again.
+
+### 3. Add Keywright to your AI app
+
+Your AI app starts the adapter with `node`, using the full path to `dist/src/cli.js` in your copy of the code.
+
+**Claude Code:**
+
+```sh
+claude mcp add keywright -- node /full/path/to/keywright/dist/src/cli.js
+```
+
+**Other MCP apps:** most of them take a JSON entry like this one in their MCP settings:
+
+```json
+{
+  "mcpServers": {
+    "keywright": {
+      "command": "node",
+      "args": ["/full/path/to/keywright/dist/src/cli.js"]
+    }
+  }
+}
+```
+
+Restart the AI app, or reconnect its MCP servers, so that it picks up the new server.
+
+### 4. Turn on agent access and pair
+
+Agent access is off by default, and it is turned on separately for each place.
+
+1. Open a place in Studio. While you're learning, use a place you don't mind changing; see [Safety](#safety).
+2. Click the **Keywright** button on the Plugins tab to show the panel.
+3. Click **Turn on agent access**.
+4. **The first time only:** the panel shows a line like `Pair once: run "keywright pair ABCD234XYZ" in a terminal.` Within 5 minutes, run that command from the `keywright` folder:
+
+   ```sh
+   node dist/src/cli.js pair ABCD234XYZ
+   ```
+
+   Use the code your panel shows, not this one. It works once.
+
+The panel then says **Connected to the broker.** Studio remembers the pairing, and which places you turned agent access on for, so you only do this once.
+
+## Your first animation
+
+You need an **R15** rig in your place's Workspace: a character model with a `Humanoid` whose rig type is R15. Its joints can be `Motor6D`s or `AnimationConstraint`s. An R15 dummy from **Rig Builder** on Studio's **Avatar** tab works well. R6 rigs aren't supported yet.
+
+**Close the Animation Editor while the agent works.** While it is open, Studio blocks the plugin from changing anything (see [Troubleshooting](#troubleshooting)).
+
+Then ask your AI app, for example:
+
+> Using Keywright, make a 1-second looping walk cycle for the rig in my place and save it as "Walk".
+
+The agent will usually:
+
+1. look at the place and your rig;
+2. open a new **working copy**, a draft clip that is not saved anywhere yet;
+3. build the motion in batches of edits;
+4. look at poses and check the clip for problems, such as feet sliding or sinking into the floor;
+5. save it as a new clip.
+
+To see the result, select the rig, open the **Animation Editor**, and load the saved clip from its list. One Studio undo (**Ctrl+Z**) reverts any single batch of edits or a save, if you want to step back.
+
+Some tips:
+
+- **Be specific about what you want:** the length, whether it loops, the mood ("a tired walk", "a quick, snappy wave"), and anything that must stay still.
+- **Ask for changes in plain words**, such as "the arms swing too much" or "make the landing heavier". The agent edits its working copy and saves the result under a new name.
+- **Saving never overwrites a clip.** To replace an existing clip, the agent has to ask. The panel then shows **Replace the clip** and **Keep the clip as it is**, and nothing changes until you choose.
+
+## Troubleshooting
+
+| What you see | What to do |
+|---|---|
+| Edits or saves fail while the Animation Editor is open | Close the Animation Editor. While it is open, Studio doesn't let plugins record undo steps, so Keywright refuses to make changes you couldn't undo. |
+| The agent can't find a Studio session | Check that the Keywright panel says **Connected to the broker.** If you just reinstalled the plugin, reconnect the MCP server in your AI app. |
+| The panel says **Pairing is needed again** | Turn agent access off and on to get a new code, then run `node dist/src/cli.js pair <code>` again. |
+| The pairing code stopped working | Codes last 5 minutes and work once. Turn agent access off and on for a fresh one. |
+| The panel says **Another program is using the broker port**, or the agent gets `BROKER_PORT_CONFLICT` | Another program is using port 47318, which Keywright needs. Close that program, then turn agent access off and on. |
+| You want to check the broker | Run `node dist/src/cli.js status`. |
+
+Other commands are listed by `node dist/src/cli.js --help`. One worth knowing is `rotate`, which replaces the secret the broker uses. Every Studio window must pair again after it.
+
+## What the agent can do
+
+### Tools
+
+These are the tools your AI app sees:
+
+| Tool | What it does |
+|---|---|
+| `get_workspace` | Lists the connected Studio windows, with their rigs, saved clips and working copies. |
+| `inspect_rig` | Describes a rig: its joints, how they connect, and their rest positions. |
+| `open_animation` | Opens a working copy: blank, or a copy of an existing clip. The original is never changed. |
+| `read_animation` | Reads a working copy: its length, settings, and the poses or keys of the joints asked for. |
+| `edit_animation` | Applies a batch of edits. Either the whole batch applies or none of it does, and one Studio undo reverts it. |
+| `validate_animation` | Checks a working copy: errors that would stop a save, and warnings such as feet sliding, scuffing or going through the floor. |
+| `preview_animation` | Plays a working copy to an exact time on a hidden copy of the rig and reports where every joint is. It can also draw a simple picture of the pose. |
+| `save_animation` | Saves a working copy as a new clip that the Animation Editor can load. |
+| `discard_animation` | Throws a working copy away. |
+
+The pose picture is drawn from the joint positions, with each body part as a box: the left side blue, the right side orange, and a mark on the front of the head. It shows the pose, not your rig's real look. Keywright doesn't take Studio screenshots; that code exists but is switched off.
+
+### Two kinds of clip
+
+Roblox stores animations in one of two forms, and Keywright edits both:
+
+- **Keyframe clips** (`KeyframeSequence`): full poses at chosen moments, with fixed easing shapes between them. This is the Animation Editor's usual form.
+- **Curve clips** (`CurveAnimation`): each joint has its own smooth curves, as in the Animation Editor's Curve Editor. Speed carries through a key instead of stopping at it, so curves are the better choice for motion that should flow, like walks and idles.
+
+### Edits
+
+`edit_animation` takes a list of operations. Besides setting poses and keys, there are operations that work with the body as a whole:
+
+| For | Operations |
+|---|---|
+| Poses and keys | `set_pose`, `offset_pose`, `remove_pose`, `add_keyframe`, `move_keyframe`, `duplicate_keyframe`, `remove_keyframe`, `set_easing`, `set_key`, `remove_key`, `set_tangent`, `auto_tangents`, `clear_keys`, `copy_pose` |
+| Timing | `shift_time` (which can also move a loop's starting point), `scale_time`, `reverse_time`, `reduce_keys` |
+| Feet and hands | `pin` (keep a foot or hand planted, including heel and toe roll), `place_on_floor`, `clear_floor` |
+| Body motion | `mirror` (copy one side onto the other, optionally half a cycle later), `match`, `aim` (turn the head or another joint toward a point), `overlap` (let a limb trail behind and settle), `add_offset`, `add_noise`, `smooth_motion` |
+| Clip settings | `set_properties` (looping, priority), `set_marker`, `remove_marker`, `restore_source` |
+
+In a looping clip, an edit whose time range touches the end also changes the start in the same way, so the loop stays seamless.
+
+## Safety
+
+- **Agent access is off until you turn it on**, separately for each place, and you can turn it off at any time from the panel.
+- **Nothing is overwritten without asking.** Saving makes a new clip. Replacing an existing one needs you to click **Replace the clip** in the panel.
+- **Every change can be undone.** Each batch of edits and each save is one Studio undo step.
+- **Everything stays on your computer.** The broker listens only on `127.0.0.1` and turns away web pages and other machines. Every connection must prove it holds the pairing secret before anything is sent.
+- **The agent can't run code.** No tool runs arbitrary Luau or touches your files.
+
+Keywright doesn't protect you from harmful software that is already running on your computer under your user account.
+
+While you're getting started, try Keywright in a copy of your place or a fresh baseplate, not a game you've published.
+
+## For contributors
 
 ### Where the code is
 
 | Folder | What is in it |
 |---|---|
-| `plugin/Main.server.luau` | The plugin's entry point: the agent access switch, pairing, and connection status. |
-| `plugin/src/Handlers.luau` | The methods a Studio session answers, one per tool. |
-| `plugin/src/Core/` | Shared basics: structured errors, encoding, hashing, time limits, the engine's libraries. |
+| `plugin/Main.server.luau` | The plugin's entry point: the panel, the agent access switch and pairing. |
+| `plugin/src/Handlers.luau` | The requests a Studio session answers, one per tool. |
+| `plugin/src/Core/` | Shared basics: errors, encoding, hashing, time limits. |
 | `plugin/src/Network/` | The authenticated connection to the broker, and the per-place access switch. |
 | `plugin/src/Rigs/` | Reading a rig's joints, and working out where its parts are for a pose. |
-| `plugin/src/Storage/` | Working copies, saved clips, and proposals to replace a clip. |
-| `plugin/src/Editing/` | The edits for keyframe clips and for curve clips, atomic batches, and undo recordings. |
-| `plugin/src/Inspection/` | Reading a clip, checking it, and fingerprinting it. |
-| `plugin/src/Preview/` | Sampling a clip on a disposable copy of the rig, and the gated screenshot path. |
-| `plugin/fault/` | The extra module for the test build described below. |
-| `plugin/test/` | Offline Luau suites, in folders matching `plugin/src`. `npm run test:luau` runs every `*.test.luau`. |
-| `src/broker/` | The broker, the client that connects to it, its handshake, wire protocol and state files. |
-| `src/mcp/` | The MCP adapter: the tools and their schemas. |
-| `src/render/` | Pictures of poses and motion, and screenshot results. |
-| `test/` | TypeScript tests, in folders matching `src`, plus checks on the scripts in `scripts/`. |
+| `plugin/src/Storage/` | Working copies, saved clips, and requests to replace a clip. |
+| `plugin/src/Editing/` | The edit operations for keyframe and curve clips, atomic batches, and undo. |
+| `plugin/src/Inspection/` | Reading and checking clips. |
+| `plugin/src/Preview/` | Playing a clip on a hidden copy of the rig, and the (disabled) screenshot path. |
+| `plugin/fault/` | An extra module for the fault test build (see below). |
+| `plugin/test/` | Offline Luau tests, in folders that match `plugin/src`. |
+| `src/broker/` | The broker, its client, the handshake, the wire protocol and state files. |
+| `src/mcp/` | The MCP adapter: the tools and their input schemas. |
+| `src/render/` | Drawing pose pictures. |
+| `test/` | TypeScript tests, in folders that match `src`. |
+| `scripts/` | The Luau test runner and the Studio measuring script. |
 
-## Tools
+The plugin holds all of the animation logic. The TypeScript side only checks inputs, routes requests and draws pictures.
 
-| Tool | What it does |
-|---|---|
-| `get_workspace` | Lists connected Studio sessions with their rigs, saved clips and working copies. |
-| `inspect_rig` | Describes a rig: joints, joint class and rest transforms. |
-| `open_animation` | Makes a working copy: blank, from the selected clip, or from one of the rig's saved clips. |
-| `read_animation` | Reads a working copy, with pose values only for the joints asked for. |
-| `edit_animation` | Applies a batch of edits atomically. One Studio undo reverts the batch. |
-| `preview_animation` | Samples a working copy at a time. With `render: true`, also returns a picture of the pose. |
-| `save_animation` | Saves a copy as a new clip that the Animation Editor can load. Never replaces a clip. |
-| `discard_animation` | Removes a working copy. |
-
-The picture of a pose is drawn by the adapter from the sampled joint positions: each part is a box, the rig's left side is blue and its right side orange, and the head carries a mark on its front. It shows the pose, not the rig's appearance, and involves no screenshot.
-
-Viewport screenshots through Studio's `StudioCaptureService` exist in the code but are switched off. The installed plugin cannot enable them.
-
-## Security model
-
-- The broker listens on `127.0.0.1` only and rejects requests that carry a web `Origin` or a non-loopback `Host`.
-- Every connection runs a mutual challenge–response handshake before any request is sent or accepted. Adapters use a per-user secret file. The plugin pairs once with a one-time code and then uses a derived credential. `keywright rotate` replaces the secret, after which every Studio window must pair again.
-- A program that occupies the broker port without passing the handshake is reported as `BROKER_PORT_CONFLICT`. It receives one hello message and nothing else.
-- No tool runs arbitrary Luau or touches the filesystem.
-
-Malicious software already running as the same OS user is out of scope.
-
-## Requirements
-
-- Node.js 22 or later.
-- [Rokit](https://github.com/rojo-rbx/rokit) for the Roblox tools pinned in `rokit.toml` (Rojo, Lune, StyLua, selene, luau-lsp). Run `rokit install` in the project folder.
-
-## Commands
+### Commands
 
 ```sh
-npm install
-npm test                # build, then run the TypeScript tests
-npm run test:luau       # headless tests for the Luau modules that only compute
-npm run build:plugin    # build/Keywright.rbxm
-npm run build:fault     # build/KeywrightFault.rbxm, a test build (see below)
+npm test                  # build, then run the TypeScript tests
+npm run test:luau         # run every plugin/test/**/*.test.luau with Lune
+npm run format:check      # check Luau formatting with StyLua
+npm run build:plugin      # build/Keywright.rbxm
+npm run build:fault       # build/KeywrightFault.rbxm, the fault test build
 npm run measure -- --place-id <id>   # measure against a connected Studio session
 ```
 
-`npm run measure` drives the tools above against a Studio session that a person has already connected, and writes its results to `build/measurements/`. It reaches Studio only through the local broker. It makes working copies and saved clips named "Measure ..." in the open place, so it must be given that place's id and refuses any other. Use a place you can throw away.
+The Luau tests run outside Studio, against [Lune](https://lune-org.github.io/docs)'s Roblox datatypes, so they need no Studio window.
 
-### Test build
+**`npm run measure`** drives the tools against a Studio session that is already connected, and writes its results to `build/measurements/`. It creates working copies, and saved clips named "Measure ...", in the open place. So it must be given that place's id, and it refuses any other. Use a place you can throw away.
 
-`npm run build:fault` builds the plugin with one extra module, `plugin/fault/Fault.luau`, which makes an edit fail or stop after its first operation. It exists to check in Studio what happens to a half-finished batch: that a failed batch leaves nothing behind, and that an undo recording left open is cancelled when the plugin unloads. Which fault happens is chosen by the name of the working copy being edited ("Fault fail", "Fault stall", "Fault stall raw"); other working copies behave as usual. A session from this build reports its version with `+fault`, and the panel says it is a test build. Install it in place of the normal plugin, never beside it, and only in a place you can throw away: "Fault stall raw" leaves Studio refusing undo recordings in that window until Studio is restarted.
+**The fault test build** adds `plugin/fault/Fault.luau`, which makes an edit fail or stall on purpose. This lets you check in Studio that a failed batch leaves nothing behind. The fault is chosen by the working copy's name: "Fault fail", "Fault stall" or "Fault stall raw". Any other name behaves normally. Install it in place of the normal plugin, never alongside it, and only in a place you can throw away: "Fault stall raw" leaves that Studio window refusing undo steps until Studio restarts.
 
-## What is tested
+## What has been tested
 
-Tested by `npm test` and `npm run test:luau`:
+**Automated** (`npm test` and `npm run test:luau`):
 
-- The handshake, pairing, credential reuse and rotation, and rejection of unauthenticated or forged messages.
-- Request routing to the named session, timeouts, and structured errors.
-- A single broker when twenty adapters start together, and detection of foreign listeners on the port.
-- The MCP adapter over stdio against a stand-in plugin, including cancellation and what may be returned as an image.
-- SHA-256, HMAC-SHA256, hex and base64 in Luau, against published test vectors and the TypeScript implementation.
-- The picture of a pose: the plugin works out where each part is from the sampled joints, and the adapter draws the parts as boxes. The tests decode the picture and check what is where.
-- Saving where the Animation Editor keeps clips, working copies that survive a plugin reload, remembered agent access, and the clip fingerprint.
-- Preview isolation, against a model of the animation engine: the preview samples a sanitized copy, never writes or steps the original rig, and removes what it created on success, failure and timeout.
-- The screenshot rules, against models of `StudioCaptureService` and of Studio: nothing is asked of Studio while the gate is closed, every wait has a deadline, only a complete PNG of the requested size is returned, and the camera is never moved.
+- the handshake, pairing and rotation, and refusal of unauthenticated or forged messages;
+- routing and timeouts, and a single broker when twenty adapters start at once;
+- the MCP adapter end to end, against a stand-in plugin;
+- every edit operation, the clip checks, saving and working copies, and pose pictures;
+- that previews never move or change the real rig.
 
-Measured in Studio on Windows, with the adapter in WSL, by `npm run measure` on one `Motor6D` rig and one `AnimationConstraint` rig:
+**Measured in Studio** on Windows, with the adapter in WSL, on rigs with `Motor6D` joints and rigs with `AnimationConstraint` joints:
 
-- 10,000 request and response round trips with none lost, and 200 dependent edits sent at once applied in order.
-- Sampled values within 0.01 degrees of the stored poses at keyframe times, and identical across 100 repeated samples.
-- The same clip giving the same joint transforms on both joint classes.
-- A round trip through saving and opening that leaves a clip's fingerprint unchanged.
-- The whole walk-through on each rig: inspect, open, edit, preview, picture, a stale write from a second client refused, and the source restored.
+- 10,000 round trips with none lost;
+- sampled poses within 0.01° of the stored values;
+- the same results from both joint types;
+- clips that come back unchanged after a save and reopen.
 
-Checked in Studio by hand:
+**Checked in Studio by hand:**
 
-- Pairing, reconnecting after a plugin reload, and one Studio undo reverting exactly one batch or one save.
-- A pose picture matching what the Animation Editor shows for the same clip.
-- Saved clips loading and playing in the Animation Editor, a clip the editor re-saved being identical to the original, and a clip made in the editor reading back correctly.
+- pairing, and reconnecting after a plugin reload;
+- one undo reverting exactly one batch;
+- pose pictures that match the Animation Editor;
+- saved clips that load and play in the Animation Editor.
 
-Found along the way: while the Animation Editor is open, Studio does not let the plugin start an undo step, so tools that change anything fail until it is closed.
+**Not tested yet:**
 
-Not yet tested:
-
-- Screenshots. The capture path has not run in Studio and is switched off.
-- Two Studio windows at once, and a broker restart under load.
-- Pictures reaching the model in MCP clients other than Claude Code.
-- The plugin panel beyond turning access on and off.
-
-Also not yet tested: macOS, and WSL with mirrored networking.
+- macOS;
+- two Studio windows at once;
+- WSL with mirrored networking;
+- MCP apps other than Claude Code showing the pose pictures;
+- Studio screenshots, which are switched off.
 
 ## License
 
