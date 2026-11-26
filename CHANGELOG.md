@@ -5,7 +5,7 @@ What changed in each release of Keywright. The plugin and the adapter are releas
 ## [Unreleased]
 
 - **Guidance for agents:** every AI app is now sent instructions when it connects: plan the key poses, look at a pose strip after every revision as well as the motion plot, and don't take a clip that validates as finished. The tool reference shows them.
-- **Keywright skill:** `skills/keywright/SKILL.md` goes further, from planning and blocking key poses to reviewing, contacts, loops and knowing when an animation is done. Claude Code users can copy it into `~/.claude/skills/`.
+- **Keywright skill:** `skills/keywright/` teaches an agent an animator's workflow on Keywright's tools: planning and blocking key poses, reviewing every revision, body mechanics, contacts and loops, and when an animation is done. Its references cover which way R15 joints turn, timing and method for common moves, and what to change for each kind of problem. Claude Code users can copy the folder into `~/.claude/skills/`.
 
 ## [0.4.0] - 2026-11-26
 

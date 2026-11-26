@@ -1,124 +1,136 @@
 ---
 name: keywright
-description: Use when making or revising a Roblox animation with the Keywright MCP tools (get_workspace, open_animation, edit_animation, preview_animation, validate_animation, save_animation). Covers planning key poses, blocking, reviewing poses and timing with pose strips and motion plots, contacts and loops, and knowing when an animation is done.
+description: Use when making or revising a Roblox animation with the Keywright MCP tools (get_workspace, inspect_rig, open_animation, edit_animation, preview_animation, validate_animation, save_animation). Teaches an animator's workflow on Keywright's tools - planning key poses, blocking, reviewing poses and timing, body mechanics, contacts and loops, and knowing when an animation is done.
 ---
 
 # Animating with Keywright
 
-Keywright's tools can make any motion; whether it reads as the motion asked for depends on
-how you direct it. Work the way an animator does: plan the key poses, block them, look,
-then refine. The tools check structure and measure motion. Only looking at the poses tells
-you whether the animation works.
+Keywright gives you exact control of every joint and good ways to measure the result. It
+does not give you taste: a clip can pass every check and still look stiff, floaty or wrong.
+Animate as a professional does: **plan the poses, block them, look, refine, look again.**
+Never trust a clip you have not looked at.
 
-## 1. Understand the request and the rig
+This file is the workflow. Open the references when you need them:
+- [reference/rig.md](reference/rig.md): which way R15 joints turn, how to build common
+  poses, and the traps (angle order, rest poses, the floor).
+- [reference/moves.md](reference/moves.md): timing and method for walks, runs, idles,
+  gestures, strikes, jumps, hit reactions, falls and get-ups.
+- [reference/review.md](reference/review.md): reading pose strips, motion summaries and
+  validation findings, and what to change for each symptom.
 
-- Call `get_workspace`, then `inspect_rig` for the rig you'll animate. Its `turns` say where
-  the far end of each part moves for a positive rotation about X, Y and Z, so you don't
-  have to find directions by trial.
-- Settle what was asked: the length, whether it loops, the mood, and anything that must
-  stay still. Ask if it's unclear rather than guess.
-- Choose the clip kind. Curve clips (`format: "curves"`) carry speed through keys, and suit
-  motion that flows: walks, runs, idles, strikes. Keyframe clips suit simple posed moves and
-  are the Animation Editor's usual form. Curve clips play at 30 frames a second, so put keys
-  on whole frames (multiples of 1/30 s).
+## The workflow
 
-## 2. Plan before editing
+### 1. Understand the request
 
-Write the plan down before the first edit. For each key pose: its time, and what it must
-read as in silhouette. For example, a front kick:
+- Find out the length, whether it loops, the mood ("tired", "snappy", "heavy"), and
+  anything that must stay still or line up with gameplay (a hit at a given moment, a
+  marker name). Ask when it matters and you can't infer it.
+- `get_workspace` for the rig, then `inspect_rig`. Read its `turns`: they say where each
+  part's far end moves for a positive rotation about X, Y and Z on *this* rig.
+- If the person has a clip to start from (a guard pose, an earlier version), open a copy
+  of it: shared start poses make a set of moves blend together.
 
-| Time | Pose | Must read as |
-|---|---|---|
-| 0.00 | Guard | Weight on both feet, fists up |
-| 0.20 | Chamber | Knee up high, foot tucked, hips starting to turn |
-| 0.30 | Contact | Leg fully extended, hips turned over, body leaning back to balance |
-| 0.45 | Recoil | Knee comes back toward the chest, **not** straight down |
-| 0.70 | Guard | Foot planted, back to the first pose |
+### 2. Plan before the first edit
 
-Also plan:
-- **Anticipation:** a small move the other way before the big one, such as a dip before a jump.
-- **The line of action:** one curve through the spine and limbs, especially at contact poses.
-- **Timing:** fast where the force is (the strike), slower where the weight settles (the recovery).
-- **Asymmetry:** the two sides doing the same thing at the same time looks mechanical. Offset
-  them by a frame or two, or give them different amounts.
+Write the plan out, in your reply or your notes, before editing:
 
-## 3. Block the key poses
+1. **The beats:** the story of the move in a few words each. A heavy punch: load, drive,
+   impact, recoil, settle.
+2. **The key poses:** one per beat, each with its time (in frames at 30 a second) and
+   what it must **read as** in silhouette. "Impact: arm fully extended in line with the
+   shoulders, hips and chest turned through, weight on the front foot, rear heel lifted."
+3. **The timing:** where the motion is fast (the drive) and slow (the settle). Fast moves
+   take few frames; weight takes time to arrive and to leave.
+4. **The contacts:** which feet and hands touch the floor, and when they plant and leave.
+5. **The clip kind:** curve clips (`format: "curves"`) for nearly everything that flows;
+   keyframe clips only for simple posed moves or when the person needs that form.
 
-- `open_animation` a blank clip, or a copy of a clip to start from.
-- Key only the key poses first, with `set_key` (curves) or `set_pose` (keyframes). Batch the
-  whole blocking pass into one `edit_animation` call where you can.
-- Joints carry a pose relative to their parent, so pose from the hips outward:
-  `LowerTorso`, then `UpperTorso`, then the head and limbs.
-- A turn that goes the wrong way on a joint already turned a lot, such as a raised arm, can
-  come from the order the angles are applied in (X, then Y, then Z). `offset_pose` (keyframes)
-  or `add_offset` (curves) adds a turn on top of the existing pose, which is often what you
-  mean. Check with a pose strip.
+### 3. Block the key poses
 
-## 4. Look at the key poses
+- One `edit_animation` batch for the whole blocking pass where you can. A batch holds up
+  to 256 operations; dense clips take several calls.
+- Pose **from the hips outward**: `LowerTorso` (the hips carry the weight and lead most
+  moves), then `UpperTorso`, then the head, then the limbs, then the hands and feet.
+- Key **only** the key poses. Don't add in-betweens yet: you'll want to move the keys.
+- Curve clips: keys on whole frames (multiples of 1/30 s). A joint first keyed later than
+  0 starts from its rest pose at 0; key it at 0 too if it should start somewhere else.
 
-After the blocking pass, and **after every revision**:
+### 4. Look at every key pose
 
-- **Pose strip:** `preview_animation` with `times` at the key moments, `render: true`, and a
-  view that shows the action: `right` or `left` for kicks, walks and jumps, `front` for
-  waves and side steps. Two views side by side help. Ask of each frame: does it read as what
-  the plan says? Is the silhouette clear? Are hands, feet and head where they should be?
-- **Compare with the last version:** `compare_with` shows the earlier clip along the bottom
-  row, and gives the largest distance between the two at each time. Use it to confirm a
-  revision changed what you meant, and nothing else.
-- **Numbers, when the picture isn't enough:** `track` reports where parts are, and the
-  height of their lowest point. Use it for feet on the floor, a hand reaching a target, or
-  clearance from the head.
+`preview_animation` with `times` at every key pose, `render: true`, and the view that
+shows the action (side for kicks, walks and jumps; front for waves and side steps; two
+views side by side for anything that turns). For each frame, ask:
 
-A pose that doesn't read is a planning problem as much as an editing one. Fix the key pose
-before adding detail.
+- Does it read as what the plan says, in silhouette alone?
+- Is the **line of action** clear: one curve through the spine into the limbs?
+- Is the **weight** believable: the hips over the supporting foot, or deliberately off
+  balance and about to fall or step?
+- Are the hands, feet and head where they should be, and not inside the body?
 
-## 5. Refine the motion
+Fix the key poses until every one reads. **Detail never rescues a weak pose.**
 
-- **Motion plot:** `preview_animation` with `samples` (24 to 48) and `render: true` draws each
-  part's path and speed across the clip. Read it for:
-  - `holds` you didn't plan: everything stopping at once looks robotic;
-  - a large `largest_speed_jump`: a pop or a corner;
-  - `bow`: zero is a straight line, but arms and legs move in arcs;
-  - parts that start and stop together: offset them.
-- Add in-betweens where a move needs a different path or spacing, not everywhere.
-- **Curve clips:** run `auto_tangents` after keying. Use `snap_at` for strikes that should
-  arrive fast and stop dead. Use `overlap` to let arms, hands and the head trail a big move
-  and settle. Use `add_noise` for life in a hold or an idle.
-- **Keyframe clips:** easing belongs to the pose a stretch *starts* from. `smooth_motion`
-  turns blocked keys into one flowing curve.
+### 5. Refine the motion
 
-A speed plot can't tell you whether a pose reads, and a pose strip can't show timing. Use
-both.
+Now make it move well between the poses. Check each with the motion plot
+(`preview_animation` with `samples` 24–48 and `render: true`):
 
-## 6. Contacts and loops (curve clips)
+- **Easing, not extra keys.** Let speed build into a strike and bleed off after it. Many
+  keys at even spacing look mechanical; a few well-placed keys with good tangents look alive.
+  Curve clips: `auto_tangents`, with `snap_at` on impacts that should arrive fast and stop
+  dead.
+- **Overlap and follow-through.** Parts arrive at different times: hips first, then chest,
+  then shoulders, head, arms, hands. Offset them by **2–4 frames**: one frame (0.03 s)
+  doesn't read as overlap. `overlap` makes arms, hands and the head trail a move and settle.
+- **Never stop everything at once.** A whole body easing to rest together reads as a
+  freeze. In a hold, keep something drifting: breathing, a slow settle, the head adjusting.
+- **Arcs.** Hands, feet and the head travel in curves. A path with no bow is a straight,
+  robotic line.
+- **Anticipation.** A small move the opposite way before a big one: a dip before a jump, a
+  draw back before a punch, a lean before a run.
+- **Asymmetry.** Mirror-image poses, both sides doing the same thing at once ("twinning"),
+  look stiff. Vary the amounts, offset the timing.
+- **Exaggeration.** On a blocky rig, poses read better pushed further than feels natural.
 
-- **Order:** body first, then feet. `place_on_floor` sets the hips height; then `pin` holds
-  the feet, which keeps them planted while the hips move. `clear_floor` lifts a swinging
-  foot that scuffs.
-- **Walks and runs made on the spot:** pin each foot over its stance, with `travel` (or
-  `travel: "match"`) so the planted foot moves back steadily under the body.
-- **Loops:** `copy_pose` ends the clip in exactly its first pose. `mirror` with an offset of
-  half the clip's length makes the second half of a cycle from the first. `shift_time` with
-  `wrap` moves where the loop starts.
+### 6. Contacts and the floor (curve clips)
 
-## 7. Check, and know when it's done
+Body first, then feet: `place_on_floor` sets the hips height; then `pin` holds each foot
+while it's planted; `clear_floor` lifts a swinging foot that scuffs. Re-check the feet
+after **any** change to the hips or legs. Details for walks, landings and kneeling are in
+[reference/moves.md](reference/moves.md).
 
-- `validate_animation`, or `validate: true` on an edit. Errors stop a save. Warnings are
-  measurements: a strike's speed warning can be meant, but a foot sliding in a walk usually
-  isn't.
-- **Passing validation is necessary, not enough.** It's done when:
-  - every key moment reads in the pose strip as the plan says;
-  - the motion has no stops or pops you didn't plan;
-  - feet that should stay planted do, and nothing sinks into the floor;
-  - a loop closes;
-  - you've looked at a pose strip of the *final* version.
+### 7. Check, review, and know when it's done
 
-## 8. Save and hand over
+Run `validate_animation`, then review the final version as a whole:
 
-- `save_animation` under a new name. Saving never overwrites. To replace one of the person's
-  clips, use `replace_source` only when they asked, and they approve it in Studio.
-- Tell the person what you made, the key poses and their timing, and what you weren't sure
-  about. Ask them to play it in the Animation Editor: the pictures are schematics, so the
-  final judgement of how it looks is theirs.
-- When they ask for changes, edit your working copy, save under a new name, and review it
-  again as in step 4.
+1. A **pose strip** of every key moment, from the views that matter.
+2. A **motion plot** of the whole clip.
+3. `compare_with` the previous version, so the revision changed what you meant and nothing else.
+
+It's done when **all** of these hold:
+- Every key moment reads in the strip as the plan says.
+- The motion has no stops, pops or straight lines you didn't plan.
+- Planted feet stay planted, nothing sinks into the floor, and swinging feet clear it.
+- A loop closes: last pose equals first.
+- `validate_animation` has no errors, and every warning is one you meant. A strike's
+  speed can be meant; a sliding foot in a walk isn't.
+- You have looked at a strip of the **final** revision, not an earlier one.
+
+### 8. Save and hand over
+
+- `save_animation` under a new name. Never replace the person's clip unless they ask;
+  then they approve it in Studio.
+- Report the beats and key poses with their timing, what you weren't sure of, and what
+  you'd try next. Ask the person to play it in the Animation Editor: pose pictures are
+  schematics, so how it really looks is their call.
+- On feedback, edit the working copy, then repeat steps 4–7 on the parts that changed.
+
+## Habits that separate good results from bad
+
+- **Look after every change.** Revisions break things away from where you were working.
+- **Change one thing at a time** when fixing, then look, so you know what fixed it.
+- **Use numbers to settle what pictures can't:** `track` for a foot's height or a hand's
+  position, `compare_with` for exactly how much changed.
+- **Reuse.** Start related moves from one shared pose; build cycles from half a cycle with
+  `mirror`; close loops with `copy_pose`.
+- **Keep keys editable.** After `pin`, `aim`, `overlap` or `add_noise` write a key every
+  frame, run `reduce_keys` so a person can still work with the curves.
