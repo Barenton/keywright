@@ -48,9 +48,14 @@ export async function bundle({ out = join(ROOT, "build", "release"), plugin = tr
 		define: {
 			__KEYWRIGHT_BUNDLED__: "true",
 			__KEYWRIGHT_VERSION__: JSON.stringify(version),
+			// ws would look for these optional speed-ups wherever Node searches for packages,
+			// including folders above the release's. The release uses ws's own code instead.
+			"process.env.WS_NO_BUFFER_UTIL": '"1"',
+			"process.env.WS_NO_UTF_8_VALIDATE": '"1"',
 		},
-		// ws loads these speed-ups only if they are installed, and works without them.
 		external: ["bufferutil", "utf-8-validate"],
+		// Paths in the metafile are then relative to the project, wherever this runs from.
+		absWorkingDir: ROOT,
 		// Some dependencies are CommonJS and call require(); an ES module has none of its own.
 		banner: { js: 'import { createRequire as __keywrightRequire } from "node:module"; const require = __keywrightRequire(import.meta.url);' },
 	});

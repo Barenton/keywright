@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, before, describe, test } from "node:test";
@@ -73,8 +73,15 @@ describe("the single-file release", () => {
 		const plugins = join(temp.home, "Roblox", "Setup");
 		const said = run(["setup", "--folder", plugins]);
 		assert.equal(readFileSync(join(plugins, "Keywright.rbxm"), "utf8"), "stand-in plugin");
-		assert.ok(said.includes(`claude mcp add keywright -- node ${JSON.stringify(bundle)}`), said);
+		assert.ok(said.includes(`claude mcp add --scope user keywright -- node ${bundle}`) || said.includes(`claude mcp add --scope user keywright -- node '${bundle}'`), said);
 		assert.ok(said.includes(join(plugins, "Keywright.rbxm")));
+	});
+
+	test("looks for no package outside itself, not even ws's optional ones", () => {
+		// Node's module trace names every package a file asks for.
+		const result = spawnSync(process.execPath, [bundle, "version"], { encoding: "utf8", env: { ...process.env, NODE_DEBUG: "module" } });
+		assert.equal(result.stdout.trim(), VERSION);
+		assert.doesNotMatch(result.stderr, /REQUEST (bufferutil|utf-8-validate)/);
 	});
 
 	test("starts a broker from itself", async () => {

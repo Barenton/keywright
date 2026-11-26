@@ -110,7 +110,10 @@ function installFrom(command: string, args: string[]): Installed | undefined {
 function setup(args: string[]): number {
 	const installed = installFrom("setup", args);
 	if (!installed) return 2;
-	process.stdout.write(setupGuide({ version: VERSION, entry: cliPath(), installed, wsl: thisMachine().wsl, node: process.execPath }));
+	const machine = thisMachine();
+	process.stdout.write(
+		setupGuide({ version: VERSION, entry: cliPath(), installed, wsl: machine.wsl, distro: machine.env.WSL_DISTRO_NAME, node: process.execPath, platform: process.platform }),
+	);
 	return 0;
 }
 

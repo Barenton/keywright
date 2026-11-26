@@ -58,10 +58,10 @@ This copies the plugin into Studio's plugins folder and prints the settings for 
 
 #### 2. Add Keywright to your AI app
 
-For Claude Code:
+For Claude Code, available in every project:
 
 ```sh
-claude mcp add keywright -- node /full/path/to/keywright.mjs
+claude mcp add --scope user keywright -- node /full/path/to/keywright.mjs
 ```
 
 Most other apps take an entry like this in their MCP settings:
@@ -74,7 +74,7 @@ Most other apps take an entry like this in their MCP settings:
 }
 ```
 
-`setup` also prints the entry for Codex, and the `wsl.exe` form that apps on Windows need when Keywright is inside WSL. Restart the app, or reconnect its MCP servers, so it starts Keywright.
+`setup` also prints the entry for Codex, the full path to Node for apps that can't find it, and the `wsl.exe` form that apps on Windows need when Keywright is inside WSL. Restart the app, or reconnect its MCP servers, so it starts Keywright.
 
 #### 3. Turn on agent access and pair
 

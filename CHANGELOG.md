@@ -4,6 +4,9 @@ What changed in each release of Keywright. The plugin and the adapter are releas
 
 ## [Unreleased]
 
+- **Fixed, setup:** the Claude Code command now adds Keywright for every project (`--scope user`), not just the folder it was run in. Paths in terminal commands are quoted for the shell, so characters such as `$` survive, and Windows paths keep single backslashes in PowerShell. Inside WSL, the entry for apps on Windows names this distribution (`wsl.exe -d <distro> --exec`), and is given for Codex too. The full path to Node is printed for apps that can't find `node`.
+- **Hardening, release:** `keywright.mjs` no longer looks for `ws`'s optional native modules, which Node would search for in folders above the release's.
+- **Fixed:** the bundler works when run from any folder.
 - **Fixed, pairing:** two handshakes begun with one code could both get a credential, and a handshake left from a replaced code could finish or count against the new one. A registered code now pairs exactly one Studio window.
 - **Fixed, rotate:** a broker still running on a port other than the one configured now is stopped too, so it can't go on accepting the old secret.
 - **Fixed, broker start:** when a broker Keywright starts finds its port taken, the adapter now reports the conflict, instead of waiting and then saying the broker didn't start.
