@@ -121,7 +121,7 @@ The panel then says **Connected to the broker.** Studio remembers the pairing, a
 
 You need an **R15** rig in your place's Workspace: a character model with a `Humanoid` whose rig type is R15. Its joints can be `Motor6D`s or `AnimationConstraint`s. An R15 dummy from **Rig Builder** on Studio's **Avatar** tab works well. R6 rigs aren't supported yet.
 
-**Close the Animation Editor while the agent works.** While it is open, Studio blocks the plugin from changing anything (see [Troubleshooting](#troubleshooting)).
+You can keep the Animation Editor open while the agent works, and play its clips there as they are saved.
 
 Then ask your AI app, for example:
 
@@ -161,7 +161,7 @@ The plugin and the adapter are released together and share one version number. T
 
 | What you see | What to do |
 |---|---|
-| Edits or saves fail while the Animation Editor is open | Close the Animation Editor. While it is open, Studio doesn't let plugins record undo steps, so Keywright refuses to make changes you couldn't undo. |
+| Edits or saves fail with `STUDIO_NOT_IN_EDIT_MODE` | Studio refused to start an undo step, and Keywright makes no change you couldn't undo. Finish whatever is in progress in Studio, such as a dialog or a drag, then try again. If it says an earlier Keywright change hasn't finished, wait for it, or reload the plugin. |
 | The agent can't find a Studio session | Check that the Keywright panel says **Connected to the broker.** If you just reinstalled the plugin, reconnect the MCP server in your AI app. |
 | The panel says the plugin or the adapter is older | Update the one it names, as in [Updating](#updating). The panel reconnects on its own once they match. |
 | The panel says **Pairing is needed again** | Turn agent access off and on to get a new code, then run `node dist/src/cli.js pair <code>` again. |

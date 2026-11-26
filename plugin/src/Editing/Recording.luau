@@ -62,7 +62,7 @@ function Recording.begin(name: string, displayName: string): string
 		Errors.throw(
 			"STUDIO_NOT_IN_EDIT_MODE",
 			"Studio could not start an undo recording.",
-			"Close the Animation Editor if it is open, stop any playtest, and retry."
+			"Finish whatever is in progress in Studio, such as a dialog or a drag, and retry."
 		)
 	end
 	open = identifier

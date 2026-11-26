@@ -40,7 +40,8 @@ What Keywright doesn't do, or doesn't do yet, and what has not been tried.
 ## Working copies and Studio
 
 - **One request at a time per Studio window.** A Studio window answers requests in order. The plugin stops waiting for a request after 90 seconds and moves on to the next one.
-- **Close the Animation Editor while the agent works.** While it is open, Studio doesn't let plugins record undo steps, so Keywright refuses to make changes.
+- **Studio can refuse undo steps.** Keywright makes no change it couldn't undo, so when Studio won't start an undo step, the change is refused. This was seen once, with the Animation Editor open, but not again when retried on 2026-11-26 with the editor open, with a clip loaded and with it playing, so the cause isn't known.
+- **Playtests don't see edits.** During Play or Run, Studio runs a copy of the place. The agent's edits go to the place being edited, not to the running copy, and show once the playtest stops.
 - **Revisions jump after an undo.** Undoing an edit gives the working copy a new revision, and the number can jump by more than one. Read the clip again before the next edit.
 - **A working copy outlives its rig.** If the rig is deleted, its working copies stay listed until the plugin reloads.
 - **Access is remembered per place.** A place that has never been saved to Roblox can't be told apart from other such places, so access there is off every time it opens.
