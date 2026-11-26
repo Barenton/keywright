@@ -7,7 +7,7 @@ import { IMAGE_METHOD, screenResult, scrub } from "../render/image.js";
 import { compareVersions, ensureBroker } from "../broker/launcher.js";
 import { isValidPairingCode, normalizePairingCode } from "../broker/auth.js";
 import { BridgeError, PAIRING_TTL_MS, type SessionInfo } from "../broker/protocol.js";
-import { MAX_TILE, MAX_VIEWS, MIN_TILE, renderResult, VIEWS } from "../render/render.js";
+import { MAX_TILE, MAX_VIEWS, MIN_TILE, renderResult, STYLES, VIEWS } from "../render/render.js";
 
 import { studioSession, clipId, time, joint } from "./schemas/common.js";
 import { operations } from "./schemas/operations.js";
@@ -413,6 +413,12 @@ export function createAdapter(options: AdapterOptions): McpServer {
 					.optional()
 					.describe('Directions to draw the pose from, side by side. Default ["three_quarter"]. "left" and "right" are the rig\'s own sides.'),
 				render_size: z.number().int().min(MIN_TILE).max(MAX_TILE).optional().describe("Height of the picture in pixels; each view is square. Default 384."),
+				style: z
+					.enum(STYLES)
+					.optional()
+					.describe(
+						'How the picture draws the rig. "boxes" (default) draws every part as a box of its size: best for contact with the floor and for parts passing through each other. "slim" draws the arms and legs thin along their length, keeping the hands, feet, torso and head as boxes: best for reading limb angles, elbow and knee bends, and arm swings, which bulky boxes hide.',
+					),
 				capture: z.boolean().optional().describe("Ask for a Studio screenshot. Off unless approved in Studio; see the tool description."),
 				max_edge: z.number().int().min(64).max(1536).optional().describe("Longest edge of the screenshot in pixels. Default 768."),
 				joints: z.array(z.string()).max(32).optional().describe("Joints to sample. Default: none."),

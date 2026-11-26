@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { inflateSync } from "node:zlib";
 import { inspectPng } from "../../src/render/image.js";
-import { DEFAULT_TILE, LEGEND, MAX_PARTS, type PosePart, parsePose, renderComparison, renderPose, renderResult, renderStrip, type ViewName } from "../../src/render/render.js";
+import { DEFAULT_TILE, LEGEND, MAX_PARTS, type PosePart, parsePose, renderComparison, renderPose, renderResult, renderStrip, SLIM_LEGEND, SLIM_THICKNESS, slimParts, type ViewName } from "../../src/render/render.js";
 
 type Pixel = [number, number, number];
 const BACKGROUND: Pixel = [245, 245, 245];
@@ -421,4 +421,40 @@ test("two clips are drawn one above the other at the same moments", () => {
 	assert.equal(payload.compared.name, "Other");
 	assert.match(payload.render.layout, /top row this clip, bottom row/);
 	assert.equal(payload.render.height, DEFAULT_TILE * 2);
+});
+
+test("the slim style thins arms and legs along their length, and leaves the rest as it is", () => {
+	const parts = [
+		box("RightUpperArm", [1, 0, 0], [1, 1.2, 1]),
+		box("LeftLowerLeg", [-0.5, -2, 0], [1, 1.2, 1]),
+		box("RightHand", [1, -1, 0], [1, 0.3, 1]),
+		box("LeftFoot", [-0.5, -3, 0], [1, 0.3, 1]),
+		box("UpperTorso", [0, 0, 0], [2, 1.6, 1]),
+		box("Head", [0, 1.5, 0], [1.2, 1.2, 1.2]),
+	];
+	const slim = slimParts(parts);
+	const size = (name: string) => slim.find((part) => part.name === name)?.size;
+	assert.deepEqual(size("RightUpperArm"), [SLIM_THICKNESS, 1.2, SLIM_THICKNESS]);
+	assert.deepEqual(size("LeftLowerLeg"), [SLIM_THICKNESS, 1.2, SLIM_THICKNESS]);
+	for (const name of ["RightHand", "LeftFoot", "UpperTorso", "Head"]) {
+		assert.deepEqual(size(name), parts.find((part) => part.name === name)?.size, name);
+	}
+	assert.deepEqual(slim.map((part) => part.cframe), parts.map((part) => part.cframe), "nothing moves");
+});
+
+test("a slim arm is drawn far thinner for its length than a box arm", () => {
+	const arm = [box("RightUpperArm", [0, 0, 0], [1, 2, 1])];
+	const wide = extent(draw(arm, "front"));
+	const thin = extent(draw(slimParts(arm), "front"));
+	// Each picture is scaled to fit its parts, so compare the arm's shape, not its pixels.
+	assert.ok(thin.width / thin.height < wide.width / wide.height / 2, `${thin.width}x${thin.height} against ${wide.width}x${wide.height}`);
+});
+
+test("a preview asked for in the slim style is drawn so, and says so", () => {
+	const pose = { parts: [box("UpperTorso", [0, 0, 0], [2, 1.6, 1]), box("RightUpperArm", [1.5, 0, 0], [1, 1.2, 1])] };
+	const plain = renderResult({ render: true }, { pose });
+	const slim = renderResult({ render: true, style: "slim" }, { pose });
+	assert.equal((plain.payload as { render: { legend: string } }).render.legend, LEGEND);
+	assert.equal((slim.payload as { render: { legend: string } }).render.legend, SLIM_LEGEND);
+	assert.ok(slim.image && plain.image && slim.image !== plain.image);
 });

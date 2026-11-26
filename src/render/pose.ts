@@ -29,6 +29,29 @@ export const MAX_REACH = 2000;
 export const LEGEND =
 	"A schematic drawn from the sampled joint positions, not a Studio screenshot. Each part is a box of its bounding size. Blue is the rig's left side, orange its right; the dark mark on the head is its front. Views are side by side in the order listed, without perspective, at one scale.";
 
+/** How parts are drawn: as boxes of their size, or with arms and legs thin so that their angles read. */
+export const STYLES = ["boxes", "slim"] as const;
+export type StyleName = (typeof STYLES)[number];
+
+export const SLIM_LEGEND =
+	"A schematic drawn from the sampled joint positions, not a Studio screenshot. Arms and legs are drawn thin along their length, so that their angles and bends read; the hands, feet, torso and head are boxes of their size. Blue is the rig's left side, orange its right; the dark mark on the head is its front. Views are side by side in the order listed, without perspective, at one scale.";
+
+/** How thick a slim arm or leg is drawn, as a share of its real thickness. */
+export const SLIM_THICKNESS = 0.35;
+
+/**
+ * The parts with each upper and lower arm and leg made thin: the same length along the
+ * part's own up direction, along which an R15 limb runs, and a share of its width and depth.
+ * Hands, feet, the torso and the head keep their size, so contact with the floor still reads.
+ */
+export function slimParts(parts: PosePart[]): PosePart[] {
+	return parts.map((part) =>
+		/(Upper|Lower)(Arm|Leg)$/.test(part.name)
+			? { ...part, size: [part.size[0] * SLIM_THICKNESS, part.size[1], part.size[2] * SLIM_THICKNESS] }
+			: part,
+	);
+}
+
 export interface PosePart {
 	name: string;
 	size: [number, number, number];

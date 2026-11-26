@@ -4,6 +4,7 @@ What changed in each release of Keywright. The plugin and the adapter are releas
 
 ## [Unreleased]
 
+- **Slim pose pictures:** `preview_animation` takes `style: "slim"`, which draws the arms and legs thin along their length, so limb angles, elbow and knee bends and arm swings read; on a blocky rig, boxes hide them. The default boxes are unchanged.
 - **The Animation Editor can block changes after all:** while it played a clip, Studio refused every Keywright change until it was closed. The docs and the plugin's message now say to close it.
 - **Keywright skill:** judge the upper and lower body separately, and compare with an animation the person likes by reading its keys. Runs swing the arms well back with the elbows held bent, and land the feet nearly in line.
 - **Keywright skill:** each problem found in an agent's run cycle is now a check, not just advice: the hips must keep sinking 2–3 frames after every landing, no limb may stop partway through a swing, a stance rolls onto the toe for the push-off, frame times are written exactly, and `reduce_keys` runs before saving.

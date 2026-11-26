@@ -17,6 +17,10 @@ others miss.
   `three_quarter` for an overall look. Up to two views side by side.
 - The rig's left side is blue and its right side orange, and the mark on the head is its
   front. Check you're animating the side you meant.
+- **`style: "slim"`** draws the arms and legs thin along their length. On a blocky rig a
+  bent arm is a lump and an arm in front of the body hides it; slim shows limb angles,
+  elbow and knee bends, arm swings and stride length. Use it to judge poses and swings;
+  use the default boxes for contact with the floor and parts passing through each other.
 - `compare_with` draws another clip along the bottom row at the same times, and reports
   the largest distance between the two at each. Compare each revision with the last, and
   your work with the source clip.

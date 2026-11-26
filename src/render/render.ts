@@ -6,7 +6,7 @@ export * from "./pose.js";
 export * from "./motion.js";
 export { encodePng } from "./png.js";
 
-import { DEFAULT_TILE, DEFAULT_VIEWS, LEGEND, MAX_STRIP_VIEWS, MAX_TILE, MAX_VIEWS, MAX_WIDTH, MIN_TILE, VIEWS, type ViewName, parsePose, renderComparison, renderPose, renderStrip } from "./pose.js";
+import { DEFAULT_TILE, DEFAULT_VIEWS, LEGEND, MAX_STRIP_VIEWS, MAX_TILE, MAX_VIEWS, MAX_WIDTH, MIN_TILE, type PosePart, SLIM_LEGEND, VIEWS, type ViewName, parsePose as parseParts, renderComparison, renderPose, renderStrip, slimParts } from "./pose.js";
 import { type Motion, parseMotion, renderMotion, summariseMotion, trackColours } from "./motion.js";
 import { isRecord } from "./vector.js";
 
@@ -31,6 +31,10 @@ export function renderResult(params: unknown, payload: unknown): { payload: unkn
 		}
 	}
 	if (input.render !== true) return { payload: rest };
+	// Every set of parts drawn goes through one shape: as sent, or with arms and legs thin.
+	const slim = input.style === "slim";
+	const parsePose = (value: unknown): PosePart[] => (slim ? slimParts(parseParts(value)) : parseParts(value));
+	const legend = slim ? SLIM_LEGEND : LEGEND;
 	try {
 		const requested = Array.isArray(input.views) ? input.views : DEFAULT_VIEWS;
 		const views = requested.filter((view): view is ViewName => (VIEWS as readonly unknown[]).includes(view)).slice(0, MAX_VIEWS);
@@ -49,7 +53,7 @@ export function renderResult(params: unknown, payload: unknown): { payload: unkn
 				rows: trackColours(motion),
 				width: drawn.width,
 				height: drawn.height,
-				legend: LEGEND,
+				legend,
 			};
 			return { payload: rest, image: drawn.png.toString("base64") };
 		}
@@ -63,16 +67,16 @@ export function renderResult(params: unknown, payload: unknown): { payload: unkn
 				const other = pose.compare.map((parts: unknown) => parsePose({ parts }));
 				const view = rows[0] as ViewName;
 				const both = renderComparison(frames, other, view, each, resting);
-				rest.render = { status: "ok", layout: "one column for each time in order; top row this clip, bottom row the clip it is compared with", views: [view], frames: frames.length, width: both.width, height: both.height, legend: LEGEND };
+				rest.render = { status: "ok", layout: "one column for each time in order; top row this clip, bottom row the clip it is compared with", views: [view], frames: frames.length, width: both.width, height: both.height, legend };
 				return { payload: rest, image: both.png.toString("base64") };
 			}
 			const strip = renderStrip(frames, rows, each, resting);
-			rest.render = { status: "ok", layout: "one column for each time in order, one row for each view", views: rows, frames: frames.length, width: strip.width, height: strip.height, legend: LEGEND };
+			rest.render = { status: "ok", layout: "one column for each time in order, one row for each view", views: rows, frames: frames.length, width: strip.width, height: strip.height, legend };
 			return { payload: rest, image: strip.png.toString("base64") };
 		}
 		const tile = Math.min(size, Math.floor(MAX_WIDTH / views.length));
 		const drawn = renderPose(parsePose(pose), views, tile, resting);
-		rest.render = { status: "ok", views, width: drawn.width, height: drawn.height, legend: LEGEND };
+		rest.render = { status: "ok", views, width: drawn.width, height: drawn.height, legend };
 		return { payload: rest, image: drawn.png.toString("base64") };
 	} catch (error) {
 		rest.render = { status: "unavailable", reason: error instanceof Error ? error.message : String(error) };

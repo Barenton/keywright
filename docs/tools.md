@@ -527,6 +527,7 @@ Sample a working copy at an exact time and report the joint transforms. The clip
 | `render` | true or false |  | Include a schematic picture of the pose, drawn from the sampled joint positions. |
 | `views` | list of any of `front`, `back`, `left`, `right`, `top`, `three_quarter` (1 to 4 items) |  | Directions to draw the pose from, side by side. Default ["three_quarter"]. "left" and "right" are the rig's own sides. |
 | `render_size` | whole number, 128 to 768 |  | Height of the picture in pixels; each view is square. Default 384. |
+| `style` | one of `boxes`, `slim` |  | How the picture draws the rig. "boxes" (default) draws every part as a box of its size: best for contact with the floor and for parts passing through each other. "slim" draws the arms and legs thin along their length, keeping the hands, feet, torso and head as boxes: best for reading limb angles, elbow and knee bends, and arm swings, which bulky boxes hide. |
 | `capture` | true or false |  | Ask for a Studio screenshot. Off unless approved in Studio; see the tool description. |
 | `max_edge` | whole number, 64 to 1536 |  | Longest edge of the screenshot in pixels. Default 768. |
 | `joints` | list of texts (up to 32 items) |  | Joints to sample. Default: none. |
