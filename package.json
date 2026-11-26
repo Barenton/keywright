@@ -17,6 +17,7 @@
     "test:luau": "node scripts/test-luau.mjs",
     "build:plugin": "rojo build plugin/default.project.json -o build/Keywright.rbxm",
     "build:fault": "rojo build plugin/fault.project.json -o build/KeywrightFault.rbxm",
+    "install:plugin": "npm run build && npm run build:plugin && node dist/src/cli.js install-plugin",
     "format:check": "stylua --check plugin",
     "measure": "npm run build && node scripts/measure.mjs",
     "version": "node scripts/sync-version.mjs && git add plugin/src/Version.luau"

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { join } from "node:path";
 import { runAdapter } from "./mcp/adapter.js";
 import { isValidPairingCode } from "./broker/auth.js";
 import { Broker } from "./broker/broker.js";
@@ -6,14 +7,22 @@ import { BrokerAbsentError, connectAdapter, ForeignListenerError } from "./broke
 import { ensureBroker } from "./broker/launcher.js";
 import { BridgeError } from "./broker/protocol.js";
 import { configuredPort, loadOrCreateSecret, rotateSecret, stateDir } from "./broker/state.js";
+import { builtPlugin, installPlugin, robloxFolder, thisMachine } from "./install.js";
+import { VERSION } from "./version.js";
 
-const USAGE = `Usage: keywright [command]
+const USAGE = `Keywright ${VERSION}
+
+Usage: keywright [command]
 
   (no command)   Run the MCP adapter on stdio. This is what MCP clients start.
   broker         Run the local broker in the foreground.
   status         Start the broker if needed and print its state.
   pair <code>    Register the one-time pairing code shown in the Studio plugin panel.
   rotate         Replace the secret. Every Studio window must then pair again.
+  install-plugin [--folder <path>]
+                 Copy the plugin built from this copy of Keywright into Studio's
+                 plugins folder, replacing an older one.
+  version        Print the version.
 
 Environment:
   KEYWRIGHT_PORT   Loopback port (default 47318).
@@ -96,6 +105,25 @@ async function rotate(): Promise<number> {
 	return 0;
 }
 
+function install(args: string[]): number {
+	let folder: string | undefined;
+	if (args.length > 0) {
+		if (args[0] !== "--folder" || args.length !== 2) {
+			process.stderr.write("Usage: keywright install-plugin [--folder <path>]\n");
+			return 2;
+		}
+		folder = args[1];
+	}
+	const target = folder ?? join(robloxFolder(thisMachine()), "Plugins");
+	const installed = installPlugin(builtPlugin(), target);
+	process.stdout.write(`Installed the Keywright ${VERSION} plugin at ${installed.path}.\nStudio loads it on its own; if the Keywright button does not appear or update, restart Studio.\n`);
+	if (installed.replaced) process.stdout.write(`It replaces ${installed.replaced}, the copy saved from Studio.\n`);
+	if (installed.others.length > 0) {
+		process.stdout.write(`\nThis folder also has ${installed.others.join(", ")}. Studio loads every plugin in it, so remove ${installed.others.length === 1 ? "that file" : "those files"} to run only this one.\n`);
+	}
+	return 0;
+}
+
 async function main(argv: string[]): Promise<number> {
 	const [command, ...rest] = argv;
 	if (command === undefined || command === "serve") {
@@ -103,6 +131,11 @@ async function main(argv: string[]): Promise<number> {
 		return await new Promise<number>(() => {});
 	}
 	if (command === "broker") return runBroker();
+	if (command === "install-plugin") return install(rest);
+	if (command === "version" || command === "--version") {
+		process.stdout.write(`${VERSION}\n`);
+		return 0;
+	}
 	if (command === "rotate") return rotate();
 	if (command === "status" || command === "pair") {
 		const client = await ensureBroker({ home: stateDir(), port: configuredPort() });

@@ -12,6 +12,7 @@ It works with any AI app that supports the [Model Context Protocol](https://mode
 - [What you need](#what-you-need)
 - [Setup](#setup)
 - [Your first animation](#your-first-animation)
+- [Updating](#updating)
 - [Troubleshooting](#troubleshooting)
 - [What the agent can do](#what-the-agent-can-do)
 - [Safety](#safety)
@@ -54,17 +55,24 @@ cd keywright
 rokit install          # fetches Rojo and the other Roblox tools
 npm install            # fetches the adapter's dependencies
 npm run build          # builds the adapter into dist/
-npm run build:plugin   # builds the plugin into build/Keywright.rbxm
 ```
 
 ### 2. Install the plugin in Studio
 
-1. Open Roblox Studio.
-2. On the **Plugins** tab, click **Plugins Folder**. Studio opens its plugins folder, which is usually `%LOCALAPPDATA%\Roblox\Plugins`.
-3. Copy `build/Keywright.rbxm` into that folder. If you built it inside WSL, the file is at `\\wsl$\<your distro>\<path to keywright>\build\Keywright.rbxm`.
-4. Restart Studio. A **Keywright** button now appears on the Plugins tab.
+```sh
+npm run install:plugin
+```
 
-When you change the code later, rebuild with `npm run build:plugin` and copy the file over again.
+This builds the plugin and copies it into Studio's plugins folder as `Keywright.rbxm`. It finds the folder on Windows, from WSL, and on macOS. If you had saved the plugin from Studio before, as `Keywright.rbxmx`, it replaces that copy. It doesn't change anything else in the folder, but it tells you if it finds other copies of Keywright there, since Studio would load those too.
+
+Studio picks up the new plugin on its own. If the **Keywright** button doesn't appear on the Plugins tab, restart Studio.
+
+<details>
+<summary>Installing by hand instead</summary>
+
+Run `npm run build:plugin`, which writes `build/Keywright.rbxm`. In Studio, on the **Plugins** tab, click **Plugins Folder**. Studio opens its plugins folder, which is usually `%LOCALAPPDATA%\Roblox\Plugins`. Copy `Keywright.rbxm` into it. If you built it inside WSL, the file is at `\\wsl$\<your distro>\<path to keywright>\build\Keywright.rbxm`.
+
+</details>
 
 ### 3. Add Keywright to your AI app
 
@@ -133,6 +141,20 @@ Some tips:
 - **Be specific about what you want:** the length, whether it loops, the mood ("a tired walk", "a quick, snappy wave"), and anything that must stay still.
 - **Ask for changes in plain words**, such as "the arms swing too much" or "make the landing heavier". The agent edits its working copy and saves the result under a new name.
 - **Saving never overwrites a clip.** To replace an existing clip, the agent has to ask. The panel then shows **Replace the clip** and **Keep the clip as it is**, and nothing changes until you choose.
+
+## Updating
+
+From the `keywright` folder:
+
+```sh
+git pull
+npm install
+npm run install:plugin   # rebuilds the adapter and the plugin, and installs the plugin
+```
+
+Then reconnect Keywright in your AI app, for example with `/mcp` in Claude Code, so that it starts the new adapter.
+
+The plugin and the adapter are released together and share one version number. The panel shows the plugin's version at the bottom, and `node dist/src/cli.js version` prints the adapter's. What changed in each version is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Troubleshooting
 
@@ -221,7 +243,7 @@ While you're getting started, try Keywright in a copy of your place or a fresh b
 | `src/mcp/` | The MCP adapter: the tools and their input schemas. |
 | `src/render/` | Drawing pose pictures. |
 | `test/` | TypeScript tests, in folders that match `src`. |
-| `scripts/` | The Luau test runner and the Studio measuring script. |
+| `scripts/` | The Luau test runner, the version sync and the Studio measuring script. |
 
 The plugin holds all of the animation logic. The TypeScript side only checks inputs, routes requests and draws pictures.
 
@@ -232,6 +254,7 @@ npm test                  # build, then run the TypeScript tests
 npm run test:luau         # run every plugin/test/**/*.test.luau with Lune
 npm run format:check      # check Luau formatting with StyLua
 npm run build:plugin      # build/Keywright.rbxm
+npm run install:plugin    # build both, then install the plugin into Studio
 npm run build:fault       # build/KeywrightFault.rbxm, the fault test build
 npm run measure -- --place-id <id>   # measure against a connected Studio session
 ```
