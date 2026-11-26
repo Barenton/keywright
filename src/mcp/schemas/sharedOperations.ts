@@ -34,9 +34,12 @@ export const sharedOperations = [
 	}),
 	z.object({
 		type: z.literal("set_properties").describe("Change the clip's own settings. Give at least one."),
-		name: z.string().min(1).max(100).optional(),
-		loop: z.boolean().optional(),
-		priority: z.enum(["Idle", "Movement", "Action", "Action2", "Action3", "Action4", "Core"]).optional(),
+		name: z.string().min(1).max(100).optional().describe("The clip's new name."),
+		loop: z.boolean().optional().describe("Whether the clip plays over and over."),
+		priority: z
+			.enum(["Idle", "Movement", "Action", "Action2", "Action3", "Action4", "Core"])
+			.optional()
+			.describe("The priority Roblox plays the clip at. Where two playing clips move the same joint, the one of higher priority moves it."),
 	}),
 	z.object({
 		type: z.literal("set_marker").describe("Add a marker to the keyframe at a time, or change its value. The keyframe is created if absent."),

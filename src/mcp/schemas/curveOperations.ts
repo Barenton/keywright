@@ -28,7 +28,9 @@ export const curveOperations = [
 			.describe("Curve clips only. Set the slope of one channel's curve as it arrives at (in) and leaves (out) a key: how fast the value is changing there. 0 is at rest. Leaving with out makes the stretch after the key cubic."),
 		joint,
 		time: time("Key time in seconds."),
-		channel: z.enum(["rotation.x", "rotation.y", "rotation.z", "position.x", "position.y", "position.z"]),
+		channel: z
+			.enum(["rotation.x", "rotation.y", "rotation.z", "position.x", "position.y", "position.z"])
+			.describe("Which of the joint's curves: its rotation about x, y or z, or its position along x, y or z."),
 		in: z.number().finite().optional().describe("Degrees per second for rotation, studs per second for position."),
 		out: z.number().finite().optional().describe("Degrees per second for rotation, studs per second for position."),
 	}),
@@ -89,7 +91,7 @@ export const curveOperations = [
 			.describe(
 				"Curve clips only. Add a smooth, slow sway on top of the motion of the joints named: breathing and weight shifts in an idle, a tremble, the shake of a hit. Each joint and channel sways its own way, from three waves at chance phases, and the same seed always gives the same sway. Over the whole of a looping clip, the sway ends where it began. Written at every frame and then reduced to as few keys as keep it.",
 			),
-		joints: z.array(z.string()).min(1).max(32),
+		joints: z.array(z.string()).min(1).max(32).describe("The joints that sway."),
 		time_from: spanFrom,
 		time_to: spanTo,
 		rotation_degrees: z.number().min(0).max(90).optional().describe("About how far each rotation channel sways either way, in degrees. Default 0."),
@@ -126,7 +128,7 @@ export const curveOperations = [
 			.describe(
 				"Curve clips only. Mirror motion across the rig's middle, from its left side to its right. flip turns the whole clip into its mirror image: a punch with the right hand becomes the same punch with the left, the hips' and chest's turns and sideways moves reversed. left_to_right and right_to_left copy one side's motion onto the other side, mirrored, and leave the middle and the side copied from as they are. The keys themselves are mirrored, tangents included, so the result is exact and keeps the keys it had, editable in the Curve Editor. A joint copied from that does not move leaves its mirror not moving. Refused on a rig whose sides are not mirror images of each other.",
 			),
-		mode: z.enum(["flip", "left_to_right", "right_to_left"]),
+		mode: z.enum(["flip", "left_to_right", "right_to_left"]).describe("flip, left_to_right or right_to_left, as described above."),
 		joints: z
 			.array(z.string())
 			.min(1)

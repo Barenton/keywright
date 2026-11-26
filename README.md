@@ -4,7 +4,7 @@ Keywright lets an AI agent make Roblox animations in Roblox Studio. You describe
 
 It works with any AI app that supports the [Model Context Protocol](https://modelcontextprotocol.io) (MCP), such as Claude Code.
 
-> **Status: early development.** Nothing has been released yet, and you build it from source. It has been used in Studio on Windows; see [What has been tested](#what-has-been-tested).
+> **Status: early development.** Releases are on [GitHub](https://github.com/Barenton/keywright/releases), but you still build Keywright from source. It has been used in Studio on Windows; see [What has been tested](#what-has-been-tested) and [Limitations](docs/limitations.md).
 
 ## Contents
 
@@ -16,6 +16,7 @@ It works with any AI app that supports the [Model Context Protocol](https://mode
 - [Troubleshooting](#troubleshooting)
 - [What the agent can do](#what-the-agent-can-do)
 - [Safety](#safety)
+- [More documentation](#more-documentation)
 - [For contributors](#for-contributors)
 - [What has been tested](#what-has-been-tested)
 - [License](#license)
@@ -174,7 +175,7 @@ Other commands are listed by `node dist/src/cli.js --help`. One worth knowing is
 
 ### Tools
 
-These are the tools your AI app sees:
+These are the tools your AI app sees. The [tool reference](docs/tools.md) lists every argument and edit operation.
 
 | Tool | What it does |
 |---|---|
@@ -223,6 +224,18 @@ Keywright doesn't protect you from harmful software that is already running on y
 
 While you're getting started, try Keywright in a copy of your place or a fresh baseplate, not a game you've published.
 
+How the connection is secured, and what an agent can and cannot do, is in [Security](docs/security.md).
+
+## More documentation
+
+| Page | What is in it |
+|---|---|
+| [Tool reference](docs/tools.md) | Every tool, its arguments, and every edit operation, as your AI app is given them |
+| [Errors and findings](docs/errors.md) | What each error code and each `validate_animation` finding means |
+| [Security](docs/security.md) | Pairing, the loopback connection, and what an agent can do in Studio |
+| [Limitations](docs/limitations.md) | What Keywright doesn't do yet, and what hasn't been tried |
+| [Performance and accuracy](docs/performance.md) | Measured speed, reliability and accuracy in Studio, and how to measure them yourself |
+
 ## For contributors
 
 ### Where the code is
@@ -245,8 +258,9 @@ While you're getting started, try Keywright in a copy of your place or a fresh b
 | `src/mcp/` | The MCP adapter: the tools and their input schemas. |
 | `src/render/` | Drawing pose pictures. |
 | `test/` | TypeScript tests, in folders that match `src`. |
+| `docs/` | The documentation. `docs/tools.md` is written from the adapter's tools by `npm run docs:tools`. |
 | `.github/workflows/` | CI, and the release workflow that runs when a version tag is pushed. |
-| `scripts/` | The Luau test runner, the version and release-notes scripts, and the Studio measuring script. |
+| `scripts/` | The Luau test runner, the version and release-notes scripts, the tool reference writer, and the Studio measuring script. |
 
 The plugin holds all of the animation logic. The TypeScript side only checks inputs, routes requests and draws pictures.
 
@@ -259,6 +273,7 @@ npm run format:check      # check Luau formatting with StyLua
 npm run build:plugin      # build/Keywright.rbxm
 npm run install:plugin    # build both, then install the plugin into Studio
 npm run build:fault       # build/KeywrightFault.rbxm, the fault test build
+npm run docs:tools        # write docs/tools.md from the adapter's tools
 npm run measure -- --place-id <id>   # measure against a connected Studio session
 ```
 
@@ -288,7 +303,7 @@ Pushing the tag starts the release workflow (`.github/workflows/release.yml`). I
 - every edit operation, the clip checks, saving and working copies, and pose pictures;
 - that previews never move or change the real rig.
 
-**Measured in Studio** on Windows, with the adapter in WSL, on rigs with `Motor6D` joints and rigs with `AnimationConstraint` joints:
+**Measured in Studio** on Windows, with the adapter in WSL, on rigs with `Motor6D` joints and rigs with `AnimationConstraint` joints (all the numbers are in [Performance and accuracy](docs/performance.md)):
 
 - 10,000 round trips with none lost;
 - sampled poses within 0.01° of the stored values;
@@ -298,6 +313,7 @@ Pushing the tag starts the release workflow (`.github/workflows/release.yml`). I
 **Checked in Studio by hand:**
 
 - pairing, and reconnecting after a plugin reload;
+- two Studio windows on two places, each remembering its own access, also when both are switched on at the same moment;
 - one undo reverting exactly one batch;
 - pose pictures that match the Animation Editor;
 - saved clips that load and play in the Animation Editor.
@@ -305,7 +321,6 @@ Pushing the tag starts the release workflow (`.github/workflows/release.yml`). I
 **Not tested yet:**
 
 - macOS;
-- two Studio windows at once;
 - WSL with mirrored networking;
 - MCP apps other than Claude Code showing the pose pictures;
 - Studio screenshots, which are switched off.

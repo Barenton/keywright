@@ -173,7 +173,7 @@ export function createAdapter(options: AdapterOptions): McpServer {
 				"Describe a rig: joint names, hierarchy, joint class (Motor6D or AnimationConstraint) and rest transforms. Returns a summary unless detail is true.",
 			inputSchema: {
 				studio_session: studioSession,
-				rig_id: z.string(),
+				rig_id: z.string().describe("Which rig: a rig_id from get_workspace."),
 				detail: z.boolean().optional().describe("Include per-joint rest transforms and part sizes."),
 			},
 			annotations: { readOnlyHint: true },
@@ -188,8 +188,8 @@ export function createAdapter(options: AdapterOptions): McpServer {
 				'Create a working copy to edit: blank, or copied from an existing clip. The source clip is never changed. A clip is either keyframes (KeyframeSequence: poses at keyframes, each stretch between two eased by one of a few fixed shapes) or curves (CurveAnimation: each joint channel its own curve through a few keys, with tangents, as in the Curve Editor). Curves are the better choice for motion that should flow: speed carries through a key instead of stopping or turning a corner at it, and a person can keep editing the result in the Animation Editor\'s Curve Editor. Studio plays a curve clip at 30 frames a second, going straight from frame to frame, so put keys on whole frames: multiples of 1/30 s (0.0333, 0.0667, 0.1, ...). Opening a keyframe clip with format "curves" converts it: the keys pass through every pose, with smooth tangents, so the motion between poses can differ.',
 			inputSchema: {
 				studio_session: studioSession,
-				rig_id: z.string(),
-				name: z.string().min(1).max(100).optional(),
+				rig_id: z.string().describe("Which rig: a rig_id from get_workspace."),
+				name: z.string().min(1).max(100).optional().describe('Name of the working copy, and the name it is saved under unless save_animation is given another. Default: the source\'s name, or "Untitled" for a blank clip.'),
 				source: z
 					.string()
 					.max(110)
@@ -261,7 +261,7 @@ export function createAdapter(options: AdapterOptions): McpServer {
 				studio_session: studioSession,
 				clip_id: clipId,
 				expected_revision: z.string().describe("Revision from the last read or edit of this clip."),
-				operations: z.array(z.discriminatedUnion("type", operations)).min(1).max(256),
+				operations: z.array(z.discriminatedUnion("type", operations)).min(1).max(256).describe("The operations, applied in order. Each is one kind of edit, named by its type."),
 				validate: z
 					.boolean()
 					.optional()

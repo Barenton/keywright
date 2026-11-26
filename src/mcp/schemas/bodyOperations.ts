@@ -118,7 +118,7 @@ export const bodyOperations = [
 			.describe(
 				"Curve clips only. Keep a hand or foot off the floor over a time range: at every frame where its lowest point is nearer the floor than clearance, its limb lifts it straight up by the shortfall, turned as it was and where it was across the floor; frames where it is clear already are left as they are. A swinging foot that scuffs on its way to the next step, a hand that brushes the ground in a crawl or cartwheel. The floor is validate_animation's. Written at every frame and then reduced to as few keys as keep it. The result counts frames_lifted with largest_lift_studs.",
 			),
-		part: z.enum(["LeftFoot", "RightFoot", "LeftHand", "RightHand"]),
+		part: z.enum(["LeftFoot", "RightFoot", "LeftHand", "RightHand"]).describe("The foot or hand to keep off the floor."),
 		time_from: spanFrom,
 		time_to: spanTo,
 		clearance: z.number().min(0).max(2).optional().describe("The least height of the part's lowest point above the floor, in studs. Default 0.05."),

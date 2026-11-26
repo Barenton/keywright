@@ -36,4 +36,4 @@ export const easingDirection = z
 	.enum(["In", "Out", "InOut"])
 	.optional()
 	.describe("In starts slowly and ends fast; Out starts fast and ends slowly; InOut is slow at both ends. For a jump, the rise is Out and the fall is In.");
-export const markerName = z.string().min(1).max(100);
+export const markerName = z.string().min(1).max(100).describe("The marker's name.");
