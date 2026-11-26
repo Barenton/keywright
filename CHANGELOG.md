@@ -4,6 +4,8 @@ What changed in each release of Keywright. The plugin and the adapter are releas
 
 ## [Unreleased]
 
+- **Out-of-date plugin or adapter, flagged everywhere:** while a Studio window's plugin and the adapter are different versions, every result for that window, errors included, starts with `update_needed`, not just `get_workspace`. It says which side is older, that newer options are ignored until they match, and how to update. Agents are told to pass it on to the person straight away.
+- **Pictures say how they were drawn:** every picture's `render` reports its `style`, so an agent can tell the style it asked for was used. An adapter too old to know `style` leaves it out.
 - **Measurements:** `preview_animation` takes `measure`: one part from another, or from the root, along the rig's forward, up or right, or as a distance, at every time sampled. It returns each value with the least and greatest and when they happen, so a punch's reach past the head, how low the hips sink after a landing and when, or a planted foot's drift is one call. The parts measured are tracked automatically.
 - **Onion skin:** `preview_animation` with `times`, `render` and `onion: true` draws the moments over each other, the last solid and earlier ones fainter. Each tracked part's arm or leg is drawn stronger, with its path through the frames and a numbered dot at each, which shows where a limb turns round and whether it moves in an arc.
 - **Labelled strips:** each column of a pose strip, and of a comparison, now shows its time.

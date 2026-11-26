@@ -21,7 +21,7 @@ Besides the tools, an AI app is sent these instructions when it connects:
 
 > Keywright makes animations for rigs in Roblox Studio. How to work with it:
 >
-> 1. Start with get_workspace. Use pair_studio only with a code the person gives you. Call inspect_rig before posing: its turns say which way each joint moves for a positive rotation about X, Y and Z.
+> 1. Start with get_workspace. If it, or any result, carries update_needed, tell the person straight away, with what it says to do: until the plugin and the adapter match, tools may fail or ignore options. Use pair_studio only with a code the person gives you. Call inspect_rig before posing: its turns say which way each joint moves for a positive rotation about X, Y and Z.
 > 2. Plan before editing. Write down the key poses, when each happens, and what each must read as: for a kick, the chamber, the contact (leg extended, hips turned over) and the recovery. Use curve clips (format "curves") for motion that should flow, with keys on whole frames (multiples of 1/30 s).
 > 3. Block the key poses first and check them. Then add the in-betweens, overlap, and contacts with the floor (pin, place_on_floor).
 > 4. After every revision, look at it. preview_animation with times at the key moments and render: true gives a pose strip, which shows whether each silhouette reads. With samples and render: true it gives motion paths and a speed plot, which show stops, pops and corners. Use both: a speed plot cannot tell you whether a pose reads, and a pose strip cannot show timing. Use compare_with to see what a revision changed, onion: true to see how a limb travels between poses, and measure to turn a check (a punch's reach, how low the hips sink after a landing) into numbers.
@@ -32,7 +32,7 @@ Besides the tools, an AI app is sent these instructions when it connects:
 
 *Reads only: changes nothing in Studio.*
 
-List connected Roblox Studio sessions with their rigs, working copies and revisions, the current selection, and whether screenshots are available. A session whose plugin is a different version from this adapter carries update_needed, saying what to ask the person to update.
+List connected Roblox Studio sessions with their rigs, working copies and revisions, the current selection, and whether screenshots are available. A session whose plugin is a different version from this adapter carries update_needed, saying what to ask the person to update; every other tool's result for that session carries it too. Tell the person when you see it.
 
 No arguments.
 

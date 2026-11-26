@@ -25,7 +25,7 @@ export const ADAPTER_VERSION = VERSION;
  */
 export const SERVER_INSTRUCTIONS = `Keywright makes animations for rigs in Roblox Studio. How to work with it:
 
-1. Start with get_workspace. Use pair_studio only with a code the person gives you. Call inspect_rig before posing: its turns say which way each joint moves for a positive rotation about X, Y and Z.
+1. Start with get_workspace. If it, or any result, carries update_needed, tell the person straight away, with what it says to do: until the plugin and the adapter match, tools may fail or ignore options. Use pair_studio only with a code the person gives you. Call inspect_rig before posing: its turns say which way each joint moves for a positive rotation about X, Y and Z.
 2. Plan before editing. Write down the key poses, when each happens, and what each must read as: for a kick, the chamber, the contact (leg extended, hips turned over) and the recovery. Use curve clips (format "curves") for motion that should flow, with keys on whole frames (multiples of 1/30 s).
 3. Block the key poses first and check them. Then add the in-betweens, overlap, and contacts with the floor (pin, place_on_floor).
 4. After every revision, look at it. preview_animation with times at the key moments and render: true gives a pose strip, which shows whether each silhouette reads. With samples and render: true it gives motion paths and a speed plot, which show stops, pops and corners. Use both: a speed plot cannot tell you whether a pose reads, and a pose strip cannot show timing. Use compare_with to see what a revision changed, onion: true to see how a limb travels between poses, and measure to turn a check (a punch's reach, how low the hips sink after a landing) into numbers.
@@ -37,7 +37,7 @@ export const SERVER_INSTRUCTIONS = `Keywright makes animations for rigs in Roblo
 // of the pose that the relay draws itself from the sampled joint positions. The other is a
 // Studio screenshot, which only a preview that asked for one can produce and only after
 // the relay's own check (see image.ts).
-function ok(method: string, params: unknown, result: unknown): CallToolResult {
+function ok(method: string, params: unknown, result: unknown, updateNeeded?: string): CallToolResult {
 	const screened = screenResult(method, params, result);
 	// Measurements come first: they use the raw sampled positions, which drawing boils down.
 	const drawn = method === IMAGE_METHOD ? renderResult(params, measureResult(params, screened.payload)) : { payload: screened.payload };
@@ -53,20 +53,24 @@ function ok(method: string, params: unknown, result: unknown): CallToolResult {
 	if (validation !== null && typeof validation === "object" && Array.isArray(validation.counts) && validation.counts.length === 0) {
 		validation.counts = {};
 	}
-	const content: CallToolResult["content"] = [{ type: "text", text: JSON.stringify(drawn.payload) }];
+	// A version mismatch leads the result, so that it is not missed.
+	const text = updateNeeded !== undefined && drawn.payload !== null && typeof drawn.payload === "object" && !Array.isArray(drawn.payload) ? { update_needed: updateNeeded, ...drawn.payload } : drawn.payload;
+	const content: CallToolResult["content"] = [{ type: "text", text: JSON.stringify(text) }];
 	for (const image of [drawn.image, screened.image]) {
 		if (image !== undefined) content.push({ type: "image", data: image, mimeType: "image/png" });
 	}
 	return { content };
 }
 
-function fail(error: unknown): CallToolResult {
+function fail(error: unknown, updateNeeded?: string): CallToolResult {
 	const wire =
 		error instanceof BridgeError
 			? error.toWire()
 			: { code: "INTERNAL", message: error instanceof Error ? error.message : String(error) };
-	// Errors are passed on as text, so they get the same screening as any other text.
-	return { isError: true, content: [{ type: "text", text: JSON.stringify({ error: scrub(wire).value }) }] };
+	// Errors are passed on as text, so they get the same screening as any other text. A
+	// version mismatch goes with them: it is often why a call failed.
+	const body = { ...(updateNeeded !== undefined ? { update_needed: updateNeeded } : {}), error: scrub(wire).value };
+	return { isError: true, content: [{ type: "text", text: JSON.stringify(body) }] };
 }
 
 // How much text one read may return, in bytes of JSON.
@@ -125,7 +129,7 @@ export interface AdapterOptions {
  * What to tell the agent when a Studio window's plugin is not the adapter's release. A
  * test build's suffix (0.1.0+fault) is not a different release.
  */
-export function versionCheck(session: SessionInfo): { update_needed?: string } {
+export function versionCheck(session: Pick<SessionInfo, "pluginVersion">): { update_needed?: string } {
 	const plugin = session.pluginVersion.split("+")[0] ?? "";
 	if (plugin === VERSION) return {};
 	const older = compareVersions(plugin, VERSION) < 0 ? "plugin" : "adapter";
@@ -138,7 +142,7 @@ export function versionCheck(session: SessionInfo): { update_needed?: string } {
 				? "Ask the person to reconnect Keywright in their AI app, so that npx starts the latest; if it stays older, to run npx -y keywright@latest setup."
 				: "Ask the person to update the adapter: download keywright.mjs from the latest release (in a source checkout, git pull, npm install and npm run build), then reconnect it.";
 	return {
-		update_needed: `This Studio window's Keywright plugin is ${session.pluginVersion || "unnumbered"} and the adapter is ${VERSION}; the ${older} is older. Tools may fail or behave differently until they match. ${how}`,
+		update_needed: `This Studio window's Keywright plugin is ${session.pluginVersion || "unnumbered"} and the adapter is ${VERSION}; the ${older} is older. Tell the person: until they match, tools may fail, and options newer than the ${older} are ignored. ${how}`,
 	};
 }
 
@@ -153,11 +157,29 @@ export function createAdapter(options: AdapterOptions): McpServer {
 	// `signal` is the MCP client's own cancellation of the tool call. It is passed on, so
 	// that a call nobody is waiting for stops in Studio too.
 	// `asked` is what the agent asked for, when the plugin is sent more than that.
+	// Each Studio window's plugin version, by session. A window keeps its version for as
+	// long as its session lasts: a plugin that is updated reconnects as a new session.
+	const pluginVersions = new Map<string, string>();
+	const updateNeeded = async (session: string): Promise<string | undefined> => {
+		try {
+			if (!pluginVersions.has(session)) {
+				const { sessions } = (await (await broker()).request("broker.sessions")) as { sessions: SessionInfo[] };
+				for (const known of sessions) pluginVersions.set(known.id, known.pluginVersion);
+			}
+			const version = pluginVersions.get(session);
+			return version === undefined ? undefined : versionCheck({ pluginVersion: version }).update_needed;
+		} catch {
+			return undefined;
+		}
+	};
+	// Every call to a Studio window carries update_needed while its plugin and this adapter
+	// differ, not only get_workspace, so that an agent can't miss telling the person.
 	const call = async (method: string, session: string, params: unknown, signal?: AbortSignal, timeoutMs?: number, asked: unknown = params) => {
 		try {
-			return ok(method, asked, await (await broker()).request(method, params, session, timeoutMs, signal));
+			const result = await (await broker()).request(method, params, session, timeoutMs, signal);
+			return ok(method, asked, result, await updateNeeded(session));
 		} catch (error) {
-			return fail(error);
+			return fail(error, await updateNeeded(session));
 		}
 	};
 
@@ -165,7 +187,7 @@ export function createAdapter(options: AdapterOptions): McpServer {
 		"get_workspace",
 		{
 			description:
-				"List connected Roblox Studio sessions with their rigs, working copies and revisions, the current selection, and whether screenshots are available. A session whose plugin is a different version from this adapter carries update_needed, saying what to ask the person to update.",
+				"List connected Roblox Studio sessions with their rigs, working copies and revisions, the current selection, and whether screenshots are available. A session whose plugin is a different version from this adapter carries update_needed, saying what to ask the person to update; every other tool's result for that session carries it too. Tell the person when you see it.",
 			inputSchema: {},
 			annotations: { readOnlyHint: true },
 		},

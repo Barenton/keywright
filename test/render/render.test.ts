@@ -235,7 +235,7 @@ test("a preview's result gets a picture only when one was asked for, and never k
 	assert.deepEqual(inspectPng(png), { width: DEFAULT_TILE, height: DEFAULT_TILE });
 	const payload = asked.payload as { pose?: unknown; render: Record<string, unknown>; joints: unknown };
 	assert.equal(payload.pose, undefined);
-	assert.deepEqual(payload.render, { status: "ok", views: ["three_quarter"], width: DEFAULT_TILE, height: DEFAULT_TILE, legend: LEGEND });
+	assert.deepEqual(payload.render, { status: "ok", views: ["three_quarter"], width: DEFAULT_TILE, height: DEFAULT_TILE, legend: LEGEND, style: "boxes" });
 	assert.deepEqual(payload.joints, { Head: { rotation: [0, 0, 0] } });
 
 	const chosen = renderResult({ render: true, views: ["front", "right"], render_size: 256 }, result);
@@ -456,6 +456,8 @@ test("a preview asked for in the slim style is drawn so, and says so", () => {
 	const slim = renderResult({ render: true, style: "slim" }, { pose });
 	assert.equal((plain.payload as { render: { legend: string } }).render.legend, LEGEND);
 	assert.equal((slim.payload as { render: { legend: string } }).render.legend, SLIM_LEGEND);
+	assert.equal((plain.payload as { render: { style: string } }).render.style, "boxes");
+	assert.equal((slim.payload as { render: { style: string } }).render.style, "slim");
 	assert.ok(slim.image && plain.image && slim.image !== plain.image);
 });
 

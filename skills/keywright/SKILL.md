@@ -25,7 +25,10 @@ This file is the workflow. Open the references when you need them:
 - Find out the length, whether it loops, the mood ("tired", "snappy", "heavy"), and
   anything that must stay still or line up with gameplay (a hit at a given moment, a
   marker name). Ask when it matters and you can't infer it.
-- `get_workspace` for the rig, then `inspect_rig`. Read its `turns`: they say where each
+- `get_workspace` for the rig, then `inspect_rig`. **If any result carries
+  `update_needed`, tell the person straight away**, with the fix it gives: until the
+  plugin and the adapter match, tools may fail or ignore options you pass, such as a
+  picture style. Read its `turns`: they say where each
   part's far end moves for a positive rotation about X, Y and Z on *this* rig.
 - If the person has a clip to start from (a guard pose, an earlier version), open a copy
   of it: shared start poses make a set of moves blend together.

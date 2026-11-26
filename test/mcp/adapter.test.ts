@@ -265,7 +265,10 @@ describe("MCP adapter over stdio", () => {
 
 	test("studio_session routes the call and is not forwarded as a parameter", async () => {
 		const { json } = await callTool("inspect_rig", { studio_session: SESSION, rig_id: "rig_1", detail: true });
-		assert.deepEqual(json, { method: "inspect_rig", params: { rig_id: "rig_1", detail: true } });
+		// The test plugin's version differs from the adapter's, so update_needed leads the result.
+		const { update_needed, ...rest } = json;
+		assert.match(update_needed, /plugin is test/);
+		assert.deepEqual(rest, { method: "inspect_rig", params: { rig_id: "rig_1", detail: true } });
 	});
 
 	test("a stale revision comes back as a structured error and a fresh one succeeds", async () => {
@@ -398,6 +401,12 @@ describe("MCP adapter over stdio", () => {
 		assert.equal(plugin.received.length, before);
 	});
 
+	test("an error for a window whose plugin differs says so too", async () => {
+		const { isError, content } = await callTool("open_animation", { studio_session: SESSION, rig_id: "rig_leaky" });
+		assert.equal(isError, true);
+		assert.match(JSON.parse(content[0]?.text ?? "{}").update_needed, /options newer than the/);
+	});
+
 	test("an image carried in an error message never reaches the client", async () => {
 		const { isError, content } = await callTool("open_animation", { studio_session: SESSION, rig_id: "rig_leaky" });
 		assert.equal(isError, true);
@@ -415,6 +424,8 @@ describe("MCP adapter over stdio", () => {
 		});
 		const sent = plugin.received.at(-1)?.params as { track?: string[] };
 		assert.deepEqual(sent.track, ["LeftFoot", "RightHand", "Head"]);
+		// The test plugin reports version "test", so every result says an update is needed.
+		assert.match(json.update_needed, /plugin is test and the adapter is .*Tell the person/);
 		assert.deepEqual(json.measured, [
 			{ part: "RightHand", relative_to: "Head", along: "forward", values: [[0.5, 1.5]], least: { value: 1.5, time: 0.5 }, greatest: { value: 1.5, time: 0.5 }, change: 0 },
 		]);

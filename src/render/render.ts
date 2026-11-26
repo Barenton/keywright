@@ -40,6 +40,8 @@ export function renderResult(params: unknown, payload: unknown): { payload: unkn
 	const slim = input.style === "slim";
 	const parsePose = (value: unknown): PosePart[] => (slim ? slimParts(parseParts(value)) : parseParts(value));
 	const legend = slim ? SLIM_LEGEND : LEGEND;
+	// Every picture says how it was drawn, so an agent can tell the style asked for was used.
+	const style = slim ? "slim" : "boxes";
 	try {
 		const requested = Array.isArray(input.views) ? input.views : DEFAULT_VIEWS;
 		const views = requested.filter((view): view is ViewName => (VIEWS as readonly unknown[]).includes(view)).slice(0, MAX_VIEWS);
@@ -59,6 +61,7 @@ export function renderResult(params: unknown, payload: unknown): { payload: unkn
 				width: drawn.width,
 				height: drawn.height,
 				legend,
+				style,
 			};
 			return { payload: rest, image: drawn.png.toString("base64") };
 		}
@@ -85,6 +88,7 @@ export function renderResult(params: unknown, payload: unknown): { payload: unkn
 					width: drawn.width,
 					height: drawn.height,
 					legend,
+					style,
 				};
 				return { payload: rest, image: drawn.png.toString("base64") };
 			}
@@ -94,16 +98,16 @@ export function renderResult(params: unknown, payload: unknown): { payload: unkn
 				const other = pose.compare.map((parts: unknown) => parsePose({ parts }));
 				const view = rows[0] as ViewName;
 				const both = renderComparison(frames, other, view, each, resting, times);
-				rest.render = { status: "ok", layout: "one column for each time in order, labelled with the time in seconds; top row this clip, bottom row the clip it is compared with", views: [view], frames: frames.length, width: both.width, height: both.height, legend };
+				rest.render = { status: "ok", layout: "one column for each time in order, labelled with the time in seconds; top row this clip, bottom row the clip it is compared with", views: [view], frames: frames.length, width: both.width, height: both.height, legend, style };
 				return { payload: rest, image: both.png.toString("base64") };
 			}
 			const strip = renderStrip(frames, rows, each, resting, times);
-			rest.render = { status: "ok", layout: "one column for each time in order, labelled with the time in seconds, one row for each view", views: rows, frames: frames.length, width: strip.width, height: strip.height, legend };
+			rest.render = { status: "ok", layout: "one column for each time in order, labelled with the time in seconds, one row for each view", views: rows, frames: frames.length, width: strip.width, height: strip.height, legend, style };
 			return { payload: rest, image: strip.png.toString("base64") };
 		}
 		const tile = Math.min(size, Math.floor(MAX_WIDTH / views.length));
 		const drawn = renderPose(parsePose(pose), views, tile, resting);
-		rest.render = { status: "ok", views, width: drawn.width, height: drawn.height, legend };
+		rest.render = { status: "ok", views, width: drawn.width, height: drawn.height, legend, style };
 		return { payload: rest, image: drawn.png.toString("base64") };
 	} catch (error) {
 		rest.render = { status: "unavailable", reason: error instanceof Error ? error.message : String(error) };
