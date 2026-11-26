@@ -85,9 +85,15 @@ local methods, _, panel = Handlers.create()
 
 local connection: any = nil
 
+-- The id of a credential the broker said it no longer knows. That refusal comes before the
+-- broker has proved itself, so anything holding the port could send it. So the stored
+-- credential is kept, and only this session pairs again; a new pairing replaces it.
+local refused: string? = nil
+
 local function start()
 	local port = settings.read(Settings.PORT)
-	local credential = settings.credential()
+	local stored = settings.credential()
+	local credential = if stored and stored.id ~= refused then stored else nil
 	local code = if credential then nil else newPairingCode()
 	view.setPairing(code)
 	view.setNote("")
@@ -116,7 +122,7 @@ local function start()
 					view.setNote("Paired for this session, but the credential could not be saved.")
 				end
 			else
-				settings.saveCredential(nil)
+				refused = if credential then credential.id else refused
 				view.setNote("Pairing is needed again. Turn agent access off and on to get a new code.")
 			end
 		end,
