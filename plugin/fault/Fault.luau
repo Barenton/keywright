@@ -13,12 +13,17 @@
 --                      show what Studio does with a recording nobody finishes.
 --
 -- Edits to a working copy with any other name behave as usual.
+--
+-- Settings can fail too. While the place has anything named "Fault settings" directly in
+-- Workspace, every write to the plugin's settings is dropped without an error, as Studio
+-- may do when several windows write at once. Reads still work.
 
 local Fault = {}
 
 Fault.FAIL = "Fault fail"
 Fault.STALL = "Fault stall"
 Fault.STALL_RAW = "Fault stall raw"
+Fault.SETTINGS = "Fault settings"
 
 -- `stall` suspends the calling thread for good; a test passes its own.
 function Fault.install(Edit: any, Recording: any, stall: (() -> ())?)
@@ -39,6 +44,22 @@ function Fault.install(Edit: any, Recording: any, stall: (() -> ())?)
 			suspend()
 		end
 	end
+end
+
+-- Wraps the plugin's settings store. `active` says whether writes are dropped now; a test
+-- passes its own.
+function Fault.settings(store: any, active: (() -> boolean)?): any
+	local dropping: () -> boolean = active
+		or function(): boolean
+			return workspace:FindFirstChild(Fault.SETTINGS) ~= nil
+		end
+	local wrapped = table.clone(store)
+	wrapped.set = function(key: string, value: any)
+		if not dropping() then
+			store.set(key, value)
+		end
+	end
+	return wrapped
 end
 
 return Fault

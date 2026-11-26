@@ -4,7 +4,6 @@
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
 
-local Access = require("./src/Network/Access")
 local Connection = require("./src/Network/Connection")
 local Edit = require("./src/Editing/Edit")
 local Handlers = require("./src/Handlers")
@@ -12,63 +11,15 @@ local Panel = require("./src/Panel")
 local Preview = require("./src/Preview/Preview")
 local Proposals = require("./src/Storage/Proposals")
 local Recording = require("./src/Editing/Recording")
+local Settings = require("./src/Network/Settings")
 
 local PLUGIN_VERSION = require("./src/Version")
 local DEFAULT_PORT = 47318
-local SETTING_PORT = "KeywrightPort"
-local SETTING_CREDENTIAL = "KeywrightCredential"
-local SETTING_ACCESS = "KeywrightAccess"
 local CODE_ALPHABET = "ABCDEFGHJKMNPQRSTVWXYZ23456789"
 
 -- Only the edit data model talks to the broker.
 if not RunService:IsEdit() then
 	return
-end
-
--- The start of the names settings had before the project was called Keywright.
-local FORMER_PREFIX = "Motion" .. "Bridge"
-
-local function readSetting(key: string): any
-	local ok, value = pcall(function()
-		return plugin:GetSetting(key)
-	end)
-	if ok and value ~= nil then
-		return value
-	end
-	-- A setting stored under the former name is still read, so that a pairing and the
-	-- places where access was on carry over. It is written under the new name from then on.
-	local former = FORMER_PREFIX .. string.sub(key, #"Keywright" + 1)
-	local found, old = pcall(function()
-		return plugin:GetSetting(former)
-	end)
-	return if found then old else nil
-end
-
--- Plugin settings are shared by every Studio window and writes can fail silently,
--- so each write is read back.
-local function writeSetting(key: string, value: any): boolean
-	for _ = 1, 3 do
-		pcall(function()
-			plugin:SetSetting(key, value)
-		end)
-		task.wait(0.1)
-		if readSetting(key) == value then
-			return true
-		end
-	end
-	return false
-end
-
-local function loadCredential(): Connection.Credential?
-	local stored = readSetting(SETTING_CREDENTIAL)
-	if type(stored) ~= "string" then
-		return nil
-	end
-	local id, keyHex = string.match(stored, "^(%x+):(%x+)$")
-	if id and keyHex and #id == 16 and #keyHex == 64 then
-		return { id = id, keyHex = keyHex }
-	end
-	return nil
 end
 
 local function newPairingCode(): string
@@ -100,14 +51,34 @@ view.setStatus(Panel.describe("stopped"))
 -- A test build carries one more module, which makes chosen edits fail on purpose so that
 -- what Studio does then can be checked. The plugin as released has no such module. A
 -- session from a test build says so in its version, and so does the panel.
+local store: Settings.Store = {
+	get = function(key: string): any
+		return plugin:GetSetting(key)
+	end,
+	set = function(key: string, value: any)
+		plugin:SetSetting(key, value)
+	end,
+	wait = function(seconds: number)
+		task.wait(seconds)
+	end,
+	decode = function(text: string): any
+		return HttpService:JSONDecode(text)
+	end,
+	encode = function(value: any): string
+		return HttpService:JSONEncode(value)
+	end,
+}
 local version = PLUGIN_VERSION
 local fault = script.Parent:FindFirstChild("Fault")
 if fault and fault:IsA("ModuleScript") then
-	(require(fault) :: any).install(Edit, Recording)
+	local Fault = require(fault) :: any
+	Fault.install(Edit, Recording)
+	store = Fault.settings(store)
 	version ..= "+fault"
 	view.addNotice("Test build: some edits fail on purpose.")
 end
 view.setVersion(`Keywright {version}`)
+local settings = Settings.new(store)
 
 local sessionId = string.lower((string.gsub(HttpService:GenerateGUID(false), "[^%x]", "")))
 local methods, _, panel = Handlers.create()
@@ -115,8 +86,8 @@ local methods, _, panel = Handlers.create()
 local connection: any = nil
 
 local function start()
-	local port = readSetting(SETTING_PORT)
-	local credential = loadCredential()
+	local port = settings.read(Settings.PORT)
+	local credential = settings.credential()
 	local code = if credential then nil else newPairingCode()
 	-- The command as the README gives it, run from the keywright folder.
 	view.setPairing(if code then `node dist/src/cli.js pair {code}` else nil)
@@ -142,11 +113,11 @@ local function start()
 		onCredential = function(newCredential)
 			view.setPairing(nil)
 			if newCredential then
-				if not writeSetting(SETTING_CREDENTIAL, `{newCredential.id}:{newCredential.keyHex}`) then
+				if not settings.saveCredential(newCredential) then
 					view.setNote("Paired for this session, but the credential could not be saved.")
 				end
 			else
-				writeSetting(SETTING_CREDENTIAL, "")
+				settings.saveCredential(nil)
 				view.setNote("Pairing is needed again. Turn agent access off and on to get a new code.")
 			end
 		end,
@@ -211,34 +182,8 @@ end)
 -- Whether access is on is remembered for this place, so that reloading the plugin or
 -- reopening the place does not turn it off. A place that has never been saved to Roblox
 -- cannot be told from any other such place, so for it access is off every time.
-local function rememberedPlaces(): any
-	local stored = readSetting(SETTING_ACCESS)
-	if type(stored) ~= "string" then
-		return nil
-	end
-	local ok, decoded = pcall(function()
-		return HttpService:JSONDecode(stored)
-	end)
-	return if ok then decoded else nil
-end
-
 local function remember(on: boolean)
-	if game.PlaceId == 0 then
-		return
-	end
-	-- Settings are shared by every Studio window and a write can fail silently, so the
-	-- latest value is read before each write and the result is read back.
-	for _ = 1, 3 do
-		local places = Access.update(rememberedPlaces(), game.PlaceId, on)
-		pcall(function()
-			plugin:SetSetting(SETTING_ACCESS, HttpService:JSONEncode(places))
-		end)
-		task.wait(0.1)
-		if Access.remembered(rememberedPlaces(), game.PlaceId) == on then
-			return
-		end
-	end
-	if on then
+	if not settings.rememberAccess(game.PlaceId, on) and on then
 		view.setNote("Agent access is on, but could not be remembered for this place.")
 	end
 end
@@ -260,7 +205,7 @@ view.toggle.MouseButton1Click:Connect(function()
 	end
 end)
 
-if Access.remembered(rememberedPlaces(), game.PlaceId) then
+if settings.accessOn(game.PlaceId) then
 	-- A person turned access on for this place earlier and has not turned it off.
 	view.setAccess(true)
 	start()

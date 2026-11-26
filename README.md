@@ -233,7 +233,7 @@ While you're getting started, try Keywright in a copy of your place or a fresh b
 | `plugin/src/Panel.luau` | The panel itself: how it is drawn and laid out at each size. |
 | `plugin/src/Handlers.luau` | The requests a Studio session answers, one per tool. |
 | `plugin/src/Core/` | Shared basics: errors, encoding, hashing, time limits. |
-| `plugin/src/Network/` | The authenticated connection to the broker, and the per-place access switch. |
+| `plugin/src/Network/` | The authenticated connection to the broker, the per-place access switch, and the plugin's settings, each write read back. |
 | `plugin/src/Rigs/` | Reading a rig's joints, and working out where its parts are for a pose. |
 | `plugin/src/Storage/` | Working copies, saved clips, and requests to replace a clip. |
 | `plugin/src/Editing/` | The edit operations for keyframe and curve clips, atomic batches, and undo. |
@@ -266,7 +266,7 @@ The Luau tests run outside Studio, against [Lune](https://lune-org.github.io/doc
 
 **`npm run measure`** drives the tools against a Studio session that is already connected, and writes its results to `build/measurements/`. It creates working copies, and saved clips named "Measure ...", in the open place. So it must be given that place's id, and it refuses any other. Use a place you can throw away.
 
-**The fault test build** adds `plugin/fault/Fault.luau`, which makes an edit fail or stall on purpose. This lets you check in Studio that a failed batch leaves nothing behind. The fault is chosen by the working copy's name: "Fault fail", "Fault stall" or "Fault stall raw". Any other name behaves normally. Install it in place of the normal plugin, never alongside it, and only in a place you can throw away: "Fault stall raw" leaves that Studio window refusing undo steps until Studio restarts.
+**The fault test build** adds `plugin/fault/Fault.luau`, which makes an edit fail or stall on purpose. This lets you check in Studio that a failed batch leaves nothing behind. The fault is chosen by the working copy's name: "Fault fail", "Fault stall" or "Fault stall raw". Any other name behaves normally. It can also drop the plugin's settings writes without an error, as Studio may do when several windows write at once: while the place has anything named "Fault settings" directly in Workspace, nothing the plugin saves is kept, and the panel should say so. Install it in place of the normal plugin, never alongside it, and only in a place you can throw away: "Fault stall raw" leaves that Studio window refusing undo steps until Studio restarts.
 
 ### Releasing
 
