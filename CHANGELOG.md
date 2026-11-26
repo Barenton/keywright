@@ -4,6 +4,8 @@ What changed in each release of Keywright. The plugin and the adapter are releas
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-26
+
 - **Slim pose pictures:** `preview_animation` takes `style: "slim"`, which draws the arms and legs thin along their length, so limb angles, elbow and knee bends and arm swings read; on a blocky rig, boxes hide them. The default boxes are unchanged.
 - **The Animation Editor can block changes after all:** while it played a clip, Studio refused every Keywright change until it was closed. The docs and the plugin's message now say to close it.
 - **Keywright skill:** judge the upper and lower body separately, and compare with an animation the person likes by reading its keys. Runs swing the arms well back with the elbows held bent, and land the feet nearly in line.
@@ -82,7 +84,8 @@ The first numbered release.
 - **Setup:** `npm run install:plugin` installs the plugin into Studio. The panel and `node dist/src/cli.js version` show the version, and the agent is told when the plugin and the adapter don't match.
 - **Panel:** fits whatever size it is docked or floated at, follows Studio's theme, and shows the pairing command ready to copy.
 
-[Unreleased]: https://github.com/Barenton/keywright/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Barenton/keywright/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/Barenton/keywright/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Barenton/keywright/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Barenton/keywright/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Barenton/keywright/compare/v0.1.2...v0.2.0
