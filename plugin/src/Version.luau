@@ -1,4 +1,4 @@
 --!strict
 -- Keywright's version. Written from package.json by scripts/sync-version.mjs: change it there.
 
-return "0.4.0"
+return "0.5.0"
