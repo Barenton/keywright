@@ -4,11 +4,12 @@ What changed in each release of Keywright. The plugin and the adapter are releas
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-26
+
+- **On npm:** Keywright is published as the `keywright` package, so `npx -y keywright setup` installs it with nothing to download by hand. Run through npx, `setup` tells AI apps to start it with `npx -y keywright`, and the advice messages and the panel's pairing command give that form too. The README leads with it; the downloads from GitHub releases still work.
 - **Fixed, pairing:** a refusal of the stored credential, which comes before the broker has proved itself, no longer erases it. That session pairs again, and the stored credential is replaced only when the new pairing succeeds, so a program posing as the broker can't wipe Studio's pairing.
 - **Releases:** the release workflow can publish the npm package itself, through npm's trusted publishing, once it is switched on.
-- **On npm:** Keywright is published as the `keywright` package, so `npx -y keywright setup` installs it with nothing to download by hand. Run through npx, `setup` tells AI apps to start it with `npx -y keywright`, and the advice messages give that form too. The README leads with it; the downloads from GitHub releases still work.
-
-- **Public beta:** the README now calls Keywright a public beta, from 0.3.0.
+- **Public beta:** the README calls Keywright a public beta, from 0.3.0.
 
 ## [0.3.0] - 2026-11-26
 
@@ -74,7 +75,8 @@ The first numbered release.
 - **Setup:** `npm run install:plugin` installs the plugin into Studio. The panel and `node dist/src/cli.js version` show the version, and the agent is told when the plugin and the adapter don't match.
 - **Panel:** fits whatever size it is docked or floated at, follows Studio's theme, and shows the pairing command ready to copy.
 
-[Unreleased]: https://github.com/Barenton/keywright/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Barenton/keywright/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/Barenton/keywright/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Barenton/keywright/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Barenton/keywright/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/Barenton/keywright/compare/v0.1.1...v0.1.2
