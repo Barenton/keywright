@@ -170,6 +170,11 @@ if fault and fault:IsA("ModuleScript") then
 	version ..= "+fault"
 	label("Test build: some edits fail on purpose.")
 end
+-- At the bottom of the panel, which release this is: the first thing to know when the
+-- plugin and the adapter may not match.
+local versionLine = label(`Keywright {version}`, 1000)
+versionLine.TextColor3 = theme:GetColor(Enum.StudioStyleGuideColor.DimmedText)
+versionLine.TextSize = 13
 
 local sessionId = string.lower((string.gsub(HttpService:GenerateGUID(false), "[^%x]", "")))
 local methods, _, panel = Handlers.create()
