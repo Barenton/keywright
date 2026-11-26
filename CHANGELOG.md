@@ -4,6 +4,11 @@ What changed in each release of Keywright. The plugin and the adapter are releas
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-26
+
+- **Fixed:** clicking the agent access switch quickly could leave access remembered as on while the switch showed it off, so that access turned itself on the next time the place opened. The last click is now the one remembered.
+- **Settings:** checked in Studio with two windows open on two places. Access turned on in one is kept when it is turned on in the other, also at the same moment, and a setting that Studio fails to save is reported on the panel.
+
 ## [0.1.0] - 2026-11-25
 
 The first numbered release.
@@ -16,5 +21,6 @@ The first numbered release.
 - **Setup:** `npm run install:plugin` installs the plugin into Studio. The panel and `node dist/src/cli.js version` show the version, and the agent is told when the plugin and the adapter don't match.
 - **Panel:** fits whatever size it is docked or floated at, follows Studio's theme, and shows the pairing command ready to copy.
 
-[Unreleased]: https://github.com/Barenton/keywright/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Barenton/keywright/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/Barenton/keywright/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Barenton/keywright/releases/tag/v0.1.0
