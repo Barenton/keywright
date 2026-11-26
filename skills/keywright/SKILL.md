@@ -29,6 +29,9 @@ This file is the workflow. Open the references when you need them:
   part's far end moves for a positive rotation about X, Y and Z on *this* rig.
 - If the person has a clip to start from (a guard pose, an earlier version), open a copy
   of it: shared start poses make a set of moves blend together.
+- **Ask whether there's an animation they like** of the same kind. Read its keys with
+  `read_animation` and compare ranges with yours: how far each joint swings, how bent it
+  stays, how far the body leans. It's the quickest way to see what makes theirs work.
 
 ### 2. Plan before the first edit
 
@@ -68,6 +71,8 @@ views side by side for anything that turns). For each frame, ask:
 - Is the **weight** believable: the hips over the supporting foot, or deliberately off
   balance and about to fall or step?
 - Are the hands, feet and head where they should be, and not inside the body?
+- **Judge the upper and lower body separately.** Look at only the legs and hips, then only
+  the chest, head and arms. Good legs hide weak arms, and the other way round.
 
 Fix the key poses until every one reads. **Detail never rescues a weak pose.**
 

@@ -53,9 +53,16 @@ and snappier, slower as heavier or tired.
 
 - 14–20 frames. Faster and longer flight than a walk, with **no** frame where both feet
   touch: each foot's stance is short, and both are in the air between.
-- A forward lean (hips and chest −X, about 10–15° together) with the head tipped back to
-  stay level, the chest twisting against the hips, arms pumping in arcs with the elbows
-  bent near 90°.
+- A forward lean (hips and chest −X: 10–15° together for a jog, 25–30° for a sprint) with
+  the head tipped back to stay level, and the chest twisting against the hips.
+- **The arms drive the run.** Each upper arm swings well forward **and well back**, about
+  ±60° (a sprint, +75° to −65°), peaking forward as the opposite foot is at mid-stance.
+  The elbows stay bent at 85–100° all through the swing and don't open as the arm goes
+  back. The arms stay close to the body, and the hands swing in toward the middle as they
+  come forward. Arms that swing mostly forward, with little backswing, look like jogging
+  on the spot at a crossing.
+- **The feet land nearly in line,** under the body, not hip-width apart: turn the thighs
+  slightly inward rather than outward.
 - **The hips' height over one step** (contact at frame 0, a 10-frame step): coming down
   at contact, still sinking for 2 frames (the absorb, lowest at frame 2), rising through
   push-off, highest in mid-flight, falling to the next contact. Key the hips' position
@@ -70,8 +77,10 @@ and snappier, slower as heavier or tired.
 - Build the cycle as for a walk.
 - **Check:** `track` `LowerTorso` over a step (lowest 2–3 frames after contact); `track`
   the feet at passing for clearance; the motion summary for a speed jump in the feet (a
-  thigh stopping mid-swing); and that the head doesn't simply ride the hips (`aim` with
-  `hold`, about half weight, steadies it).
+  thigh stopping mid-swing); that the head doesn't simply ride the hips (`aim` with
+  `hold`, about half weight, steadies it); a side strip at the arms' extremes, where the
+  back hand should reach the hip or behind it; and a front strip for how far apart the
+  feet land.
 
 ## Idle
 
