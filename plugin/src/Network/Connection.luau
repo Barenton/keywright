@@ -174,6 +174,11 @@ function Connection.start(config: Config)
 			end
 		end
 		working = false
+		-- Requests for a newer connection may have arrived while this drain, for an older one,
+		-- was still finishing; their own drain found it busy and returned. They start now.
+		if running and generation ~= expected and #queue > 0 then
+			platform.spawn(drain, generation)
+		end
 	end
 
 	connect = function()

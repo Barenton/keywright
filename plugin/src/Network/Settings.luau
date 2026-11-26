@@ -3,10 +3,10 @@
 -- access is on.
 --
 -- Plugin settings are shared by every Studio window on the machine, and a write can fail
--- without an error. So each write is read back and tried again, up to three times, and
--- the places where access is on are read just before each write, so that a place another
--- window has just added is kept. Within one window, the latest write to a setting wins: an
--- earlier one still waiting to read itself back stops, and does not write again over it.
+-- without an error. So each write is read back and tried again, up to three times. Each
+-- place has a setting of its own, so a window writing for one place never touches
+-- another's. Within one window, the latest write to a setting wins: an earlier one still
+-- waiting to read itself back stops, and does not write again over it.
 --
 -- The settings themselves are reached through a store that is passed in: in the plugin
 -- it is Plugin:GetSetting and Plugin:SetSetting; in tests, a table.
@@ -47,53 +47,54 @@ export type Settings = {
 }
 
 function Settings.new(store: Store): Settings
-	local function get(key: string): any
+	-- Reads a setting: whether it could be read at all, and its value.
+	local function get(key: string): (boolean, any)
 		local ok, value = pcall(store.get, key)
-		return if ok then value else nil
+		return ok, if ok then value else nil
 	end
 
-	local function read(key: string): any
-		local value = get(key)
-		if value ~= nil then
-			return value
+	local function readChecked(key: string): (boolean, any)
+		local ok, value = get(key)
+		if not ok or value ~= nil then
+			return ok, value
 		end
 		-- A setting stored under the former name is still read, so that a pairing and the
 		-- places where access was on carry over. It is written under the new name from then on.
 		return get(FORMER_PREFIX .. string.sub(key, #"Keywright" + 1))
 	end
 
+	-- A setting that cannot be read is taken as unset.
+	local function read(key: string): any
+		local _, value = readChecked(key)
+		return value
+	end
+
 	-- How many writes each setting has been given, so that a write knows when a later one
 	-- has started.
 	local started: { [string]: number } = {}
 
-	-- Writes what `make` returns, given what is stored now, until `holds` says the stored
-	-- value is right. A write overtaken by a later one to the same setting leaves it to that
-	-- one, and is not a failure.
-	local function settle(key: string, make: (current: any) -> any, holds: (stored: any) -> boolean): boolean
+	-- Writes a value until it reads back, up to TRIES times. Only a successful read that
+	-- gives the value counts: a setting that cannot be read is never taken as written. A
+	-- write overtaken by a later one to the same setting leaves it to that one, and is not
+	-- a failure.
+	local function write(key: string, value: any): boolean
 		local mine = (started[key] or 0) + 1
 		started[key] = mine
 		for _ = 1, Settings.TRIES do
-			local value = make(read(key))
 			pcall(store.set, key, value)
 			store.wait(Settings.SETTLE)
 			if started[key] ~= mine then
 				return true
 			end
-			if holds(read(key)) then
+			local readable, stored = readChecked(key)
+			if readable and stored == value then
 				return true
 			end
 		end
 		return false
 	end
 
-	local function write(key: string, value: any): boolean
-		return settle(key, function()
-			return value
-		end, function(stored)
-			return stored == value
-		end)
-	end
-
+	-- The old list of places, decoded, or nil.
 	local function places(stored: any): any
 		if type(stored) ~= "string" then
 			return nil
@@ -123,21 +124,29 @@ function Settings.new(store: Store): Settings
 		return write(Settings.CREDENTIAL, if credential then `{credential.id}:{credential.keyHex}` else "")
 	end
 
+	-- A place's own setting says whether access is on there. A place without one is looked
+	-- up in the old list, so that access turned on before each place had its own is kept.
 	function self.accessOn(placeId: any): boolean
+		local name = Access.key(placeId)
+		if not name then
+			return false
+		end
+		local own = read(`{Settings.ACCESS}_{name}`)
+		if type(own) == "boolean" then
+			return own
+		end
 		return Access.remembered(places(read(Settings.ACCESS)), placeId)
 	end
 
-	-- A place that cannot be told apart from others is never remembered, which counts as
-	-- done.
+	-- Writes only this place's own setting, true or false, so no other place's is touched.
+	-- Off is written as false, not removed, so that the old list cannot turn it back on. A
+	-- place that cannot be told apart from others is never remembered, which counts as done.
 	function self.rememberAccess(placeId: any, on: boolean): boolean
-		if not Access.remembered(Access.update(nil, placeId, true), placeId) then
+		local name = Access.key(placeId)
+		if not name then
 			return true
 		end
-		return settle(Settings.ACCESS, function(current)
-			return store.encode(Access.update(places(current), placeId, on))
-		end, function(stored)
-			return Access.remembered(places(stored), placeId) == on
-		end)
+		return write(`{Settings.ACCESS}_{name}`, on)
 	end
 
 	return self

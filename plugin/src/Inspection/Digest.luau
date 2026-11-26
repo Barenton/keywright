@@ -89,4 +89,21 @@ function Digest.of(sequence: Instance): string
 	return Codec.toHex(Sha256.digest(buffer.fromstring(table.concat(Digest.lines(sequence), "\n"))))
 end
 
+-- A stricter fingerprint, for telling whether a clip has changed since a working copy was
+-- opened from it: everything Digest.of covers, and also each keyframe's name, which game
+-- scripts see through AnimationTrack.KeyframeReached and which a replacement would write
+-- over. Kept apart from Digest.of, which read_animation reports as content_hash and whose
+-- values recorded from Studio are compared. Marked "2:", so that a fingerprint written
+-- before keyframe names counted never matches, and the clip is taken as changed.
+function Digest.ofSource(sequence: Instance): string
+	local lines = Digest.lines(sequence)
+	for _, child: any in sequence:GetChildren() do
+		if child:IsA("Keyframe") then
+			table.insert(lines, `{number(child.Time)}|name|{child.Name}`)
+		end
+	end
+	table.sort(lines)
+	return "2:" .. Codec.toHex(Sha256.digest(buffer.fromstring(table.concat(lines, "\n"))))
+end
+
 return Digest

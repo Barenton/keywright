@@ -182,8 +182,16 @@ end)
 -- reopening the place does not turn it off. A place that has never been saved to Roblox
 -- cannot be told from any other such place, so for it access is off every time.
 local function remember(on: boolean)
-	if not settings.rememberAccess(game.PlaceId, on) and on then
+	if settings.rememberAccess(game.PlaceId, on) then
+		return
+	end
+	if on then
 		view.setNote("Agent access is on, but could not be remembered for this place.")
+	else
+		-- Access is off for now either way. Not saying so would let it come back unseen.
+		view.setNote(
+			"Agent access is off, but Studio did not save that, so it may turn on again the next time this place opens. Turn it on and off again to retry."
+		)
 	end
 end
 

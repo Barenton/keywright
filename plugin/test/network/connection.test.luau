@@ -392,6 +392,51 @@ case("a request that never returns is given up on, and the next is answered", fu
 	check("and the request behind it is answered", b and b.id == "b" and b.ok == true and b.result.done == "after")
 end)
 
+case("a request that comes on a new connection while an old one is still finishing is answered", function()
+	local released = false
+	local ran = {}
+	local world = start({
+		credential = CREDENTIAL,
+		handler = function(method: string)
+			table.insert(ran, method)
+			if method == "old" then
+				while not released do
+					task.wait()
+				end
+			end
+			return { done = method }
+		end,
+	})
+	local key = Codec.fromHex(KEY_HEX)
+	handshake(world, key)
+	world.receive({ t = "req", id = "o", method = "old" })
+	task.wait()
+	-- The connection drops while "old" is still running, and comes back.
+	world.socket.Closed.fire()
+	world.timers[#world.timers].work()
+	handshake(world, key)
+	local base = #world.sent
+	world.receive({ t = "req", id = "n", method = "new" })
+	task.wait()
+	released = true
+	for _ = 1, 10 do
+		task.wait()
+	end
+	local answered = false
+	for index = base + 1, #world.sent do
+		local message = world.sent[index]
+		if message.t == "res" and message.id == "n" and message.ok then
+			answered = true
+		end
+	end
+	check(
+		"the new connection's request ran after the old one finished",
+		table.concat(ran, " ") == "old new",
+		table.concat(ran, " ")
+	)
+	check("and was answered, with no other request to wake it", answered)
+end)
+
 case("a lost connection is retried, and stopping ends it", function()
 	local world = start({ credential = CREDENTIAL })
 	handshake(world, Codec.fromHex(KEY_HEX))

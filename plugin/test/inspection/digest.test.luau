@@ -163,6 +163,25 @@ check("a change that is undone leaves the fingerprint as it was", Digest.of(rest
 local empty = Instance.new("KeyframeSequence")
 check("an empty clip has a fingerprint too", #Digest.of(empty) == 64 and Digest.of(empty) ~= base)
 
+-- The source fingerprint also counts keyframe names, which scripts see.
+do
+	local named = build()
+	local before, sourceBefore = Digest.of(named), Digest.ofSource(named)
+	for _, child in named:GetChildren() do
+		if child:IsA("Keyframe") then
+			child.Name = "Contact"
+			break
+		end
+	end
+	check("renaming a keyframe leaves the plain fingerprint", Digest.of(named) == before)
+	check("but changes the source fingerprint", Digest.ofSource(named) ~= sourceBefore)
+	check("which is the same for the same clip", Digest.ofSource(named:Clone()) == Digest.ofSource(named))
+	check(
+		"and never equals a fingerprint from before names counted",
+		Digest.ofSource(named) ~= Digest.of(named) and string.sub(Digest.ofSource(named), 1, 2) == "2:"
+	)
+end
+
 print(`{count - failures}/{count} digest checks passed`)
 if failures > 0 then
 	process.exit(1)

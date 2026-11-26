@@ -205,7 +205,7 @@ function Clips.replaceSource(working: Working, finish: (ok: boolean) -> ())
 		local link = if folder then WorkingStore.recall(folder, working.instance) else nil
 		local stamp = if link then link.record:FindFirstChild(WorkingStore.FINGERPRINT) else nil
 		if stamp and stamp:IsA("StringValue") then
-			stamp.Value = Digest.of(source)
+			stamp.Value = Digest.ofSource(source)
 		end
 	end)
 	local finished, finishProblem = pcall(finish :: any, ok)
@@ -249,7 +249,7 @@ function Clips.open(rigId: string, name: string, source: Instance?, model: Model
 	instance.Parent = WorkingStore.shelf(Clips.container(), model, create)
 	if source then
 		-- Written down in the place, so that the link outlasts this plugin session.
-		WorkingStore.remember(links(true) :: Instance, instance, source, Digest.of(source), create)
+		WorkingStore.remember(links(true) :: Instance, instance, source, Digest.ofSource(source), create)
 	end
 	return register(instance, rigId, source)
 end
@@ -291,7 +291,7 @@ function Clips.restore(rigIdOf: (model: Instance) -> string?): number
 				if source and link then
 					-- Nothing watched the source while no plugin was running, so its
 					-- fingerprint says whether it is still what the copy was opened from.
-					working.sourceChanged = Digest.of(source) ~= link.fingerprint
+					working.sourceChanged = Digest.ofSource(source) ~= link.fingerprint
 				end
 			else
 				unassigned += 1
@@ -301,9 +301,19 @@ function Clips.restore(rigIdOf: (model: Instance) -> string?): number
 	return unassigned
 end
 
+-- Whether a working copy is still one: on a rig's shelf in Keywright's folder of working
+-- copies. One a person has moved elsewhere, such as among the Animation Editor's saved
+-- clips, or discarded, is not; moved back, or brought back by an undo, it is again.
+local function onShelf(working: Working): boolean
+	local shelf = working.instance.Parent
+	local folder = shelf and shelf.Parent
+	local root = existingRoot()
+	return folder ~= nil and root ~= nil and folder.Parent == root and folder.Name == Clips.WORKING_NAME
+end
+
 function Clips.get(clipId: string): Working
 	local working = registry[clipId]
-	if not working or working.instance.Parent == nil then
+	if not working or not onShelf(working) then
 		Errors.throw("NOT_FOUND", `No working copy "{clipId}".`, "Call get_workspace to list working copies.")
 	end
 	return working
@@ -312,7 +322,7 @@ end
 function Clips.list(): { any }
 	local list = {}
 	for _, working in registry do
-		if working.instance.Parent ~= nil then
+		if onShelf(working) then
 			table.insert(list, {
 				clip_id = working.id,
 				name = working.instance.Name,

@@ -100,12 +100,17 @@ do
 	end
 end
 
--- Remembering access per place.
+-- Remembering access per place, each place in a setting of its own.
+local function own(place: number): string
+	return `{Settings.ACCESS}_{place}`
+end
+
 do
 	local on = shared()
 	local settings = Settings.new(window(on))
 	check("access is off for a place never turned on", not settings.accessOn(101))
 	check("turning it on is remembered", settings.rememberAccess(101, true) and settings.accessOn(101))
+	check("in that place's own setting", on.values[own(101)] == true)
 	check("for that place only", not settings.accessOn(202))
 	check(
 		"a second place is added",
@@ -115,52 +120,70 @@ do
 		"turning one off keeps the other",
 		settings.rememberAccess(101, false) and not settings.accessOn(101) and settings.accessOn(202)
 	)
+	check("off is written as off, not removed", on.values[own(101)] == false)
 	local writes = on.writes
 	check("a place never saved to Roblox counts as done", settings.rememberAccess(0, true))
 	check("without writing anything", on.writes == writes and not settings.accessOn(0))
-	on.values[Settings.ACCESS] = "{not json"
-	check("unreadable places read as none", not settings.accessOn(202))
-	check("and are replaced on the next write", settings.rememberAccess(303, true) and settings.accessOn(303))
 end
 
--- Two windows writing at once. Window B read the places before window A wrote, so its
--- write, landing while A waits, has only its own place.
+-- Places turned on before each place had a setting of its own were kept in one list.
 do
-	local on = shared()
-	local a = Settings.new(window(on))
-	local b = window(on)
-	table.insert(on.meanwhile, function()
-		b.set(Settings.ACCESS, b.encode({ ["202"] = true }))
-	end)
-	check("the window whose place was lost writes again", a.rememberAccess(101, true))
-	check("and keeps the other window's place", a.accessOn(101) and a.accessOn(202), on.values[Settings.ACCESS])
-	check("in two tries", on.writes == 3, on.writes)
-end
-
-do
-	-- The other way round: B's stale write takes away a place A had just turned off.
 	local on = shared()
 	on.values[Settings.ACCESS] = serde.encode("json", { ["101"] = true, ["202"] = true })
+	local settings = Settings.new(window(on))
+	check("a place in the old list is still on", settings.accessOn(101) and settings.accessOn(202))
+	check(
+		"turning it off is kept, though the old list still names it",
+		settings.rememberAccess(101, false) and not settings.accessOn(101)
+	)
+	check("and the other place in the list is untouched", settings.accessOn(202))
+	on.values[Settings.ACCESS] = "{not json"
+	check("an unreadable old list names no place", not settings.accessOn(202))
+end
+
+-- Two windows on two places. Window B writes while A waits to read its own write back.
+-- Each writes only its own place's setting, so neither can undo the other.
+do
+	local on = shared()
 	local a = Settings.new(window(on))
-	local b = window(on)
+	local b = Settings.new(window(on))
+	a.rememberAccess(101, true)
 	table.insert(on.meanwhile, function()
-		b.set(Settings.ACCESS, b.encode({ ["101"] = true, ["202"] = true }))
+		b.rememberAccess(202, true)
 	end)
-	check("turning off is written again when another window puts it back", a.rememberAccess(101, false))
-	check("and stays off, with the other place kept", not a.accessOn(101) and a.accessOn(202))
+	check("A turns its place off while B turns its own on", a.rememberAccess(101, false))
+	check(
+		"A's place stays off and B's is on",
+		not a.accessOn(101) and a.accessOn(202) and b.accessOn(202) and not b.accessOn(101)
+	)
+	-- B, which had read nothing of A's place, writes again later: A's place is still off.
+	check("a later write from B leaves A's place as A left it", b.rememberAccess(202, true) and not b.accessOn(101))
 end
 
 do
-	-- Another window that keeps writing over this one, every time.
+	-- Two windows on the same place, one of them writing over the other every time.
 	local on = shared()
 	local a = Settings.new(window(on))
 	local b = window(on)
 	for _ = 1, Settings.TRIES do
 		table.insert(on.meanwhile, function()
-			b.set(Settings.ACCESS, b.encode({ ["202"] = true }))
+			b.set(own(101), false)
 		end)
 	end
 	check("gives up after its tries", not a.rememberAccess(101, true) and on.writes == 2 * Settings.TRIES)
+end
+
+do
+	-- A write that lands, in a store that then cannot be read: never taken as written.
+	local on = shared()
+	local store = window(on)
+	local settings = Settings.new(store)
+	settings.rememberAccess(101, true)
+	store.get = function(_key: string): any
+		error("settings unreadable")
+	end
+	check("turning off is not reported done when it cannot be read back", not settings.rememberAccess(101, false))
+	check("though the write itself was made", on.values[own(101)] == false)
 end
 
 -- One window, a person clicking the switch on and then off before the first write has
@@ -175,7 +198,7 @@ do
 	local first = settings.rememberAccess(101, true)
 	check("the later click is done", second == true)
 	check("the earlier one does not report a failure", first == true)
-	check("and the later click is what is remembered", not settings.accessOn(101), on.values[Settings.ACCESS])
+	check("and the later click is what is remembered", not settings.accessOn(101), on.values[own(101)])
 end
 
 do

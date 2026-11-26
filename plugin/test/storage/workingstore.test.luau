@@ -1,6 +1,6 @@
 --!strict
 -- Offline tests for where working copies are kept and how they are found again, and for
--- remembering agent access per place. Run with: lune run plugin/test/storage/workingstore.test.luau
+-- telling places apart for agent access. Run with: lune run plugin/test/storage/workingstore.test.luau
 --
 -- Real here: Lune's instances. Not tested here: Studio's undo, plugin settings, and the
 -- plugin picking copies up when it actually reloads.
@@ -143,26 +143,18 @@ case("an empty or missing arrangement finds nothing", function()
 	check("an empty shelf holds nothing", #later == 0 and count2 == 0)
 end)
 
-case("agent access is remembered for a saved place and never for an unsaved one", function()
-	check("nothing is remembered to begin with", Access.remembered(nil, 123) == false)
-	local stored = Access.update(nil, 123, true)
-	check("turning it on is remembered for that place", Access.remembered(stored, 123))
-	check("and not for another", not Access.remembered(stored, 456))
-	stored = Access.update(stored, 456, true)
-	check(
-		"a second place is remembered beside the first",
-		Access.remembered(stored, 123) and Access.remembered(stored, 456)
-	)
-	stored = Access.update(stored, 123, false)
-	check("turning it off is forgotten", not Access.remembered(stored, 123) and Access.remembered(stored, 456))
-	-- A place that has never been saved to Roblox has no identity of its own.
-	local unsaved = Access.update(stored, 0, true)
-	check("an unsaved place is never remembered", not Access.remembered(unsaved, 0))
-	check("and asking does not disturb what is stored", Access.remembered(unsaved, 456))
-	check("an unsaved place is not remembered even if something says so", not Access.remembered({ ["0"] = true }, 0))
+case("a place is known by its id, and a place never saved to Roblox by none", function()
+	check("a saved place has a key", Access.key(123) == "123")
+	check("an unsaved place has none", Access.key(0) == nil)
+	check("nor has a bad or negative id", Access.key(0 / 0) == nil and Access.key(-5) == nil and Access.key(1.5) == nil)
+	check("nor anything that is not a number", Access.key("123") == nil)
 end)
 
-case("what is stored is read defensively", function()
+case("the old list of places is read defensively", function()
+	check("nothing is remembered from nothing", Access.remembered(nil, 123) == false)
+	check("a place on in the list is remembered", Access.remembered({ ["123"] = true }, 123))
+	check("and only that place", not Access.remembered({ ["123"] = true }, 456))
+	check("an unsaved place is not remembered even if the list says so", not Access.remembered({ ["0"] = true }, 0))
 	for label, stored in
 		{
 			["text"] = "123",
@@ -175,32 +167,6 @@ case("what is stored is read defensively", function()
 	do
 		check(`not remembered from {label}`, not Access.remembered(stored, 123))
 	end
-	check("a bad place id is never remembered", not Access.remembered({ ["nan"] = true }, 0 / 0))
-	check("a negative place id is never remembered", not Access.remembered({ ["-5"] = true }, -5))
-	local repaired = Access.update("garbage" :: any, 123, true)
-	check("updating replaces something unreadable", Access.remembered(repaired, 123))
-	local kept = Access.update({ ["456"] = true, junk = "x", ["789"] = false } :: any, 123, true)
-	check(
-		"updating keeps only places that are on",
-		Access.remembered(kept, 456) and kept.junk == nil and kept["789"] == nil
-	)
-end)
-
-case("the list of remembered places is kept to a limit", function()
-	local stored: any = nil
-	for place = 1, Access.MAX_PLACES + 20 do
-		stored = Access.update(stored, place, true)
-	end
-	local total = 0
-	for _ in stored do
-		total += 1
-	end
-	check("no more than the limit are kept", total == Access.MAX_PLACES, total)
-	check("the newest is among them", Access.remembered(stored, Access.MAX_PLACES + 20))
-	-- Setting what is already set does not push anything out.
-	local before = Access.remembered(stored, Access.MAX_PLACES + 19)
-	stored = Access.update(stored, Access.MAX_PLACES + 20, true)
-	check("repeating a setting changes nothing", Access.remembered(stored, Access.MAX_PLACES + 19) == before)
 end)
 
 case("what a working copy was opened from is written down and read back", function()

@@ -4,6 +4,11 @@ What changed in each release of Keywright. The plugin and the adapter are releas
 
 ## [Unreleased]
 
+- **Fixed, access per place:** each place's agent access is now kept in a setting of its own. Before, every Studio window rewrote one shared list, so a window writing for one place could bring back access another window had just turned off. Access turned on before this change is still honoured.
+- **Fixed, turning access off:** when Studio fails to save that access is off, the panel now says so, since access could otherwise come back on the next time the place opens. A setting that can't be read is no longer taken as saved.
+- **Fixed, reconnecting:** a request that arrived on a new connection while one from the old connection was still finishing could wait forever. It now runs as soon as the old one is done.
+- **Fixed, working copies:** a working copy a person moved out of Keywright's folder, for example among the Animation Editor's saved clips, is no longer listed or edited as a working copy.
+- **Fixed, replacing a clip:** a renamed keyframe in the source now counts as a change, as game scripts see keyframe names, so an old working copy can't be proposed to replace it unnoticed. Working copies opened before this version treat their source as changed.
 - **Fixed, setup:** the Claude Code command now adds Keywright for every project (`--scope user`), not just the folder it was run in. Paths in terminal commands are quoted for the shell, so characters such as `$` survive, and Windows paths keep single backslashes in PowerShell. Inside WSL, the entry for apps on Windows names this distribution (`wsl.exe -d <distro> --exec`), and is given for Codex too. The full path to Node is printed for apps that can't find `node`.
 - **Hardening, release:** `keywright.mjs` no longer looks for `ws`'s optional native modules, which Node would search for in folders above the release's.
 - **Fixed:** the bundler works when run from any folder.
