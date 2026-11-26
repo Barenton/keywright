@@ -12,7 +12,7 @@ local Preview = require("./src/Preview/Preview")
 local Proposals = require("./src/Storage/Proposals")
 local Recording = require("./src/Editing/Recording")
 
-local PLUGIN_VERSION = "0.0.0"
+local PLUGIN_VERSION = require("./src/Version")
 local DEFAULT_PORT = 47318
 local SETTING_PORT = "KeywrightPort"
 local SETTING_CREDENTIAL = "KeywrightCredential"

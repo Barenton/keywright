@@ -10,8 +10,9 @@ import { MAX_TILE, MAX_VIEWS, MIN_TILE, renderResult, VIEWS } from "../render/re
 
 import { studioSession, clipId, time, joint } from "./schemas/common.js";
 import { operations } from "./schemas/operations.js";
+import { VERSION } from "../version.js";
 
-export const ADAPTER_VERSION = "0.0.0";
+export const ADAPTER_VERSION = VERSION;
 
 
 // A result is text, plus at most two images, both only for a preview. One is the picture

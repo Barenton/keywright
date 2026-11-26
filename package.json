@@ -1,6 +1,6 @@
 {
   "name": "keywright",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "MCP relay for the Keywright Roblox Studio animation plugin",
   "license": "MIT",
   "private": true,
@@ -18,7 +18,8 @@
     "build:plugin": "rojo build plugin/default.project.json -o build/Keywright.rbxm",
     "build:fault": "rojo build plugin/fault.project.json -o build/KeywrightFault.rbxm",
     "format:check": "stylua --check plugin",
-    "measure": "npm run build && node scripts/measure.mjs"
+    "measure": "npm run build && node scripts/measure.mjs",
+    "version": "node scripts/sync-version.mjs && git add plugin/src/Version.luau"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.20.0",
