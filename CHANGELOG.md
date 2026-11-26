@@ -4,6 +4,7 @@ What changed in each release of Keywright. The plugin and the adapter are releas
 
 ## [Unreleased]
 
+- **Documentation:** a shorter README with a quick start, and new pages: a guide to making animations, troubleshooting, testing, and CONTRIBUTING.md for building from source and releasing.
 - **Clearer refusal of an R6 rig:** it is told only that its rig type is not supported, not also each of the fifteen R15 joints it lacks.
 - **Setup by an agent:** `node keywright.mjs setup` installs the plugin and prints how to add Keywright to Claude Code, Codex, Claude Desktop and other apps, with the file's path filled in (and, inside WSL, the `wsl.exe` entry for apps on Windows), then what is left for the person. The README has a prompt to paste to an AI app that sets Keywright up this way.
 
@@ -13,7 +14,7 @@ What changed in each release of Keywright. The plugin and the adapter are releas
 - **Pair through your AI app:** tell it "Pair Keywright with code …" and its adapter registers the code with the new `pair_studio` tool, so pairing needs no terminal. The panel shows the code and the terminal command in boxes that a click selects for copying.
 - **Versions** read `v0.2.0` in the panel and the CLI, as the releases are titled.
 - **Fixed:** under WSL's mirrored networking, after the broker stopped (for example after `rotate`), a new one was never started and Studio kept trying to connect; the adapter reported `BROKER_PORT_CONFLICT`. A port that only hangs now counts as free.
-- **Tested:** WSL with mirrored networking, and the beta demonstration in Claude Desktop and Codex. The README and the limitations page say so.
+- **Tested:** WSL with mirrored networking, and the beta demonstration in Claude Desktop and Codex. The testing and limitations pages say so.
 
 ## [0.1.2] - 2026-11-26
 

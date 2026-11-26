@@ -1,6 +1,6 @@
 name: Release
 
-# Runs when a version tag such as v0.2.0 is pushed (see "Releasing" in the README): tests
+# Runs when a version tag such as v0.2.0 is pushed (see "Releasing" in CONTRIBUTING.md): tests
 # that exact commit, builds the plugin and the single-file adapter, and publishes a GitHub
 # release with both attached, the licences of what the adapter bundles, and the version's
 # notes from CHANGELOG.md.
