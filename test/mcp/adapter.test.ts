@@ -125,6 +125,18 @@ describe("MCP adapter over stdio", () => {
 		return { isError: result.isError === true, content, json: JSON.parse(content[0]?.text ?? "null") as Record<string, any> };
 	};
 
+	test("tells the app how to work with Keywright when it connects", () => {
+		const instructions = mcp.getInstructions() ?? "";
+		assert.match(instructions, /pose strip/);
+		assert.match(instructions, /Passing it is necessary, not enough/);
+		// Every tool it names is one the adapter offers.
+		for (const name of instructions.match(/\b[a-z]+_[a-z_]+\b/g) ?? []) {
+			if (name.endsWith("_animation") || name.startsWith("get_") || name.startsWith("inspect_") || name.startsWith("pair_")) {
+				assert.ok(["get_workspace", "pair_studio", "inspect_rig", "open_animation", "read_animation", "edit_animation", "validate_animation", "save_animation", "discard_animation", "preview_animation"].includes(name), name);
+			}
+		}
+	});
+
 	test("lists the tools with input schemas", async () => {
 		const { tools } = await mcp.listTools();
 		assert.deepEqual(

@@ -15,6 +15,19 @@ These are the tools Keywright gives an AI app, with the descriptions and argumen
 - [`discard_animation`](#discard_animation)
 - [`preview_animation`](#preview_animation)
 
+## How agents are asked to work
+
+Besides the tools, an AI app is sent these instructions when it connects:
+
+> Keywright makes animations for rigs in Roblox Studio. How to work with it:
+>
+> 1. Start with get_workspace. Use pair_studio only with a code the person gives you. Call inspect_rig before posing: its turns say which way each joint moves for a positive rotation about X, Y and Z.
+> 2. Plan before editing. Write down the key poses, when each happens, and what each must read as: for a kick, the chamber, the contact (leg extended, hips turned over) and the recovery. Use curve clips (format "curves") for motion that should flow, with keys on whole frames (multiples of 1/30 s).
+> 3. Block the key poses first and check them. Then add the in-betweens, overlap, and contacts with the floor (pin, place_on_floor).
+> 4. After every revision, look at it. preview_animation with times at the key moments and render: true gives a pose strip, which shows whether each silhouette reads. With samples and render: true it gives motion paths and a speed plot, which show stops, pops and corners. Use both: a speed plot cannot tell you whether a pose reads, and a pose strip cannot show timing. Use compare_with to see what a revision changed.
+> 5. validate_animation finds structural errors and measures loops, speeds and feet. Passing it is necessary, not enough. The animation is done when every key moment reads in the pose strip, the motion has no stops you did not plan, feet that should stay planted do, and a loop closes.
+> 6. Save with save_animation under a new name. Replace a clip the person already has only when they ask, and then they approve it in Studio. Tell the person what you made and ask them to play it in the Animation Editor: the pictures are schematics, not the rig's real look.
+
 ## get_workspace
 
 *Reads only: changes nothing in Studio.*

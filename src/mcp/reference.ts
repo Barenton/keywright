@@ -4,7 +4,7 @@
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { createAdapter } from "./adapter.js";
+import { createAdapter, SERVER_INSTRUCTIONS } from "./adapter.js";
 
 interface Schema {
 	type?: string;
@@ -165,6 +165,12 @@ export function renderReference(tools: ListedTool[]): string {
 		"These are the tools Keywright gives an AI app, with the descriptions and arguments the app is given, word for word. Every tool except `get_workspace` and `pair_studio` takes `studio_session`, the id of a Studio window from `get_workspace`. A tool that fails returns an error with a `code`, a `message` and often a `hint`; the codes are listed in [Errors and findings](errors.md).",
 		"",
 		...tools.map((tool) => `- [\`${tool.name}\`](#${tool.name})`),
+		"",
+		"## How agents are asked to work",
+		"",
+		"Besides the tools, an AI app is sent these instructions when it connects:",
+		"",
+		...SERVER_INSTRUCTIONS.split("\n").map((line) => (line === "" ? ">" : `> ${line}`)),
 		"",
 	];
 	for (const tool of tools) {
