@@ -6,10 +6,10 @@ Measured in Studio with `npm run measure`, which drives the ordinary tools again
 
 | | |
 |---|---|
-| Date | 2026-11-24 |
-| Keywright | A build from before version numbers, with the same tools as 0.1.0 |
+| Date | 2026-11-26 |
+| Keywright | 0.2.0 |
 | Studio | Roblox Studio on Windows 11 |
-| Adapter and broker | Node.js in WSL 2, with WSL's default (NAT) networking |
+| Adapter and broker | Node.js 22 in WSL 2, with WSL's mirrored networking |
 | Computer | AMD Ryzen 7 9800X3D, 32 GB of memory |
 | Rigs | Two R15 rigs, one jointed with `Motor6D` and one with `AnimationConstraint` |
 
@@ -24,27 +24,29 @@ The 95th percentile of 30 calls, against the targets Keywright was designed to.
 
 | Operation | Target | Measured |
 |---|---|---|
-| `edit_animation`, a batch of 50 operations on Ref-S | 1 s | 7 ms |
-| `edit_animation`, one joint at one keyframe on Ref-L | 1 s | 17 ms |
+| `edit_animation`, a batch of 50 operations on Ref-S | 1 s | 8 ms |
+| `edit_animation`, one joint at one keyframe on Ref-L | 1 s | 20 ms |
 | `read_animation` summary of Ref-L | 500 ms and 16 KiB | 6 ms and 1,760 bytes |
 | `inspect_rig` summary | 300 ms | 6 ms |
-| `preview_animation` of Ref-L at one time, with a pose picture | 1 s | 29 ms |
-| `validate_animation` on Ref-L | 1 s | 18 ms |
-| `preview_animation` filmstrip of Ref-S, eight frames compared with another clip | 3 s | 189 ms |
+| `preview_animation` of Ref-L at one time, with a pose picture | 1 s | 28 ms |
+| `validate_animation` on Ref-L | 1 s | 16 ms |
+| `preview_animation` filmstrip of Ref-S, eight frames compared with another clip | 3 s | 139 ms |
 | Reconnecting after the broker restarts | the next call works within 5 s | 0.64 to 1.72 s |
 
-Reconnecting was timed by hand, from restarting the broker to the plugin's next successful call.
+Every target is met. Reconnecting was timed by hand on 2026-11-24, from restarting the broker to the plugin's next successful call. An earlier run on 2026-11-24, with WSL's default (NAT) networking and a build from before version numbers, gave times within a few milliseconds of these, apart from the filmstrip (189 ms).
 
 ## Reliability
 
 | Check | Result |
 |---|---|
-| 10,000 requests and answers, 25 at a time | none lost or wrong; 95th percentile 51 ms a round trip |
+| 10,000 requests and answers, 25 at a time | none lost or wrong; 95th percentile 5.7 ms a round trip (51 ms with WSL's NAT networking, in the 2026-11-24 run) |
 | 200 edits that depend on each other, sent at once | all applied, in the order sent |
 | A 1.36 MB answer from Studio (10,710 poses) | arrived whole, every pose as written |
 | A request carrying 1 MiB beside an edit | read, and the edit applied |
 | A stale edit from a second client | refused |
 | Two Studio windows on two places | both connected, each call reached only the window it named, and turning access on in both, even at the same moment, was remembered for both |
+| Network traffic during a session | loopback only: the broker listens on `127.0.0.1` and its only connections were the adapter's and Studio's, both from `127.0.0.1`; the adapter's only socket was to the broker |
+| An R6 rig | refused, with its rig type as the reason, and nothing created |
 
 ## Accuracy
 
@@ -55,7 +57,7 @@ Reconnecting was timed by hand, from restarting the broker to the plugin's next 
 | 100 samples at the same time | all identical | identical |
 | The same clip on the two joint types, joint rotations at 11 times | 0.003° at worst | 0.01° |
 | The same, joint positions | 0 studs | 0.001 studs |
-| Where Studio puts each of the 15 parts, against where the joint transforms say, at 11 times, on each rig | 0.000002 studs, 0° | 0.001 studs, 0.01° |
+| Where Studio puts each of the 15 parts, against where the joint transforms say, at 11 times, on each rig | 0.000003 studs at worst, 0° | 0.001 studs, 0.01° |
 | A clip saved and opened again | its fingerprint unchanged | unchanged |
 
 The fingerprint is `read_animation`'s `content_hash`, a hash of everything that affects how a clip plays.
