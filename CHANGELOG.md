@@ -4,6 +4,7 @@ What changed in each release of Keywright. The plugin and the adapter are releas
 
 ## [Unreleased]
 
+- **Documentation:** says plainly that what the agent reads goes to your AI app, which may send it to its model provider, describes exactly what the adapter's image screening removes, and says when a pairing code's 5 minutes start.
 - **Fixed, access per place:** each place's agent access is now kept in a setting of its own. Before, every Studio window rewrote one shared list, so a window writing for one place could bring back access another window had just turned off. Access turned on before this change is still honoured.
 - **Fixed, turning access off:** when Studio fails to save that access is off, the panel now says so, since access could otherwise come back on the next time the place opens. A setting that can't be read is no longer taken as saved.
 - **Fixed, reconnecting:** a request that arrived on a new connection while one from the old connection was still finishing could wait forever. It now runs as soon as the old one is done.

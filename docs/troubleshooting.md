@@ -6,7 +6,7 @@
 | The agent can't find a Studio window | Check that the Keywright panel says **Connected to the broker**. If you just reinstalled the plugin, reconnect Keywright in your AI app. |
 | The panel says the plugin or the adapter is older | Update the one it names, as in [Updating](guide.md#updating). The panel reconnects on its own once they match. |
 | The panel says **Pairing is needed again** | Turn agent access off and on to get a new code, then pair again: tell your AI app the code, or run `node keywright.mjs pair <code>`. |
-| The pairing code stopped working | Codes last 5 minutes and work once. Turn agent access off and on for a new one. |
+| The pairing code stopped working | A code works once, within 5 minutes of being registered, and registering another code (for example one typed wrong) replaces it. Turn agent access off and on for a new one. |
 | The panel says **Another program is using the broker port**, or the agent gets `BROKER_PORT_CONFLICT` | Another program is using port 47318, which Keywright needs. Close it, then turn agent access off and on. |
 | The **Keywright** button doesn't appear in Studio | Restart Studio. If it still doesn't, run `node keywright.mjs install-plugin` again and read what it says. |
 

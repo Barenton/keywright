@@ -79,7 +79,7 @@ Most other apps take an entry like this in their MCP settings:
 #### 3. Turn on agent access and pair
 
 1. In Studio, open a place, click **Keywright** on the Plugins tab, and click **Turn on agent access**. Access is off until you turn it on, separately for each place.
-2. **The first time only**, the panel shows a pairing code, valid once within 5 minutes. Tell your AI app *"Pair Keywright with code ABCD234XYZ"* (using your code), or run `node keywright.mjs pair ABCD234XYZ`.
+2. **The first time only**, the panel shows a pairing code. It works once, within 5 minutes of being registered. Tell your AI app *"Pair Keywright with code ABCD234XYZ"* (using your code), or run `node keywright.mjs pair ABCD234XYZ`.
 
 The panel then says **Connected to the broker**, and Studio remembers the pairing.
 
@@ -128,7 +128,7 @@ Every argument and all 31 edit operations are in the [tool reference](docs/tools
 - **Off until you turn it on**, for each place, and you can turn it off at any time.
 - **Nothing is overwritten without asking.** Saving makes a new clip. Replacing one needs you to click **Replace the clip** in the panel.
 - **Every change can be undone** with one Studio undo.
-- **Everything stays on your computer.** Traffic never leaves `127.0.0.1`, web pages are turned away, and no AI service or account is involved.
+- **Keywright's connections stay on your computer.** Studio, the broker and the adapter talk only over `127.0.0.1`, web pages are turned away, and Keywright itself uses no online service or account. What the agent reads, such as poses and clip names, goes to your AI app, which may send it to its model provider as it does the rest of your conversation.
 - **The agent can't run code.** No tool runs Luau or touches your files.
 
 Keywright can't protect you from harmful software already running under your user account. Try it in a copy of your place or a fresh baseplate first. The details are in [Security](docs/security.md).

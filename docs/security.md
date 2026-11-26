@@ -32,7 +32,7 @@ AI app ── adapter ──┘                      └── Keywright plugin 
   2. You run `node keywright.mjs pair <code>`, or give the code to your AI app, whose adapter registers it with the `pair_studio` tool. Either way, the program registering it proves it holds your secret first. A code that hasn't been registered this way is worth nothing, and an agent can't make one up: only the panel shows it, and it works once.
   3. The plugin connects using the code as a key. From the code and the handshake's nonces, the two sides each work out the same new credential key, so the key itself is never sent.
 
-  A code lasts 5 minutes, is used once, and is given up after 5 wrong proofs. The broker keeps credentials beside the secret, and Studio keeps its credential in its plugin settings.
+  A code is valid for 5 minutes from when it is registered, is used once, and is given up after 5 wrong proofs. Registering a code replaces any code still waiting, so a code typed wrong makes the right one stop working: turn agent access off and on for a new one. The broker keeps credentials beside the secret, and Studio keeps its credential in its plugin settings.
 - **Starting over:** `node keywright.mjs rotate` replaces the secret, and every stored credential stops working with it. Every Studio window must then pair again.
 
 ## What an agent can do in Studio
@@ -49,9 +49,11 @@ Only the [tools](tools.md), and within them:
 
 ## What reaches the AI app
 
-- **Text.** Tool results are JSON text: joint names, numbers, clip names and messages.
+Keywright's own connections never leave your computer, but what the agent reads goes to your AI app. That app may send it on to its model provider, as it does the rest of your conversation, and what it does with it is up to the app. So does anything you tell it, such as a pairing code. A pairing code is only useful within 5 minutes and on your computer.
+
+- **Text.** Tool results are JSON text: joint names, numbers, poses, clip names and messages.
 - **Pose pictures**, which the adapter draws itself from the joint positions Studio reports. They are not taken from your screen.
-- **No screenshots.** The code to take a Studio screenshot exists but is switched off, and stays off until its behaviour in Studio has been checked independently. The adapter also checks everything that comes back from Studio: an image is passed on only if one was asked for and it is a single, complete, still PNG of the expected size. Anything image-like inside text is replaced.
+- **No screenshots.** The code to take a Studio screenshot exists but is switched off, and stays off until its behaviour in Studio has been checked independently. The adapter also checks everything that comes back from Studio: an image is passed on only if one was asked for and it is a single, complete, still PNG of the expected size. In text, the adapter replaces base64-encoded PNG data, `data:image/` addresses, and fields named `images` or `png_base64`. It looks for those forms specifically; it doesn't decode everything a result could contain.
 
 ## Reporting a problem
 
