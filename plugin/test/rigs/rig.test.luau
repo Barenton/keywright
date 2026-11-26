@@ -163,6 +163,17 @@ case("what makes a rig unsupported is said, each reason by itself", function()
 	model:FindFirstChildOfClass("Humanoid").RigType = Enum.HumanoidRigType.R6
 	check("another rig type", string.find(reasons(Rig.describe(model)), "only R15 is supported", 1, true) ~= nil)
 
+	-- An R6 rig has none of the R15 joints: its type is the one reason given.
+	model, parts = build()
+	model:FindFirstChildOfClass("Humanoid").RigType = Enum.HumanoidRigType.R6
+	parts.LeftHand:FindFirstChildOfClass("Motor6D").Parent = nil
+	local typeOnly = Rig.describe(model)
+	check(
+		"another rig type is not also told its missing joints",
+		#typeOnly.reasons == 1 and not typeOnly.supported,
+		reasons(typeOnly)
+	)
+
 	model = build()
 	model:FindFirstChildOfClass("Humanoid").Parent = nil
 	check("no Humanoid", string.find(reasons(Rig.describe(model)), "no Humanoid", 1, true) ~= nil)

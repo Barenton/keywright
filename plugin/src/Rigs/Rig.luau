@@ -225,11 +225,15 @@ function Rig.describe(model: Model, detail: boolean?): (Description, Scan)
 
 	local humanoid = model:FindFirstChildOfClass("Humanoid")
 	local rigType = "Unknown"
+	-- A rig of another type, such as R6, has none of the R15 joints, and saying so for each
+	-- of the fifteen adds nothing to its type.
+	local otherType = false
 	if not humanoid then
 		table.insert(reasons, "The model has no Humanoid.")
 	else
 		rigType = humanoid.RigType.Name
 		if humanoid.RigType ~= Roblox.Enum.HumanoidRigType.R15 then
+			otherType = true
 			table.insert(reasons, `Rig type is {rigType}; only R15 is supported.`)
 		end
 	end
@@ -256,7 +260,9 @@ function Rig.describe(model: Model, detail: boolean?): (Description, Scan)
 	for _, name in Rig.R15_ORDER do
 		local joint = scan.joints[name]
 		if not joint then
-			table.insert(reasons, `No joint drives "{name}" from "{Rig.R15_PARENTS[name]}".`)
+			if not otherType then
+				table.insert(reasons, `No joint drives "{name}" from "{Rig.R15_PARENTS[name]}".`)
+			end
 			continue
 		end
 		count += 1
