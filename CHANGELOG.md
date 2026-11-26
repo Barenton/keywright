@@ -4,6 +4,8 @@ What changed in each release of Keywright. The plugin and the adapter are releas
 
 ## [Unreleased]
 
+- **Public beta:** the README now calls Keywright a public beta, from 0.3.0.
+
 ## [0.3.0] - 2026-11-26
 
 **New**

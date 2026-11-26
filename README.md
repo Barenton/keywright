@@ -14,7 +14,7 @@ Keywright connects Roblox Studio to AI apps that support the [Model Context Prot
 - **Checks its work.** Finds loops that don't close, joints that move too fast, and feet that slide or sink into the floor.
 - **Safe by default.** Off until you turn it on, never overwrites a clip without asking, and every change is one Studio undo.
 
-> **Status:** early development, used on Windows. See [Limitations](docs/limitations.md) for what isn't supported yet.
+> **Status: public beta.** Tested on Windows, with Claude Code, Claude Desktop and Codex. Expect rough edges, and please [report problems](https://github.com/Barenton/keywright/issues). See [Limitations](docs/limitations.md) for what isn't supported yet.
 
 ## Contents
 
