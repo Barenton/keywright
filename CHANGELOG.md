@@ -4,6 +4,8 @@ What changed in each release of Keywright. The plugin and the adapter are releas
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-11-26
+
 - **Documentation:** a tool reference written from the tools themselves, and pages on errors and findings, security, limitations, and measured performance, in `docs/`.
 - **Tool descriptions:** every argument and operation field now says what it is for.
 - **Fixed:** a working copy whose rig was deleted stayed listed until the plugin reloaded. It is now counted with the working copies whose rig is gone, and listed again if the rig comes back.
@@ -26,6 +28,7 @@ The first numbered release.
 - **Setup:** `npm run install:plugin` installs the plugin into Studio. The panel and `node dist/src/cli.js version` show the version, and the agent is told when the plugin and the adapter don't match.
 - **Panel:** fits whatever size it is docked or floated at, follows Studio's theme, and shows the pairing command ready to copy.
 
-[Unreleased]: https://github.com/Barenton/keywright/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/Barenton/keywright/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/Barenton/keywright/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/Barenton/keywright/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Barenton/keywright/releases/tag/v0.1.0
