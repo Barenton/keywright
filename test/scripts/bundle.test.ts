@@ -69,6 +69,14 @@ describe("the single-file release", () => {
 		assert.equal(readFileSync(join(plugins, "Keywright.rbxm"), "utf8"), "stand-in plugin");
 	});
 
+	test("sets itself up: installs the plugin and gives the AI app its own path", () => {
+		const plugins = join(temp.home, "Roblox", "Setup");
+		const said = run(["setup", "--folder", plugins]);
+		assert.equal(readFileSync(join(plugins, "Keywright.rbxm"), "utf8"), "stand-in plugin");
+		assert.ok(said.includes(`claude mcp add keywright -- node ${JSON.stringify(bundle)}`), said);
+		assert.ok(said.includes(join(plugins, "Keywright.rbxm")));
+	});
+
 	test("starts a broker from itself", async () => {
 		const port = await freePort();
 		const status = JSON.parse(run(["status"], { KEYWRIGHT_HOME: join(temp.home, "broker"), KEYWRIGHT_PORT: String(port) })) as { pid: number; version: string; port: number };

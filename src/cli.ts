@@ -1,13 +1,14 @@
 #!/usr/bin/env node
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { runAdapter } from "./mcp/adapter.js";
 import { isValidPairingCode } from "./broker/auth.js";
 import { Broker } from "./broker/broker.js";
 import { ensureBroker, stopBroker } from "./broker/launcher.js";
 import { BridgeError } from "./broker/protocol.js";
 import { configuredPort, rotateSecret, stateDir } from "./broker/state.js";
-import { builtPlugin, installPlugin, robloxFolder, thisMachine } from "./install.js";
-import { command as howToRun } from "./layout.js";
+import { builtPlugin, installPlugin, robloxFolder, thisMachine, type Installed } from "./install.js";
+import { cliPath, command as howToRun } from "./layout.js";
+import { setupGuide } from "./setup.js";
 import { VERSION } from "./version.js";
 
 const USAGE = `Keywright v${VERSION}
@@ -19,6 +20,9 @@ Usage: ${howToRun()} [command]
   status         Start the broker if needed and print its state.
   pair <code>    Register the one-time pairing code shown in the Studio plugin panel.
   rotate         Replace the secret. Every Studio window must then pair again.
+  setup [--folder <path>]
+                 Install the plugin, then print how to add Keywright to an AI app,
+                 with this copy's path filled in, and what is left for the person.
   install-plugin [--folder <path>]
                  Copy the plugin built from this copy of Keywright into Studio's
                  plugins folder, replacing an older one.
@@ -74,17 +78,30 @@ async function rotate(): Promise<number> {
 	return 0;
 }
 
-function install(args: string[]): number {
+/** Installs the plugin into the folder given with --folder, or Studio's own; undefined if the arguments are wrong. */
+function installFrom(command: string, args: string[]): Installed | undefined {
 	let folder: string | undefined;
 	if (args.length > 0) {
 		if (args[0] !== "--folder" || args.length !== 2) {
-			process.stderr.write(`Usage: ${howToRun()} install-plugin [--folder <path>]\n`);
-			return 2;
+			process.stderr.write(`Usage: ${howToRun()} ${command} [--folder <path>]\n`);
+			return undefined;
 		}
-		folder = args[1];
+		folder = resolve(args[1] as string);
 	}
 	const target = folder ?? join(robloxFolder(thisMachine()), "Plugins");
-	const installed = installPlugin(builtPlugin(), target);
+	return installPlugin(builtPlugin(), target);
+}
+
+function setup(args: string[]): number {
+	const installed = installFrom("setup", args);
+	if (!installed) return 2;
+	process.stdout.write(setupGuide({ version: VERSION, entry: cliPath(), installed, wsl: thisMachine().wsl, node: process.execPath }));
+	return 0;
+}
+
+function install(args: string[]): number {
+	const installed = installFrom("install-plugin", args);
+	if (!installed) return 2;
 	process.stdout.write(`Installed the Keywright plugin (v${VERSION}) at ${installed.path}.\nStudio loads it on its own; if the Keywright button does not appear or update, restart Studio.\n`);
 	if (installed.replaced) process.stdout.write(`It replaces ${installed.replaced}, the copy saved from Studio.\n`);
 	if (installed.others.length > 0) {
@@ -101,6 +118,7 @@ async function main(argv: string[]): Promise<number> {
 	}
 	if (command === "broker") return runBroker();
 	if (command === "install-plugin") return install(rest);
+	if (command === "setup") return setup(rest);
 	if (command === "version" || command === "--version") {
 		process.stdout.write(`${VERSION}\n`);
 		return 0;

@@ -47,6 +47,21 @@ You can run the AI app and the adapter on Windows itself, or inside WSL while St
 
 ## Setup
 
+You can let your AI app do most of the setup, or follow the four steps below yourself.
+
+### Letting your AI app set it up
+
+If your AI app can run commands, such as Claude Code or Codex, paste this to it:
+
+> Install Keywright for Roblox Studio. Download `keywright.mjs` and `Keywright.rbxm` from https://github.com/Barenton/keywright/releases/latest into a new folder (for example `~/keywright`), run `node keywright.mjs setup` there, add Keywright to yourself the way it says, and tell me what is left for me to do.
+
+`setup` installs the plugin and prints how to add Keywright to each common AI app, with the file's real path filled in. Three things are left for you, and the agent will tell you about them: restart or reconnect the AI app, so it starts Keywright; turn on agent access in Studio's Keywright panel; and, the first time, tell the AI app the pairing code the panel shows.
+
+The files are always at these addresses, for the latest release:
+
+- `https://github.com/Barenton/keywright/releases/latest/download/keywright.mjs`
+- `https://github.com/Barenton/keywright/releases/latest/download/Keywright.rbxm`
+
 ### 1. Download Keywright
 
 From the [latest release](https://github.com/Barenton/keywright/releases/latest), download these two files into one folder of their own, such as `C:\Tools\keywright` or `~/keywright`:
@@ -73,6 +88,8 @@ node keywright.mjs install-plugin
 This copies the plugin into Studio's plugins folder as `Keywright.rbxm`. It finds the folder on Windows, from WSL, and on macOS. If you had saved the plugin from Studio before, as `Keywright.rbxmx`, it replaces that copy. It doesn't change anything else in the folder, but it tells you if it finds other copies of Keywright there, since Studio would load those too.
 
 Studio picks up the new plugin on its own. If the **Keywright** button doesn't appear on the Plugins tab, restart Studio.
+
+`node keywright.mjs setup` does the same and also prints the entries for step 3, with the path to `keywright.mjs` filled in.
 
 <details>
 <summary>Installing by hand instead</summary>

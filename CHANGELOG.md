@@ -4,6 +4,8 @@ What changed in each release of Keywright. The plugin and the adapter are releas
 
 ## [Unreleased]
 
+- **Setup by an agent:** `node keywright.mjs setup` installs the plugin and prints how to add Keywright to Claude Code, Codex, Claude Desktop and other apps, with the file's path filled in (and, inside WSL, the `wsl.exe` entry for apps on Windows), then what is left for the person. The README has a prompt to paste to an AI app that sets Keywright up this way.
+
 ## [0.2.0] - 2026-11-26
 
 - **Install without building:** each release now carries `keywright.mjs`, the adapter in one file that Node runs as it is, beside `Keywright.rbxm`. Download both into one folder, run `node keywright.mjs install-plugin`, and point your AI app at `node /path/to/keywright.mjs`. The panel's pairing command and the update advice give this form first. `THIRD_PARTY_LICENSES.txt` lists the licences of the packages built into it.
