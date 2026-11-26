@@ -437,6 +437,36 @@ case("a request that comes on a new connection while an old one is still finishi
 	check("and was answered, with no other request to wake it", answered)
 end)
 
+case("a request still waiting when the connection drops never runs", function()
+	-- Its caller has been told the call failed and may send it again: running it now, with
+	-- nowhere to send the answer, could apply an edit twice.
+	local released = false
+	local ran = {}
+	local world = start({
+		credential = CREDENTIAL,
+		handler = function(method: string)
+			table.insert(ran, method)
+			if method == "running" then
+				while not released do
+					task.wait()
+				end
+			end
+			return { done = method }
+		end,
+	})
+	handshake(world, Codec.fromHex(KEY_HEX))
+	world.receive({ t = "req", id = "r", method = "running" })
+	world.receive({ t = "req", id = "w", method = "waiting" })
+	task.wait()
+	-- The connection drops, and the request running finishes before any retry.
+	world.socket.Closed.fire()
+	released = true
+	for _ = 1, 10 do
+		task.wait()
+	end
+	check("the request waiting never ran", table.concat(ran, " ") == "running", table.concat(ran, " "))
+end)
+
 case("a lost connection is retried, and stopping ends it", function()
 	local world = start({ credential = CREDENTIAL })
 	handshake(world, Codec.fromHex(KEY_HEX))

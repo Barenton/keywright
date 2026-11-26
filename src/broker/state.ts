@@ -125,9 +125,15 @@ export function readBrokerState(dir: string): BrokerState | undefined {
 	return undefined;
 }
 
+/**
+ * Writes a file whole or not at all, through a new temporary file beside it. The temporary
+ * file is created afresh and exclusively, so that nothing left at its path, such as a link
+ * to a file elsewhere in a folder copied in, is followed or keeps its own permissions.
+ */
 function writeAtomic(file: string, text: string): void {
 	const temp = `${file}.${process.pid}.tmp`;
-	writeFileSync(temp, text, { mode: 0o600 });
+	rmSync(temp, { force: true });
+	writeFileSync(temp, text, { mode: 0o600, flag: "wx" });
 	renameSync(temp, file);
 }
 

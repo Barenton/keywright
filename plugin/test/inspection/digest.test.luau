@@ -178,8 +178,28 @@ do
 	check("which is the same for the same clip", Digest.ofSource(named:Clone()) == Digest.ofSource(named))
 	check(
 		"and never equals a fingerprint from before names counted",
-		Digest.ofSource(named) ~= Digest.of(named) and string.sub(Digest.ofSource(named), 1, 2) == "2:"
+		Digest.ofSource(named) ~= Digest.of(named) and string.sub(Digest.ofSource(named), 1, 2) == "3:"
 	)
+end
+
+-- Attributes, which scripts read and replacing a clip would overwrite, count too; and a
+-- fingerprint written down by an older plugin is checked the way it was made.
+do
+	local clip = build()
+	local older = Digest.ofSource(clip, 2)
+	local current = Digest.ofSource(clip)
+	check("an older fingerprint of an unchanged clip still matches", Digest.sameSource(clip, older))
+	check("and so does a current one", Digest.sameSource(clip, current))
+	for _, child in clip:GetChildren() do
+		if child:IsA("Keyframe") then
+			child:SetAttribute("Hit", true)
+			break
+		end
+	end
+	check("an attribute added in the clip changes the source fingerprint", not Digest.sameSource(clip, current))
+	check("but not the plain one", Digest.of(clip) == Digest.of(build()))
+	check("nor one of the older kind, which never counted attributes", Digest.sameSource(clip, older))
+	check("and a fingerprint of no known kind never matches", not Digest.sameSource(clip, "9:" .. string.rep("0", 64)))
 end
 
 print(`{count - failures}/{count} digest checks passed`)

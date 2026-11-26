@@ -95,15 +95,59 @@ end
 -- over. Kept apart from Digest.of, which read_animation reports as content_hash and whose
 -- values recorded from Studio are compared. Marked "2:", so that a fingerprint written
 -- before keyframe names counted never matches, and the clip is taken as changed.
-function Digest.ofSource(sequence: Instance): string
+-- A line for each attribute on the clip and everything in it: data a game's scripts can
+-- read, which replacing the clip would overwrite.
+local function attributeLines(sequence: Instance): { string }
+	local lines = {}
+	local function add(instance: Instance, path: string)
+		for name, value in instance:GetAttributes() do
+			table.insert(lines, `attribute|{path}|{name}|{typeof(value)}|{tostring(value)}`)
+		end
+	end
+	local function walk(instance: Instance, path: string)
+		for _, child in instance:GetChildren() do
+			local here = `{path}/{child.Name}`
+			add(child, here)
+			walk(child, here)
+		end
+	end
+	add(sequence, "")
+	walk(sequence, "")
+	return lines
+end
+
+-- The newest way the source fingerprint is worked out. 2 counted keyframe names; 3 counts
+-- attributes too.
+Digest.SOURCE_VERSION = 3
+
+-- The fingerprint of a clip a working copy was opened from: what it plays, and also what
+-- scripts can see in it, keyframe names and attributes. `version` works out an older kind,
+-- to compare with a fingerprint written down before.
+function Digest.ofSource(sequence: Instance, version: number?): string
+	local kind = version or Digest.SOURCE_VERSION
 	local lines = Digest.lines(sequence)
 	for _, child: any in sequence:GetChildren() do
 		if child:IsA("Keyframe") then
 			table.insert(lines, `{number(child.Time)}|name|{child.Name}`)
 		end
 	end
+	if kind >= 3 then
+		for _, line in attributeLines(sequence) do
+			table.insert(lines, line)
+		end
+	end
 	table.sort(lines)
-	return "2:" .. Codec.toHex(Sha256.digest(buffer.fromstring(table.concat(lines, "\n"))))
+	return `{kind}:` .. Codec.toHex(Sha256.digest(buffer.fromstring(table.concat(lines, "\n"))))
+end
+
+-- Whether a clip is still what a fingerprint written down earlier says, worked out the way
+-- that fingerprint was, so that one from an older plugin is not taken for a change.
+function Digest.sameSource(sequence: Instance, fingerprint: string): boolean
+	local kind = tonumber(string.match(fingerprint, "^(%d+):"))
+	if kind == nil or kind < 2 or kind > Digest.SOURCE_VERSION then
+		return false
+	end
+	return Digest.ofSource(sequence, kind) == fingerprint
 end
 
 return Digest

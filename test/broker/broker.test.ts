@@ -7,7 +7,7 @@ import { hmacHex, newNonce, pairingKey, proofInput } from "../../src/broker/auth
 import { Broker } from "../../src/broker/broker.js";
 import { connectAdapter, DeniedError, ForeignListenerError, type BrokerClient } from "../../src/broker/client.js";
 import { BridgeError, PROTOCOL_VERSION } from "../../src/broker/protocol.js";
-import { loadOrCreateSecret } from "../../src/broker/state.js";
+import { loadOrCreateSecret, rotateSecret } from "../../src/broker/state.js";
 import { FakePlugin, freePort, PluginError, sleep, tempHome, waitFor, type Handler } from "../helpers.js";
 
 const SESSION_A = "a".repeat(16);
@@ -388,6 +388,20 @@ describe("broker", () => {
 });
 
 describe("credential rotation", () => {
+	test("a broker stops as soon as its secret is replaced, whatever port it is on", async () => {
+		const temp = tempHome();
+		const port = await freePort();
+		let stopped = false;
+		const broker = new Broker({ home: temp.home, port, secretCheckMs: 20, onShutdown: () => (stopped = true) });
+		await broker.start();
+		await sleep(60);
+		assert.equal(stopped, false, "not while the secret is unchanged");
+		rotateSecret(temp.home);
+		await waitFor(() => stopped, 2000);
+		await broker.stop();
+		rmSync(temp.home, { recursive: true, force: true });
+	});
+
 	test("credentials issued under an old secret stop working", async () => {
 		const temp = tempHome();
 		const port = await freePort();

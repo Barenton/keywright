@@ -11,6 +11,11 @@ Keywright lets a program on your computer change animations in an open Roblox St
 
 It does **not** protect against harmful software already running under your own user account. Such software can read the same secret files the adapter reads, and Studio's plugin settings. Nothing that runs as you can be kept out by a program that also runs as you.
 
+Two more limits:
+
+- **Changing the port.** Each connection's handshake is proved, but the messages after it aren't signed one by one. If the broker is moved to another port while a Studio window still connects to the old one, a program on that old port could pass the handshake between them and then send requests of its own. Change the port for Studio and the AI app together, and turn agent access off until both use the new one.
+- **Windows, with `KEYWRIGHT_HOME` set.** On Windows the secret and credentials take the permissions of the folder they're in. Your user folder, the default, is closed to other users; a `KEYWRIGHT_HOME` elsewhere should be too.
+
 ## The connection
 
 ```
@@ -32,8 +37,10 @@ AI app ── adapter ──┘                      └── Keywright plugin 
   2. You run `node keywright.mjs pair <code>`, or give the code to your AI app, whose adapter registers it with the `pair_studio` tool. Either way, the program registering it proves it holds your secret first. A code that hasn't been registered this way is worth nothing, and an agent can't make one up: only the panel shows it, and it works once.
   3. The plugin connects using the code as a key. From the code and the handshake's nonces, the two sides each work out the same new credential key, so the key itself is never sent.
 
-  A code is valid for 5 minutes from when it is registered, is used once, and is given up after 5 wrong proofs. Registering a code replaces any code still waiting, so a code typed wrong makes the right one stop working: turn agent access off and on for a new one. The broker keeps credentials beside the secret, and Studio keeps its credential in its plugin settings.
-- **Starting over:** `node keywright.mjs rotate` replaces the secret, and every stored credential stops working with it. Every Studio window must then pair again.
+  A code is valid for 5 minutes from when it is registered, is used once, and is given up after 5 wrong proofs. Wrong proofs from any connection count, so another program can use up a waiting code; that only means pairing again, while counting them per connection would let a program guess with many connections. Registering a code replaces any code still waiting, so a code typed wrong makes the right one stop working: turn agent access off and on for a new one. The broker keeps credentials beside the secret, and Studio keeps its credential in its plugin settings.
+
+  On a computer shared with other users, give the code to your AI app rather than running `pair <code>`: a command's arguments can be seen by other users while it runs, and npm also writes them to its own log.
+- **Starting over:** `node keywright.mjs rotate` replaces the secret, and every stored credential stops working with it. Every broker using that folder stops within two seconds, whatever port it is on, so none goes on accepting the old secret. Every Studio window must then pair again.
 
 ## What an agent can do in Studio
 

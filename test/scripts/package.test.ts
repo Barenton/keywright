@@ -52,7 +52,7 @@ describe("the npm package", () => {
 		const plugins = join(temp.home, "Roblox", "Plugins");
 		const said = npm(["exec", "--", "keywright", "setup", "--folder", plugins], prefix);
 		assert.equal(readFileSync(join(plugins, "Keywright.rbxm"), "utf8"), "stand-in plugin");
-		assert.match(said, /claude mcp add --scope user keywright -- npx -y keywright/);
+		assert.match(said, /claude mcp add --scope user keywright -- npx -y keywright@latest/);
 		assert.doesNotMatch(said, /node_modules/, "no path into an install folder or npm's cache");
 	});
 });

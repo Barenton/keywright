@@ -65,7 +65,8 @@ Write the plan out, in your reply or your notes, before editing:
 
 ### 4. Look at every key pose
 
-`preview_animation` with `times` at every key pose, `render: true`, `style: "slim"` (thin
+`preview_animation` with `times` at every key pose (at most 8 in one call, so more key
+poses take several calls), `render: true`, `style: "slim"` (thin
 limbs, so angles and bends read), and the view that shows the action (side for kicks, walks and jumps; front for waves and side steps; two
 views side by side for anything that turns). For each frame, ask:
 

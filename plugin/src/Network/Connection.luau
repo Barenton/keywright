@@ -226,6 +226,10 @@ function Connection.start(config: Config)
 			if generation ~= expected then
 				return
 			end
+			-- Requests still waiting go with the connection: their callers have been told the
+			-- calls failed and may send them again, so running them now, with nowhere to send
+			-- the answer, could apply a change twice.
+			table.clear(queue)
 			drop()
 			config.onState(state, detail)
 			if delaySeconds then

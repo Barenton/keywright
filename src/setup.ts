@@ -2,6 +2,7 @@
 // common AI apps, with this copy's real path filled in, and what only the person can do.
 // Written for a person and for an agent doing the setup for them alike.
 
+import { posix } from "node:path";
 import type { Installed } from "./install.js";
 
 /** How an AI app starts Keywright: node with this copy's file, or npx with the package's name. */
@@ -45,7 +46,10 @@ export function setupGuide(facts: SetupFacts): string {
 	const shell = (value: string) => shellArgument(value, facts.platform);
 	const line = [launch.command, ...launch.args].map((part, index) => (index === 0 ? part : shell(part))).join(" ");
 	const args = launch.args.map(quoted).join(", ");
-	const wslArgs = [...(facts.distro ? ["-d", facts.distro] : []), "--exec", launch.fullPath, ...launch.args];
+	// Started from Windows, wsl.exe --exec gives no login shell, so a node installed with nvm
+	// is not on PATH. npx finds node through PATH, so it is run with node's folder put there.
+	const throughPath = launch.command === "node" ? [] : ["/usr/bin/env", `PATH=${posix.dirname(facts.node)}:/usr/local/bin:/usr/bin:/bin`];
+	const wslArgs = [...(facts.distro ? ["-d", facts.distro] : []), "--exec", ...throughPath, launch.fullPath, ...launch.args];
 	const lines = [
 		`Keywright v${version} is set up.`,
 		"",

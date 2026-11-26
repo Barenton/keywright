@@ -126,12 +126,17 @@ function Settings.new(store: Store): Settings
 
 	-- A place's own setting says whether access is on there. A place without one is looked
 	-- up in the old list, so that access turned on before each place had its own is kept.
+	-- A place whose own setting cannot be read is off: it may say off, and the old list
+	-- must not turn access back on in its place.
 	function self.accessOn(placeId: any): boolean
 		local name = Access.key(placeId)
 		if not name then
 			return false
 		end
-		local own = read(`{Settings.ACCESS}_{name}`)
+		local readable, own = readChecked(`{Settings.ACCESS}_{name}`)
+		if not readable then
+			return false
+		end
 		if type(own) == "boolean" then
 			return own
 		end

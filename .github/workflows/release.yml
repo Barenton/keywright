@@ -43,15 +43,21 @@ jobs:
       - name: Check the single-file adapter
         run: test "$(node build/release/keywright.mjs version)" = "${GITHUB_REF_NAME#v}"
       - name: Publish the release
+        # A rerun, after a later step failed, finds the release already made: its files are
+        # replaced with this run's, and the run goes on to the steps after.
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           version="${GITHUB_REF_NAME#v}"
+          files="build/release/keywright.mjs build/release/Keywright.rbxm build/release/THIRD_PARTY_LICENSES.txt"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" $files --clobber
+            exit 0
+          fi
           node scripts/release-notes.mjs "$version" > build/notes.md
           prerelease=""
           case "$version" in *-*) prerelease="--prerelease" ;; esac
-          gh release create "$GITHUB_REF_NAME" \
-            build/release/keywright.mjs build/release/Keywright.rbxm build/release/THIRD_PARTY_LICENSES.txt \
+          gh release create "$GITHUB_REF_NAME" $files \
             --title "$GITHUB_REF_NAME" --notes-file build/notes.md --verify-tag $prerelease
       - name: Publish the npm package
         # Last, so that the GitHub release is out whatever npm says. Off until trusted
@@ -60,7 +66,11 @@ jobs:
         # refuses a plain `npm publish`: `npm stage publish` puts the version in npm's
         # staging area, and a maintainer approves it on npmjs.com before it goes live. It
         # packs the folder it runs in, and needs npm 11.15 or later, newer than the npm that
-        # comes with Node 22, so npm 11 is run through npx.
+        # comes with Node 22, so npm 11 is run through npx. npm takes a prerelease only with
+        # a tag of its own: it goes out as next, so that latest stays on the last release.
         if: vars.NPM_PUBLISH == 'true'
         working-directory: build/release
-        run: npx -y npm@11 stage publish --provenance --access public
+        run: |
+          tag="latest"
+          case "${GITHUB_REF_NAME#v}" in *-*) tag="next" ;; esac
+          npx -y npm@11 stage publish --provenance --access public --tag "$tag"

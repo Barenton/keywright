@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { appendFileSync, statSync, truncateSync } from "node:fs";
+import { appendFileSync, readFileSync, statSync, truncateSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import { join } from "node:path";
 import type { Duplex } from "node:stream";
@@ -55,7 +55,12 @@ export interface BrokerOptions {
 	onShutdown?: () => void;
 	/** The release this broker says it belongs to. Default: this one. Tests give others. */
 	version?: string;
+	/** How often to check that the secret file still holds this broker's secret. Default: 2 s. */
+	secretCheckMs?: number;
 }
+
+/** How often a broker checks its secret file by default. */
+export const SECRET_CHECK_MS = 2000;
 
 interface Peer {
 	ws: WebSocket;
@@ -104,6 +109,7 @@ export class Broker {
 	private pairing?: PendingPairing;
 	private nextRequestId = 1;
 	private idleTimer?: NodeJS.Timeout;
+	private secretTimer?: NodeJS.Timeout;
 
 	constructor(options: BrokerOptions) {
 		this.options = options;
@@ -138,10 +144,30 @@ export class Broker {
 		});
 		this.log(`listening on 127.0.0.1:${this.options.port} pid=${process.pid}`);
 		this.armIdleTimer();
+		// A broker holds its secret in memory. When the secret is replaced (rotate), every
+		// broker using this folder stops, whichever port it is on and whether or not the
+		// record names it, so that none goes on accepting the old secret or its credentials.
+		this.secretTimer = setInterval(() => this.checkSecret(), this.options.secretCheckMs ?? SECRET_CHECK_MS);
+		this.secretTimer.unref();
+	}
+
+	private checkSecret(): void {
+		let current = "";
+		try {
+			current = readFileSync(join(this.options.home, "secret"), "utf8").trim();
+		} catch {
+			// A secret that is gone has been replaced as surely as one that has changed.
+		}
+		if (current === this.secret.toString("hex")) return;
+		clearInterval(this.secretTimer);
+		this.log("the secret was replaced; stopping");
+		if (this.options.onShutdown) this.options.onShutdown();
+		else void this.stop();
 	}
 
 	async stop(): Promise<void> {
 		clearTimeout(this.idleTimer);
+		clearInterval(this.secretTimer);
 		for (const request of this.pending.values()) clearTimeout(request.timer);
 		this.pending.clear();
 		for (const peer of this.peers) {

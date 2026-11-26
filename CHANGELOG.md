@@ -4,6 +4,21 @@ What changed in each release of Keywright. The plugin and the adapter are releas
 
 ## [Unreleased]
 
+**Fixed, from an independent review of earlier releases**
+
+- **A place's access stays off when its setting can't be read.** Before, an unreadable setting of its own let the older shared list turn access back on in a place that had been turned off.
+- **Requests still waiting when the connection drops are dropped with it.** Before, a request queued behind a running one could still run after the connection was lost, with nowhere to send the answer: the agent, told the call had failed, could send it again and the change be made twice.
+- **Rotating the secret stops every broker using it,** on any port: each broker now stops as soon as its secret file changes. Before, a second broker started with another `KEYWRIGHT_PORT` could keep accepting the old secret.
+- **Setup runs the published package, not a project's own.** Apps are now told to start Keywright with `npx -y keywright@latest`: with a bare `npx -y keywright`, a project with its own `keywright` program (a package of that name, or one in `node_modules/.bin`) ran that instead whenever the app started in it.
+- **Setup's entry for Windows apps using Keywright in WSL works with node from nvm:** it puts node's folder on the `PATH`, which `wsl.exe --exec` doesn't set up.
+- **A working copy moved to another rig's shelf** is no longer edited with the first rig's joints for the rest of the session; it is found again on its new shelf after a reload.
+- **Replacing a clip notices attributes changed in it since,** as it notices other changes: attributes now count in the source's fingerprint and are watched. Fingerprints written by earlier versions are still checked the way they were made.
+- **State files are created afresh,** so a link left at a temporary file's path, in a folder copied in, is never written through.
+- **After pairing, a later refusal needs one off-and-on, not two.**
+- **Slim pictures keep a limb's longest side,** on a custom rig whose arms or legs run along another direction.
+- **Releases:** a release whose npm step failed can be rerun: the GitHub release already made gets this run's files. A prerelease goes to npm with the `next` tag, which npm requires.
+- **Security page:** what the pairing command line exposes on a shared computer, why wrong pairing proofs count from any connection, and two limits: changing the port, and `KEYWRIGHT_HOME` on Windows.
+
 - **Comparing retimed moves:** `preview_animation` takes `compare_times` with `compare_with`: the other clip's own time for each of `times`, so a before-and-after strip pairs impact with impact even when the move now lands on a different frame. The compared clip's row is labelled with its times, and each comparison reports `other_time`.
 - **Fixed, loops just off a whole frame:** in a loop whose end was typed a little off a frame (0.667 for 20/30 of a second), `pin`, `aim` and other ranges across the end put the keys that came round it just off a frame, which gave `KEY_OFF_FRAME` warnings. The loop is now cut and joined at its whole number of frames.
 - **Out-of-date plugin or adapter, flagged everywhere:** while a Studio window's plugin and the adapter are different versions, every result for that window, errors included, starts with `update_needed`, not just `get_workspace`. It says which side is older, that newer options are ignored until they match, and how to update. Agents are told to pass it on to the person straight away.

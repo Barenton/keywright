@@ -440,6 +440,9 @@ test("the slim style thins arms and legs along their length, and leaves the rest
 		assert.deepEqual(size(name), parts.find((part) => part.name === name)?.size, name);
 	}
 	assert.deepEqual(slim.map((part) => part.cframe), parts.map((part) => part.cframe), "nothing moves");
+	// A custom rig's limb may run along another of its own directions: its length is kept.
+	const sideways = slimParts([box("LeftUpperArm", [0, 0, 0], [2, 0.4, 0.4])])[0]?.size;
+	assert.deepEqual(sideways, [2, 0.4 * SLIM_THICKNESS, 0.4 * SLIM_THICKNESS]);
 });
 
 test("a slim arm is drawn far thinner for its length than a box arm", () => {

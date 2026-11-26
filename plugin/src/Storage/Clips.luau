@@ -23,6 +23,8 @@ Clips.TIME_TOLERANCE = Operations.TIME_TOLERANCE
 export type Working = {
 	id: string,
 	instance: Instance,
+	-- The shelf it is kept on: it is a working copy only while it stays there.
+	shelf: Instance?,
 	rigId: string,
 	source: Instance?,
 	revision: number,
@@ -140,6 +142,8 @@ local function watchSource(working: Working, source: Instance)
 	end
 	local function hook(instance: Instance)
 		table.insert(working.sourceSignals, instance.Changed:Connect(note))
+		-- Changed does not fire for attributes, which replacing the clip would overwrite.
+		table.insert(working.sourceSignals, instance.AttributeChanged:Connect(note))
 	end
 	hook(source)
 	for _, descendant in source:GetDescendants() do
@@ -159,6 +163,7 @@ local function register(instance: Instance, rigId: string, source: Instance?): W
 	local working: Working = {
 		id = "clip_" .. nextId,
 		instance = instance,
+		shelf = instance.Parent,
 		rigId = rigId,
 		source = source,
 		revision = 1,
@@ -291,7 +296,7 @@ function Clips.restore(rigIdOf: (model: Instance) -> string?): number
 				if source and link then
 					-- Nothing watched the source while no plugin was running, so its
 					-- fingerprint says whether it is still what the copy was opened from.
-					working.sourceChanged = Digest.ofSource(source) ~= link.fingerprint
+					working.sourceChanged = not Digest.sameSource(source, link.fingerprint or "")
 				end
 			else
 				unassigned += 1
@@ -308,7 +313,11 @@ local function onShelf(working: Working): boolean
 	local shelf = working.instance.Parent
 	local folder = shelf and shelf.Parent
 	local root = existingRoot()
-	return folder ~= nil and root ~= nil and folder.Parent == root and folder.Name == Clips.WORKING_NAME
+	return folder ~= nil
+		and root ~= nil
+		and folder.Parent == root
+		and folder.Name == Clips.WORKING_NAME
+		and WorkingStore.onShelf(working.instance, working.shelf, folder)
 end
 
 function Clips.get(clipId: string): Working

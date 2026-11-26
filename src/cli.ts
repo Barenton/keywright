@@ -113,7 +113,7 @@ function setup(args: string[]): number {
 	const machine = thisMachine();
 	// Started through npx, the app is told to start it the same way. npx sits beside node.
 	const npx = join(dirname(process.execPath), process.platform === "win32" ? "npx.cmd" : "npx");
-	const launch = viaNpx() ? { command: "npx", args: ["-y", "keywright"], fullPath: npx } : undefined;
+	const launch = viaNpx() ? { command: "npx", args: ["-y", "keywright@latest"], fullPath: npx } : undefined;
 	process.stdout.write(
 		setupGuide({ version: VERSION, entry: cliPath(), launch, installed, wsl: machine.wsl, distro: machine.env.WSL_DISTRO_NAME, node: process.execPath, platform: process.platform }),
 	);

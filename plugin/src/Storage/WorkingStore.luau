@@ -37,6 +37,18 @@ function WorkingStore.shelf(root: Instance, model: Instance, create: (className:
 	return shelf
 end
 
+-- Whether a working copy is still on the shelf it was found or opened on, in the folder
+-- of working copies. One moved to another rig's shelf, or into a folder of its own, is
+-- not: it would be edited with the first rig's joints. Found again on its new shelf the
+-- next time the plugin starts, it then belongs to that shelf's rig.
+function WorkingStore.onShelf(clip: Instance, shelf: Instance?, folder: Instance?): boolean
+	return shelf ~= nil
+		and folder ~= nil
+		and clip.Parent == shelf
+		and shelf:IsA("ObjectValue")
+		and shelf.Parent == folder
+end
+
 -- Lists the working copies in `root` whose rig can still be told, in a stable order, and
 -- counts those whose rig cannot: clips on a shelf whose rig is gone, and clips lying in
 -- the folder with no shelf at all.

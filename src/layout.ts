@@ -31,7 +31,7 @@ export function viaNpx(env: NodeJS.ProcessEnv = process.env): boolean {
 
 /** How a person runs Keywright from a terminal, for messages that tell them a command. */
 export function command(): string {
-	if (viaNpx()) return "npx -y keywright";
+	if (viaNpx()) return "npx -y keywright@latest";
 	return BUNDLED ? "node keywright.mjs" : "node dist/src/cli.js";
 }
 

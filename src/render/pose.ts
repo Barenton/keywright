@@ -41,16 +41,17 @@ export const SLIM_LEGEND =
 export const SLIM_THICKNESS = 0.35;
 
 /**
- * The parts with each upper and lower arm and leg made thin: the same length along the
- * part's own up direction, along which an R15 limb runs, and a share of its width and depth.
- * Hands, feet, the torso and the head keep their size, so contact with the floor still reads.
+ * The parts with each upper and lower arm and leg made thin: the same length along its
+ * longest side, which on R15 is its own up direction but on a custom rig may not be, and a
+ * share of the other two. Hands, feet, the torso and the head keep their size, so contact
+ * with the floor still reads.
  */
 export function slimParts(parts: PosePart[]): PosePart[] {
-	return parts.map((part) =>
-		/(Upper|Lower)(Arm|Leg)$/.test(part.name)
-			? { ...part, size: [part.size[0] * SLIM_THICKNESS, part.size[1], part.size[2] * SLIM_THICKNESS] }
-			: part,
-	);
+	return parts.map((part) => {
+		if (!/(Upper|Lower)(Arm|Leg)$/.test(part.name)) return part;
+		const longest = part.size.indexOf(Math.max(...part.size));
+		return { ...part, size: part.size.map((edge, axis) => (axis === longest ? edge : edge * SLIM_THICKNESS)) as [number, number, number] };
+	});
 }
 
 export interface PosePart {

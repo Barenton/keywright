@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { loadOrCreateSecret, stateDir } from "../../src/broker/state.js";
+import { loadOrCreateSecret, saveCredentials, stateDir } from "../../src/broker/state.js";
 
 // The directory convention tested here is the one for Linux; the others differ only in
 // where the per-user directory is.
@@ -60,5 +60,22 @@ test("a secret restored with loose permissions is closed to other users before i
 		assert.equal(statSync(dir).mode & 0o777, 0o700);
 	} finally {
 		rmSync(home, { recursive: true, force: true });
+	}
+});
+
+test("a state file is not written through a link left at its temporary path", { skip: process.platform === "win32" }, () => {
+	const root = mkdtempSync(join(tmpdir(), "keywright-link-"));
+	try {
+		const home = join(root, "home");
+		const elsewhere = join(root, "elsewhere");
+		writeFileSync(elsewhere, "untouched", { mode: 0o644 });
+		mkdirSync(home, { mode: 0o700 });
+		symlinkSync(elsewhere, join(home, `credentials.json.${process.pid}.tmp`));
+		saveCredentials(home, "fingerprint", { abc: { key: "00", createdAt: "now" } });
+		assert.equal(readFileSync(elsewhere, "utf8"), "untouched");
+		assert.ok(lstatSync(join(home, "credentials.json")).isFile(), "the file itself, not a link");
+		assert.equal(statSync(join(home, "credentials.json")).mode & 0o777, 0o600);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
 	}
 });

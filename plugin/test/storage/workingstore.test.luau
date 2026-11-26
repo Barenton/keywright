@@ -109,6 +109,29 @@ case("working copies are found again with the rig they belong to", function()
 	check("looking again changes nothing", names(again) == names(found) and #place.root:GetDescendants() == 5)
 end)
 
+case("a working copy counts only while it stays on its own shelf", function()
+	local folder = roblox.Instance.new("Folder")
+	local function shelfFor(name: string): any
+		local shelf = roblox.Instance.new("ObjectValue")
+		shelf.Name = name
+		shelf.Parent = folder
+		return shelf
+	end
+	local first, second = shelfFor("A"), shelfFor("B")
+	local clip = roblox.Instance.new("KeyframeSequence")
+	clip.Parent = first
+	check("on the shelf it was opened on", WorkingStore.onShelf(clip, first, folder))
+	clip.Parent = second
+	check("not once moved to another rig's shelf", not WorkingStore.onShelf(clip, first, folder))
+	local plain = roblox.Instance.new("Folder")
+	plain.Parent = folder
+	clip.Parent = plain
+	check("nor into a folder of its own", not WorkingStore.onShelf(clip, plain, folder))
+	clip.Parent = first
+	first.Parent = nil
+	check("nor once its shelf is taken out of the folder", not WorkingStore.onShelf(clip, first, folder))
+end)
+
 case("copies whose rig cannot be told are counted, not guessed at", function()
 	local place = buildPlace()
 	local hero, gone = place.rig("Hero"), place.rig("Gone")

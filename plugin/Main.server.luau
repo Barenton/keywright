@@ -118,6 +118,8 @@ local function start()
 		onCredential = function(newCredential)
 			view.setPairing(nil)
 			if newCredential then
+				-- The connection now uses this one: a later refusal is of this one.
+				credential = newCredential
 				if not settings.saveCredential(newCredential) then
 					view.setNote("Paired for this session, but the credential could not be saved.")
 				end

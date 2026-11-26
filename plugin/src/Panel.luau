@@ -442,7 +442,7 @@ function Panel.new(widget: DockWidgetPluginGui): View
 					else ""
 			)
 			code.Text = given or ""
-			command.Text = if given then `npx -y keywright pair {given}` else ""
+			command.Text = if given then `npx -y keywright@latest pair {given}` else ""
 		end,
 		setNote = function(words: string)
 			say(note, words)

@@ -141,6 +141,24 @@ do
 	check("an unreadable old list names no place", not settings.accessOn(202))
 end
 
+do
+	-- A place turned off since it was put in the old list, whose own setting then cannot
+	-- be read: it stays off, rather than the old list turning it back on.
+	local on = shared()
+	on.values[Settings.ACCESS] = serde.encode("json", { ["101"] = true })
+	local store = window(on)
+	local settings = Settings.new(store)
+	settings.rememberAccess(101, false)
+	local get = store.get
+	store.get = function(key: string): any
+		if key == own(101) then
+			error("settings unreadable")
+		end
+		return get(key)
+	end
+	check("an unreadable setting of its own leaves a place off", not settings.accessOn(101))
+end
+
 -- Two windows on two places. Window B writes while A waits to read its own write back.
 -- Each writes only its own place's setting, so neither can undo the other.
 do

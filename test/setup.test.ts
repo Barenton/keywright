@@ -66,16 +66,28 @@ test("run through npx, the guide tells apps to start Keywright with npx, not by 
 		...facts,
 		platform: "linux",
 		entry: "/home/me/.npm/_npx/abc/node_modules/keywright/keywright.mjs",
-		launch: { command: "npx", args: ["-y", "keywright"], fullPath: "/usr/bin/npx" },
+		launch: { command: "npx", args: ["-y", "keywright@latest"], fullPath: "/home/me/.nvm/versions/node/v22.0.0/bin/npx" },
+		node: "/home/me/.nvm/versions/node/v22.0.0/bin/node",
 		wsl: true,
 		distro: "Ubuntu",
 	});
-	assert.ok(guide.includes("claude mcp add --scope user keywright -- npx -y keywright"));
+	assert.ok(guide.includes("claude mcp add --scope user keywright -- npx -y keywright@latest"));
 	const json = guide.split("\n").find((line) => line.includes('"mcpServers"') && !line.includes("wsl.exe"));
-	assert.deepEqual(JSON.parse(json ?? ""), { mcpServers: { keywright: { command: "npx", args: ["-y", "keywright"] } } });
+	assert.deepEqual(JSON.parse(json ?? ""), { mcpServers: { keywright: { command: "npx", args: ["-y", "keywright@latest"] } } });
 	assert.ok(guide.includes('command = "npx"'));
-	assert.ok(guide.includes("npx -y keywright pair <the code>"));
+	assert.ok(guide.includes("npx -y keywright@latest pair <the code>"));
 	assert.equal(guide.includes("_npx"), false, "no path into npm's cache");
 	const wsl = guide.split("\n").find((line) => line.includes('"wsl.exe"'));
-	assert.deepEqual(JSON.parse(wsl ?? "").mcpServers.keywright.args, ["-d", "Ubuntu", "--exec", "/usr/bin/npx", "-y", "keywright"]);
+	// Started by wsl.exe with no login shell, a node installed with nvm is not on PATH:
+	// npx is run with node's folder put there.
+	assert.deepEqual(JSON.parse(wsl ?? "").mcpServers.keywright.args, [
+		"-d",
+		"Ubuntu",
+		"--exec",
+		"/usr/bin/env",
+		"PATH=/home/me/.nvm/versions/node/v22.0.0/bin:/usr/local/bin:/usr/bin:/bin",
+		"/home/me/.nvm/versions/node/v22.0.0/bin/npx",
+		"-y",
+		"keywright@latest",
+	]);
 });

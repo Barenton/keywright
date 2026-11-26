@@ -40,7 +40,7 @@ The AI app can run on Windows, or inside WSL while Studio runs on Windows.
 
 If your AI app can run commands, as Claude Code and Codex can, paste this to it:
 
-> Install Keywright for Roblox Studio: run `npx -y keywright setup`, add Keywright to yourself the way it says, and tell me what is left for me to do.
+> Install Keywright for Roblox Studio: run `npx -y keywright@latest setup`, add Keywright to yourself the way it says, and tell me what is left for me to do.
 
 Then [turn on agent access and pair](#3-turn-on-agent-access-and-pair).
 
@@ -49,7 +49,7 @@ Then [turn on agent access and pair](#3-turn-on-agent-access-and-pair).
 #### 1. Install the plugin
 
 ```sh
-npx -y keywright setup
+npx -y keywright@latest setup
 ```
 
 This copies the plugin into Studio's plugins folder and prints the settings for your AI app. Studio loads the plugin on its own; if the **Keywright** button doesn't appear on the Plugins tab, restart Studio.
@@ -59,7 +59,7 @@ This copies the plugin into Studio's plugins folder and prints the settings for 
 For Claude Code, available in every project:
 
 ```sh
-claude mcp add --scope user keywright -- npx -y keywright
+claude mcp add --scope user keywright -- npx -y keywright@latest
 ```
 
 Most other apps take an entry like this in their MCP settings:
@@ -67,7 +67,7 @@ Most other apps take an entry like this in their MCP settings:
 ```json
 {
   "mcpServers": {
-    "keywright": { "command": "npx", "args": ["-y", "keywright"] }
+    "keywright": { "command": "npx", "args": ["-y", "keywright@latest"] }
   }
 }
 ```
@@ -77,14 +77,14 @@ Most other apps take an entry like this in their MCP settings:
 #### 3. Turn on agent access and pair
 
 1. In Studio, open a place, click **Keywright** on the Plugins tab, and click **Turn on agent access**. Access is off until you turn it on, separately for each place.
-2. **The first time only**, the panel shows a pairing code. It works once, within 5 minutes of being registered. Tell your AI app *"Pair Keywright with code ABCD234XYZ"* (using your code), or run `npx -y keywright pair ABCD234XYZ`.
+2. **The first time only**, the panel shows a pairing code. It works once, within 5 minutes of being registered. Tell your AI app *"Pair Keywright with code ABCD234XYZ"* (using your code), or run `npx -y keywright@latest pair ABCD234XYZ`.
 
 The panel then says **Connected to the broker**, and Studio remembers the pairing.
 
 <details>
 <summary>Without npm</summary>
 
-Download [`keywright.mjs`](https://github.com/Barenton/keywright/releases/latest/download/keywright.mjs) and [`Keywright.rbxm`](https://github.com/Barenton/keywright/releases/latest/download/Keywright.rbxm) from the latest release into one folder, keep them together, and run `node keywright.mjs setup` there. It prints the settings for your AI app with that file's path, and every command works the same with `node keywright.mjs` in place of `npx -y keywright`.
+Download [`keywright.mjs`](https://github.com/Barenton/keywright/releases/latest/download/keywright.mjs) and [`Keywright.rbxm`](https://github.com/Barenton/keywright/releases/latest/download/Keywright.rbxm) from the latest release into one folder, keep them together, and run `node keywright.mjs setup` there. It prints the settings for your AI app with that file's path, and every command works the same with `node keywright.mjs` in place of `npx -y keywright@latest`.
 
 </details>
 
