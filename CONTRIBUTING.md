@@ -38,6 +38,7 @@ Then add Keywright to your AI app with `node /full/path/to/keywright/dist/src/cl
 | `src/layout.ts` | Where Keywright's files are, whether it runs from `dist/` or as the single-file release. |
 | `test/` | TypeScript tests, in folders that match `src`. |
 | `docs/` | The documentation. `docs/tools.md` is written from the adapter's tools. |
+| `skills/keywright/` | The skill for users' AI apps: how to direct an animation with the tools. |
 | `scripts/` | The Luau test runner, the bundler, the version, release-notes and tool-reference scripts, and the Studio measuring script. |
 | `.github/workflows/` | CI, and the release workflow that runs when a version tag is pushed. |
 

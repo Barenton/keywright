@@ -4,6 +4,9 @@ What changed in each release of Keywright. The plugin and the adapter are releas
 
 ## [Unreleased]
 
+- **Guidance for agents:** every AI app is now sent instructions when it connects: plan the key poses, look at a pose strip after every revision as well as the motion plot, and don't take a clip that validates as finished. The tool reference shows them.
+- **Keywright skill:** `skills/keywright/SKILL.md` goes further, from planning and blocking key poses to reviewing, contacts, loops and knowing when an animation is done. Claude Code users can copy it into `~/.claude/skills/`.
+
 ## [0.4.0] - 2026-11-26
 
 - **On npm:** Keywright is published as the `keywright` package, so `npx -y keywright setup` installs it with nothing to download by hand. Run through npx, `setup` tells AI apps to start it with `npx -y keywright`, and the advice messages and the panel's pairing command give that form too. The README leads with it; the downloads from GitHub releases still work.
