@@ -13,7 +13,8 @@ The first numbered release.
 - **Checks:** structural errors that would stop a save, and warnings for loops that don't close, joints moving too fast, and feet that slide, scuff or go through the floor.
 - **Previews:** a clip is played to an exact time on a hidden copy of the rig, with a simple picture of the pose.
 - **Adapter and broker:** MCP tools for any MCP app, connected to Studio over an authenticated loopback link that is paired once.
-- **Setup:** `npm run install:plugin` installs the plugin into Studio. The panel and `keywright version` show the version, and the agent is told when the plugin and the adapter don't match.
+- **Setup:** `npm run install:plugin` installs the plugin into Studio. The panel and `node dist/src/cli.js version` show the version, and the agent is told when the plugin and the adapter don't match.
+- **Panel:** fits whatever size it is docked or floated at, follows Studio's theme, and shows the pairing command ready to copy.
 
 [Unreleased]: https://github.com/Barenton/keywright/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/Barenton/keywright/releases/tag/v0.1.0

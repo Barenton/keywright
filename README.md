@@ -106,13 +106,13 @@ Agent access is off by default, and it is turned on separately for each place.
 1. Open a place in Studio. While you're learning, use a place you don't mind changing; see [Safety](#safety).
 2. Click the **Keywright** button on the Plugins tab to show the panel.
 3. Click **Turn on agent access**.
-4. **The first time only:** the panel shows a line like `Pair once: run "keywright pair ABCD234XYZ" in a terminal.` Within 5 minutes, run that command from the `keywright` folder:
+4. **The first time only:** the panel shows a command like this one. Within 5 minutes, run it in a terminal, from the `keywright` folder:
 
    ```sh
    node dist/src/cli.js pair ABCD234XYZ
    ```
 
-   Use the code your panel shows, not this one. It works once.
+   Click the command in the panel to select it, then copy it with Ctrl+C (Cmd+C on a Mac). Use the code your panel shows, not this one. It works once.
 
 The panel then says **Connected to the broker.** Studio remembers the pairing, and which places you turned agent access on for, so you only do this once.
 
@@ -229,7 +229,8 @@ While you're getting started, try Keywright in a copy of your place or a fresh b
 
 | Folder | What is in it |
 |---|---|
-| `plugin/Main.server.luau` | The plugin's entry point: the panel, the agent access switch and pairing. |
+| `plugin/Main.server.luau` | The plugin's entry point: the agent access switch, pairing, and what the panel says. |
+| `plugin/src/Panel.luau` | The panel itself: how it is drawn and laid out at each size. |
 | `plugin/src/Handlers.luau` | The requests a Studio session answers, one per tool. |
 | `plugin/src/Core/` | Shared basics: errors, encoding, hashing, time limits. |
 | `plugin/src/Network/` | The authenticated connection to the broker, and the per-place access switch. |
