@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -44,5 +44,21 @@ test("with nothing from before, the new directory is simply named", { skip: !lin
 		assert.equal(stateDir({ KEYWRIGHT_HOME: "/somewhere/else" }), "/somewhere/else");
 	} finally {
 		rmSync(config, { recursive: true, force: true });
+	}
+});
+
+test("a secret restored with loose permissions is closed to other users before it is used", { skip: process.platform === "win32" }, () => {
+	const home = mkdtempSync(join(tmpdir(), "keywright-state-"));
+	try {
+		const dir = join(home, "state");
+		mkdirSync(dir, { mode: 0o755 });
+		chmodSync(dir, 0o755);
+		writeFileSync(join(dir, "secret"), "a".repeat(64), { mode: 0o644 });
+		chmodSync(join(dir, "secret"), 0o644);
+		assert.equal(loadOrCreateSecret(dir).toString("hex"), "a".repeat(64));
+		assert.equal(statSync(join(dir, "secret")).mode & 0o777, 0o600);
+		assert.equal(statSync(dir).mode & 0o777, 0o700);
+	} finally {
+		rmSync(home, { recursive: true, force: true });
 	}
 });

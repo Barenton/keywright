@@ -230,3 +230,19 @@ test("rotate stops the broker, replaces the secret, and leaves old credentials r
 		temp.cleanup();
 	}
 });
+
+test("rotate also stops a broker started on another port, which holds the old secret", async () => {
+	const temp = tempHome();
+	const first = await freePort();
+	const second = await freePort();
+	try {
+		// A broker started with one port; rotate run later with another configured.
+		const status = JSON.parse((await run(process.execPath, [CLI_PATH, "status"], { env: cliEnv(temp.home, first) })).stdout) as { pid: number };
+		const rotated = await run(process.execPath, [CLI_PATH, "rotate"], { env: cliEnv(temp.home, second) });
+		assert.match(rotated.stdout, /must pair again/);
+		await waitFor(() => !isAlive(status.pid), 5_000);
+	} finally {
+		await stopBroker(temp.home);
+		temp.cleanup();
+	}
+});

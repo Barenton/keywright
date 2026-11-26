@@ -3,9 +3,9 @@ import { join, resolve } from "node:path";
 import { runAdapter } from "./mcp/adapter.js";
 import { isValidPairingCode } from "./broker/auth.js";
 import { Broker } from "./broker/broker.js";
-import { ensureBroker, stopBroker } from "./broker/launcher.js";
+import { ensureBroker, PORT_TAKEN_EXIT, stopBroker } from "./broker/launcher.js";
 import { BridgeError } from "./broker/protocol.js";
-import { configuredPort, rotateSecret, stateDir } from "./broker/state.js";
+import { configuredPort, readBrokerState, rotateSecret, stateDir } from "./broker/state.js";
 import { builtPlugin, installPlugin, robloxFolder, thisMachine, type Installed } from "./install.js";
 import { cliPath, command as howToRun } from "./layout.js";
 import { setupGuide } from "./setup.js";
@@ -53,7 +53,7 @@ async function runBroker(): Promise<number> {
 		if ((error as NodeJS.ErrnoException).code === "EADDRINUSE") {
 			// Another broker won the race, or a foreign program holds the port. Adapters tell which by handshake.
 			process.stderr.write(`Port ${port} is already in use.\n`);
-			return 3;
+			return PORT_TAKEN_EXIT;
 		}
 		throw error;
 	}
@@ -72,6 +72,21 @@ async function rotate(): Promise<number> {
 	if (!(await stopBroker(home, port))) {
 		process.stderr.write("The broker did not stop, so the secret was left as it is.\n");
 		return 1;
+	}
+	// A broker started earlier with another KEYWRIGHT_PORT is stopped too: it holds the old
+	// secret in memory and would go on accepting it. Only one of ours is stopped there.
+	const recorded = readBrokerState(home);
+	if (recorded && recorded.port !== port) {
+		let stopped = true;
+		try {
+			stopped = await stopBroker(home, recorded.port);
+		} catch {
+			// Not a broker of ours on that port: nothing of ours to stop.
+		}
+		if (!stopped) {
+			process.stderr.write(`The broker on port ${recorded.port} did not stop, so the secret was left as it is.\n`);
+			return 1;
+		}
 	}
 	rotateSecret(home);
 	process.stdout.write("The secret was replaced. Every Studio window must pair again: turn agent access off and on in the Keywright panel to get a new code.\n");

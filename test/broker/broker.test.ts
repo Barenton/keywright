@@ -140,6 +140,55 @@ describe("broker", () => {
 		again.close();
 	});
 
+	// Starts a pairing handshake by hand, up to the broker's challenge, ready to be finished.
+	async function beginPairing(code: string) {
+		const ws = await rawSocket(port);
+		const nonce = newNonce();
+		ws.send(JSON.stringify({ t: "hello", v: PROTOCOL_VERSION, role: "plugin", key: "pair", nonce }));
+		const challenge = await nextMessage(ws);
+		assert.equal(challenge.t, "challenge");
+		const finish = async (proofCode = code) => {
+			const reply = nextMessage(ws);
+			ws.send(JSON.stringify({ t: "auth", proof: hmacHex(pairingKey(proofCode), proofInput("client", "plugin", nonce, String(challenge.nonce))) }));
+			const answer = await reply;
+			ws.close();
+			return answer;
+		};
+		return { finish };
+	}
+
+	test("of two handshakes begun with one code, only the first to finish gets a credential", async () => {
+		const code = "RACECODE23";
+		await adapter.request("broker.pair_register", { code });
+		const first = await beginPairing(code);
+		const second = await beginPairing(code);
+		const answers = [await first.finish(), await second.finish()];
+		assert.equal(answers[0]?.t, "ready");
+		assert.ok(answers[0]?.credential);
+		assert.deepEqual([answers[1]?.t, answers[1]?.code], ["denied", "no_pairing"]);
+	});
+
+	test("a handshake begun under a replaced registration neither pairs nor counts against the new one", async () => {
+		const old = await (async () => {
+			await adapter.request("broker.pair_register", { code: "OLDCODE234" });
+			return beginPairing("OLDCODE234");
+		})();
+		await adapter.request("broker.pair_register", { code: "NEWCODE234" });
+		const refused = await old.finish();
+		assert.deepEqual([refused.t, refused.code], ["denied", "no_pairing"]);
+		// Five wrong proofs from old handshakes would have burned the new code; none counted.
+		for (let attempt = 0; attempt < 5; attempt++) {
+			await adapter.request("broker.pair_register", { code: "STALECODE2" });
+			const stale = await beginPairing("STALECODE2");
+			await adapter.request("broker.pair_register", { code: "NEWCODE234" });
+			const wrong = await stale.finish("WRONGCODE2");
+			assert.deepEqual([wrong.t, wrong.code], ["denied", "bad_proof"]);
+		}
+		const fresh = await beginPairing("NEWCODE234");
+		const answer = await fresh.finish();
+		assert.equal(answer.t, "ready");
+	});
+
 	test("a plugin without the code cannot pair, and repeated bad proofs burn the code", async () => {
 		await adapter.request("broker.pair_register", { code: "RIGHTCODE2" });
 		// A plugin holding the wrong code sees a broker proof it cannot verify and stops.

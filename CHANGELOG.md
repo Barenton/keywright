@@ -4,6 +4,11 @@ What changed in each release of Keywright. The plugin and the adapter are releas
 
 ## [Unreleased]
 
+- **Fixed, pairing:** two handshakes begun with one code could both get a credential, and a handshake left from a replaced code could finish or count against the new one. A registered code now pairs exactly one Studio window.
+- **Fixed, rotate:** a broker still running on a port other than the one configured now is stopped too, so it can't go on accepting the old secret.
+- **Fixed, broker start:** when a broker Keywright starts finds its port taken, the adapter now reports the conflict, instead of waiting and then saying the broker didn't start.
+- **Hardening:** on macOS and Linux, Keywright's state folder and secret are closed to other users when found open, as after a restore, and state belonging to another user is refused.
+- **Fixed:** pre-release versions are ordered as semantic versioning says (beta.2 before beta.10) when deciding whether to replace a running broker.
 - **Documentation:** a shorter README with a quick start, and new pages: a guide to making animations, troubleshooting, testing, and CONTRIBUTING.md for building from source and releasing.
 - **Clearer refusal of an R6 rig:** it is told only that its rig type is not supported, not also each of the fifteen R15 joints it lacks.
 - **Setup by an agent:** `node keywright.mjs setup` installs the plugin and prints how to add Keywright to Claude Code, Codex, Claude Desktop and other apps, with the file's path filled in (and, inside WSL, the `wsl.exe` entry for apps on Windows), then what is left for the person. The README has a prompt to paste to an AI app that sets Keywright up this way.

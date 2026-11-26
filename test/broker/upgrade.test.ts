@@ -12,6 +12,12 @@ test("versions are ordered by their numbers", () => {
 	assert.equal(compareVersions("1.0.0", "0.99.99"), 1);
 	assert.equal(compareVersions("0.2.0-beta.1", "0.2.0"), -1);
 	assert.equal(compareVersions("0.2.0-beta.2", "0.2.0-beta.1"), 1);
+	// Pre-release fields compare as semantic versioning says: numbers by value, below words.
+	assert.equal(compareVersions("0.2.0-beta.10", "0.2.0-beta.2"), 1);
+	assert.equal(compareVersions("0.2.0-beta.2", "0.2.0-beta.10"), -1);
+	assert.equal(compareVersions("0.2.0-1", "0.2.0-alpha"), -1);
+	assert.equal(compareVersions("0.2.0-alpha", "0.2.0-alpha.1"), -1);
+	assert.equal(compareVersions("0.2.0-rc.1", "0.2.0-rc.1"), 0);
 	assert.equal(compareVersions("", "0.0.1"), -1, "a broker from before releases is older than any");
 	assert.equal(compareVersions("", ""), 0);
 });

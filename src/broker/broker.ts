@@ -64,7 +64,8 @@ interface Peer {
 	clientNonce?: string;
 	serverNonce?: string;
 	key?: Buffer;
-	pairing?: boolean;
+	/** The pairing registration this handshake started under; only it can finish the pairing. */
+	pairing?: PendingPairing;
 	session?: SessionInfo;
 	handshakeTimer?: NodeJS.Timeout;
 }
@@ -236,7 +237,7 @@ export class Broker {
 				return this.deny(peer, "no_pairing");
 			}
 			key = this.pairing.key;
-			peer.pairing = true;
+			peer.pairing = this.pairing;
 		} else if (keyName.startsWith("cred:")) {
 			const stored = this.credentials[keyName.slice(5)];
 			if (!stored) return this.deny(peer, "unknown_credential");
@@ -264,11 +265,18 @@ export class Broker {
 		if (!auth.success || !role || !key || !clientNonce || !serverNonce) return this.deny(peer, "malformed");
 		const expected = hmacHex(key, proofInput("client", role, clientNonce, serverNonce));
 		if (!safeEqualHex(auth.data.proof, expected)) {
-			if (peer.pairing && this.pairing) {
+			// A failed proof counts against the registration it was made for, and only while
+			// that one is still the one waiting.
+			if (peer.pairing && this.pairing === peer.pairing) {
 				this.pairing.failures += 1;
 				if (this.pairing.failures >= PAIRING_MAX_FAILURES) this.pairing = undefined;
 			}
 			return this.deny(peer, "bad_proof");
+		}
+		// A registration is used once: of two handshakes begun with one code, only the first
+		// to finish gets a credential, and a registration replaced or expired meanwhile gives none.
+		if (peer.pairing && (this.pairing !== peer.pairing || peer.pairing.expiresAt < Date.now())) {
+			return this.deny(peer, "no_pairing");
 		}
 
 		clearTimeout(peer.handshakeTimer);

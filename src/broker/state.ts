@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_PORT } from "./protocol.js";
@@ -56,8 +56,23 @@ export function configuredPort(env: NodeJS.ProcessEnv = process.env): number {
 	return port;
 }
 
+/**
+ * On macOS and Linux, makes sure a file or folder of Keywright's state belongs to this
+ * user and is closed to others, as one restored from a backup or copied in may not be.
+ * Windows keeps a user's folder closed to others by its own permissions.
+ */
+function guard(path: string, mode: number): void {
+	if (process.platform === "win32") return;
+	const info = statSync(path);
+	if (typeof process.getuid === "function" && info.uid !== process.getuid()) {
+		throw new Error(`${path} belongs to another user. Delete it, or set KEYWRIGHT_HOME to a folder of your own.`);
+	}
+	if ((info.mode & 0o077) !== 0) chmodSync(path, mode);
+}
+
 function ensureDir(dir: string): void {
 	mkdirSync(dir, { recursive: true, mode: 0o700 });
+	guard(dir, 0o700);
 }
 
 /**
@@ -72,6 +87,7 @@ export function loadOrCreateSecret(dir: string): Buffer {
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
 	}
+	guard(file, 0o600);
 	for (let attempt = 0; attempt < 50; attempt++) {
 		const text = readFileSync(file, "utf8").trim();
 		if (/^[0-9a-f]{64}$/.test(text)) return Buffer.from(text, "hex");
@@ -134,6 +150,8 @@ export type CredentialStore = Record<string, { key: string; createdAt: string }>
  */
 export function loadCredentials(dir: string, secretFingerprint: string): CredentialStore {
 	try {
+		// One belonging to another user is not used: every plugin then pairs again.
+		guard(join(dir, "credentials.json"), 0o600);
 		const parsed = JSON.parse(readFileSync(join(dir, "credentials.json"), "utf8")) as {
 			secret?: string;
 			credentials?: CredentialStore;

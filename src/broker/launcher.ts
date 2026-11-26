@@ -40,7 +40,8 @@ function otherProtocol(options: EnsureBrokerOptions, port: number): BridgeError 
 
 /**
  * Orders versions like 0.2.0 and 0.10.1 by their numbers. A pre-release (0.2.0-beta.1)
- * comes before its release; anything that is not a version comes before everything.
+ * comes before its release, and pre-releases are ordered as semantic versioning orders
+ * them (beta.2 before beta.10); anything that is not a version comes before everything.
  */
 export function compareVersions(a: string, b: string): number {
 	const parse = (version: string) => /^(\d+)\.(\d+)\.(\d+)(-.+)?$/.exec(version);
@@ -54,7 +55,30 @@ export function compareVersions(a: string, b: string): number {
 	if (x[4] === y[4]) return 0;
 	if (x[4] === undefined) return 1;
 	if (y[4] === undefined) return -1;
-	return x[4] < y[4] ? -1 : 1;
+	return comparePrereleases(x[4].slice(1), y[4].slice(1));
+}
+
+/** Semantic versioning's order of pre-release tags: field by field, numbers by value and below words. */
+function comparePrereleases(a: string, b: string): number {
+	const left = a.split(".");
+	const right = b.split(".");
+	for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
+		const x = left[index];
+		const y = right[index];
+		if (x === undefined) return -1;
+		if (y === undefined) return 1;
+		const xNumber = /^\d+$/.test(x);
+		const yNumber = /^\d+$/.test(y);
+		if (xNumber && yNumber) {
+			const difference = Number(x) - Number(y);
+			if (difference !== 0) return Math.sign(difference);
+		} else if (xNumber !== yNumber) {
+			return xNumber ? -1 : 1;
+		} else if (x !== y) {
+			return x < y ? -1 : 1;
+		}
+	}
+	return 0;
 }
 
 /**
@@ -117,7 +141,16 @@ function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function spawnBroker(options: EnsureBrokerOptions): void {
+/** What the broker started by this adapter has done: still running, or exited because the port was taken. */
+interface Started {
+	portTaken: boolean;
+}
+
+/** The exit code of a broker that could not bind its port (see runBroker in cli.ts). */
+export const PORT_TAKEN_EXIT = 3;
+
+function spawnBroker(options: EnsureBrokerOptions): Started {
+	const started: Started = { portTaken: false };
 	const child = spawn(process.execPath, [cliPath(), "broker"], {
 		detached: true,
 		stdio: "ignore",
@@ -128,7 +161,13 @@ function spawnBroker(options: EnsureBrokerOptions): void {
 			KEYWRIGHT_PORT: String(options.port),
 		},
 	});
+	// The broker's own bind is the last word on whether the port is free: one that finds it
+	// taken exits with this code.
+	child.once("exit", (code) => {
+		if (code === PORT_TAKEN_EXIT) started.portTaken = true;
+	});
 	child.unref();
+	return started;
 }
 
 /**
@@ -173,7 +212,7 @@ export async function ensureBroker(options: EnsureBrokerOptions): Promise<Broker
 		}
 	}
 
-	let spawned = false;
+	let spawned: Started | undefined;
 	const deadline = Date.now() + START_WAIT_MS;
 	for (;;) {
 		try {
@@ -189,10 +228,10 @@ export async function ensureBroker(options: EnsureBrokerOptions): Promise<Broker
 		if (options.autoStart === false) {
 			throw new BridgeError("BROKER_UNAVAILABLE", `No broker is running on port ${options.port}.`);
 		}
-		if (!spawned) {
-			spawnBroker(options);
-			spawned = true;
-		}
+		// The broker started for this call could not bind the port, and no broker of ours
+		// answered there since: something else holds it.
+		if (spawned?.portTaken) throw portConflict(options.port);
+		if (!spawned) spawned = spawnBroker(options);
 		if (Date.now() > deadline) {
 			throw new BridgeError(
 				"BROKER_UNAVAILABLE",
