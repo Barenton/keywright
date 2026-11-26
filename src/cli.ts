@@ -7,11 +7,12 @@ import { ensureBroker, stopBroker } from "./broker/launcher.js";
 import { BridgeError } from "./broker/protocol.js";
 import { configuredPort, rotateSecret, stateDir } from "./broker/state.js";
 import { builtPlugin, installPlugin, robloxFolder, thisMachine } from "./install.js";
+import { command as howToRun } from "./layout.js";
 import { VERSION } from "./version.js";
 
-const USAGE = `Keywright ${VERSION}
+const USAGE = `Keywright v${VERSION}
 
-Usage: keywright [command]
+Usage: ${howToRun()} [command]
 
   (no command)   Run the MCP adapter on stdio. This is what MCP clients start.
   broker         Run the local broker in the foreground.
@@ -77,14 +78,14 @@ function install(args: string[]): number {
 	let folder: string | undefined;
 	if (args.length > 0) {
 		if (args[0] !== "--folder" || args.length !== 2) {
-			process.stderr.write("Usage: keywright install-plugin [--folder <path>]\n");
+			process.stderr.write(`Usage: ${howToRun()} install-plugin [--folder <path>]\n`);
 			return 2;
 		}
 		folder = args[1];
 	}
 	const target = folder ?? join(robloxFolder(thisMachine()), "Plugins");
 	const installed = installPlugin(builtPlugin(), target);
-	process.stdout.write(`Installed the Keywright ${VERSION} plugin at ${installed.path}.\nStudio loads it on its own; if the Keywright button does not appear or update, restart Studio.\n`);
+	process.stdout.write(`Installed the Keywright plugin (v${VERSION}) at ${installed.path}.\nStudio loads it on its own; if the Keywright button does not appear or update, restart Studio.\n`);
 	if (installed.replaced) process.stdout.write(`It replaces ${installed.replaced}, the copy saved from Studio.\n`);
 	if (installed.others.length > 0) {
 		process.stdout.write(`\nThis folder also has ${installed.others.join(", ")}. Studio loads every plugin in it, so remove ${installed.others.length === 1 ? "that file" : "those files"} to run only this one.\n`);
@@ -114,7 +115,7 @@ async function main(argv: string[]): Promise<number> {
 			}
 			const code = rest[0];
 			if (code === undefined || !isValidPairingCode(code)) {
-				process.stderr.write("Give the pairing code shown in the Studio plugin panel: keywright pair <code>\n");
+				process.stderr.write(`Give the pairing code shown in the Studio plugin panel: ${howToRun()} pair <code>\n`);
 				return 2;
 			}
 			await client.request("broker.pair_register", { code });

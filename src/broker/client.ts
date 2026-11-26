@@ -1,3 +1,4 @@
+import { connect } from "node:net";
 import { WebSocket } from "ws";
 import { hmacHex, newNonce, proofInput, safeEqualHex } from "./auth.js";
 import {
@@ -17,6 +18,28 @@ export class BrokerAbsentError extends Error {}
 
 /** Something is listening on the port but did not prove it is our broker. */
 export class ForeignListenerError extends Error {}
+
+/**
+ * Nothing answered the handshake in time. Usually a silent foreign program, but under
+ * WSL's mirrored networking a connection to a port nobody listens on can hang instead of
+ * being refused, so the caller checks which it is (see accepts).
+ */
+export class UnansweredError extends ForeignListenerError {}
+
+/** Whether anything accepts a TCP connection on the loopback port within the time given. */
+export function accepts(port: number, timeoutMs: number): Promise<boolean> {
+	return new Promise((resolve) => {
+		const socket = connect({ port, host: "127.0.0.1" });
+		const done = (answer: boolean) => {
+			clearTimeout(timer);
+			socket.destroy();
+			resolve(answer);
+		};
+		const timer = setTimeout(() => done(false), timeoutMs);
+		socket.once("connect", () => done(true));
+		socket.once("error", () => done(false));
+	});
+}
 
 /** The listener is our broker and refused this client (wrong credential, version and so on). */
 export class DeniedError extends Error {
@@ -67,7 +90,7 @@ export function handshake(options: HandshakeOptions): Promise<HandshakeResult> {
 		};
 
 		const timer = setTimeout(
-			() => finish(new ForeignListenerError(`No valid handshake from port ${port} in time.`)),
+			() => finish(new UnansweredError(`No valid handshake from port ${port} in time.`)),
 			options.timeoutMs ?? HANDSHAKE_TIMEOUT_MS,
 		);
 

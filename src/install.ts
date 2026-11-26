@@ -2,16 +2,19 @@ import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { BridgeError } from "./broker/protocol.js";
+import { BUNDLED, command, pluginPath } from "./layout.js";
 
 /** The file the plugin is installed as. Installing again replaces it. */
 export const PLUGIN_FILE = "Keywright.rbxm";
 const SAVED_FILE = "Keywright.rbxmx";
 
-/** Where the plugin built from this copy of Keywright is: build/Keywright.rbxm. */
+/**
+ * Where the plugin that goes with this copy of Keywright is: build/Keywright.rbxm in a
+ * checkout, or Keywright.rbxm beside the single-file release.
+ */
 export function builtPlugin(): string {
-	return fileURLToPath(new URL(`../../build/${PLUGIN_FILE}`, import.meta.url));
+	return pluginPath(PLUGIN_FILE);
 }
 
 export interface Machine {
@@ -52,7 +55,7 @@ export function thisMachine(): Machine {
 export function robloxFolder(machine: Machine): string {
 	if (machine.platform === "win32") {
 		const local = machine.env.LOCALAPPDATA;
-		if (!local) throw new BridgeError("INSTALL_FAILED", "LOCALAPPDATA is not set, so Studio's plugins folder cannot be found.", "Pass the folder: keywright install-plugin --folder <path>");
+		if (!local) throw new BridgeError("INSTALL_FAILED", "LOCALAPPDATA is not set, so Studio's plugins folder cannot be found.", `Pass the folder: ${command()} install-plugin --folder <path>`);
 		return join(local, "Roblox");
 	}
 	if (machine.platform === "darwin") return join(machine.home, "Documents", "Roblox");
@@ -61,11 +64,11 @@ export function robloxFolder(machine: Machine): string {
 		try {
 			local = machine.windowsLocalAppData();
 		} catch (error) {
-			throw new BridgeError("INSTALL_FAILED", `Could not ask Windows where Studio's plugins folder is: ${error instanceof Error ? error.message : String(error)}`, "Pass the folder: keywright install-plugin --folder <path>");
+			throw new BridgeError("INSTALL_FAILED", `Could not ask Windows where Studio's plugins folder is: ${error instanceof Error ? error.message : String(error)}`, `Pass the folder: ${command()} install-plugin --folder <path>`);
 		}
 		return join(local, "Roblox");
 	}
-	throw new BridgeError("INSTALL_FAILED", "Roblox Studio does not run on this system, so there is no plugins folder here.", "Run this where Studio is installed, or pass the folder: keywright install-plugin --folder <path>");
+	throw new BridgeError("INSTALL_FAILED", "Roblox Studio does not run on this system, so there is no plugins folder here.", `Run this where Studio is installed, or pass the folder: ${command()} install-plugin --folder <path>`);
 }
 
 export interface Installed {
@@ -85,12 +88,12 @@ export interface Installed {
  */
 export function installPlugin(source: string, folder: string): Installed {
 	if (!existsSync(source)) {
-		throw new BridgeError("INSTALL_FAILED", `There is no built plugin at ${source}.`, "Build it first: npm run build:plugin");
+		throw new BridgeError("INSTALL_FAILED", `There is no built plugin at ${source}.`, BUNDLED ? "Download Keywright.rbxm from the same release into the folder with keywright.mjs." : "Build it first: npm run build:plugin");
 	}
 	if (!existsSync(folder)) {
 		// The Plugins folder itself may not exist yet; the Roblox folder around it must.
 		if (!existsSync(dirname(folder))) {
-			throw new BridgeError("INSTALL_FAILED", `${dirname(folder)} does not exist, so Roblox Studio does not seem to be installed for this user.`, "Install and open Studio once, or pass the folder: keywright install-plugin --folder <path>");
+			throw new BridgeError("INSTALL_FAILED", `${dirname(folder)} does not exist, so Roblox Studio does not seem to be installed for this user.`, `Install and open Studio once, or pass the folder: ${command()} install-plugin --folder <path>`);
 		}
 		mkdirSync(folder);
 	}

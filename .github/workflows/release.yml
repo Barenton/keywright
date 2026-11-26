@@ -1,8 +1,9 @@
 name: Release
 
 # Runs when a version tag such as v0.2.0 is pushed (see "Releasing" in the README): tests
-# that exact commit, builds the plugin, and publishes a GitHub release with the plugin
-# attached and the version's notes from CHANGELOG.md.
+# that exact commit, builds the plugin and the single-file adapter, and publishes a GitHub
+# release with both attached, the licences of what the adapter bundles, and the version's
+# notes from CHANGELOG.md.
 
 on:
   push:
@@ -36,7 +37,9 @@ jobs:
       - run: npm run format:check
       - run: npm test
       - run: npm run test:luau
-      - run: npm run build:plugin
+      - run: npm run build:release
+      - name: Check the single-file adapter
+        run: test "$(node build/release/keywright.mjs version)" = "${GITHUB_REF_NAME#v}"
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -45,5 +48,6 @@ jobs:
           node scripts/release-notes.mjs "$version" > build/notes.md
           prerelease=""
           case "$version" in *-*) prerelease="--prerelease" ;; esac
-          gh release create "$GITHUB_REF_NAME" build/Keywright.rbxm \
+          gh release create "$GITHUB_REF_NAME" \
+            build/release/keywright.mjs build/release/Keywright.rbxm build/release/THIRD_PARTY_LICENSES.txt \
             --title "$GITHUB_REF_NAME" --notes-file build/notes.md --verify-tag $prerelease

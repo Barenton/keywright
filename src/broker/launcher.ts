@@ -1,12 +1,14 @@
 import { spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { cliPath } from "../layout.js";
 import { VERSION } from "../version.js";
-import { BrokerAbsentError, connectAdapter, DeniedError, ForeignListenerError, type BrokerClient } from "./client.js";
+import { accepts, BrokerAbsentError, connectAdapter, DeniedError, ForeignListenerError, UnansweredError, type BrokerClient } from "./client.js";
 import { BridgeError } from "./protocol.js";
 import { loadOrCreateSecret, readBrokerState } from "./state.js";
 
 const START_WAIT_MS = 10_000;
 const RETRY_INTERVAL_MS = 100;
+/** How long a port has to accept a plain TCP connection before it counts as one nobody listens on. */
+const PROBE_MS = 1000;
 const STOP_WAIT_MS = 5000;
 
 export interface EnsureBrokerOptions {
@@ -56,6 +58,16 @@ export function compareVersions(a: string, b: string): number {
 }
 
 /**
+ * Whether an error from connecting means no broker is there: the connection was refused,
+ * or nothing answered on a port that does not even accept a connection, as WSL's mirrored
+ * networking can leave a port nobody listens on.
+ */
+async function nobodyThere(error: unknown, port: number): Promise<boolean> {
+	if (error instanceof BrokerAbsentError) return true;
+	return error instanceof UnansweredError && !(await accepts(port, PROBE_MS));
+}
+
+/**
  * Stops this user's broker on a port, if one is running, and waits until it has gone.
  * Returns false if it is still there after a few seconds. Anything else holding the port
  * is not ours to stop and fails with BROKER_PORT_CONFLICT.
@@ -75,16 +87,18 @@ export async function stopBroker(home: string, port: number): Promise<boolean> {
 		}
 		client.close();
 	} catch (error) {
-		if (error instanceof ForeignListenerError) throw portConflict(port);
 		// No broker running is fine.
-		if (!(error instanceof BrokerAbsentError)) throw error;
+		if (!(await nobodyThere(error, port))) {
+			if (error instanceof ForeignListenerError) throw portConflict(port);
+			throw error;
+		}
 	}
 	const deadline = Date.now() + STOP_WAIT_MS;
 	for (;;) {
 		try {
 			(await connectAdapter(port, secret)).close();
 		} catch (error) {
-			if (error instanceof BrokerAbsentError) return true;
+			if (await nobodyThere(error, port)) return true;
 			if (error instanceof ForeignListenerError) throw portConflict(port);
 			// A broker caught in the middle of stopping: not gone yet, look again.
 		}
@@ -104,8 +118,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 function spawnBroker(options: EnsureBrokerOptions): void {
-	const cli = fileURLToPath(new URL("../cli.js", import.meta.url));
-	const child = spawn(process.execPath, [cli, "broker"], {
+	const child = spawn(process.execPath, [cliPath(), "broker"], {
 		detached: true,
 		stdio: "ignore",
 		windowsHide: true,
@@ -167,9 +180,11 @@ export async function ensureBroker(options: EnsureBrokerOptions): Promise<Broker
 			const kept = await current(await connectAdapter(options.port, secret), options.port);
 			if (kept) return kept;
 		} catch (error) {
-			if (error instanceof ForeignListenerError) throw portConflict(options.port);
-			if (error instanceof DeniedError && error.code === "version") throw otherProtocol(options, options.port);
-			if (!(error instanceof BrokerAbsentError)) throw error;
+			if (!(await nobodyThere(error, options.port))) {
+				if (error instanceof ForeignListenerError) throw portConflict(options.port);
+				if (error instanceof DeniedError && error.code === "version") throw otherProtocol(options, options.port);
+				throw error;
+			}
 		}
 		if (options.autoStart === false) {
 			throw new BridgeError("BROKER_UNAVAILABLE", `No broker is running on port ${options.port}.`);
