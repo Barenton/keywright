@@ -4,23 +4,37 @@ What changed in each release of Keywright. The plugin and the adapter are releas
 
 ## [Unreleased]
 
-- **Documentation:** says plainly that what the agent reads goes to your AI app, which may send it to its model provider, describes exactly what the adapter's image screening removes, and says when a pairing code's 5 minutes start.
-- **Fixed, access per place:** each place's agent access is now kept in a setting of its own. Before, every Studio window rewrote one shared list, so a window writing for one place could bring back access another window had just turned off. Access turned on before this change is still honoured.
-- **Fixed, turning access off:** when Studio fails to save that access is off, the panel now says so, since access could otherwise come back on the next time the place opens. A setting that can't be read is no longer taken as saved.
-- **Fixed, reconnecting:** a request that arrived on a new connection while one from the old connection was still finishing could wait forever. It now runs as soon as the old one is done.
-- **Fixed, working copies:** a working copy a person moved out of Keywright's folder, for example among the Animation Editor's saved clips, is no longer listed or edited as a working copy.
-- **Fixed, replacing a clip:** a renamed keyframe in the source now counts as a change, as game scripts see keyframe names, so an old working copy can't be proposed to replace it unnoticed. Working copies opened before this version treat their source as changed.
-- **Fixed, setup:** the Claude Code command now adds Keywright for every project (`--scope user`), not just the folder it was run in. Paths in terminal commands are quoted for the shell, so characters such as `$` survive, and Windows paths keep single backslashes in PowerShell. Inside WSL, the entry for apps on Windows names this distribution (`wsl.exe -d <distro> --exec`), and is given for Codex too. The full path to Node is printed for apps that can't find `node`.
-- **Hardening, release:** `keywright.mjs` no longer looks for `ws`'s optional native modules, which Node would search for in folders above the release's.
-- **Fixed:** the bundler works when run from any folder.
-- **Fixed, pairing:** two handshakes begun with one code could both get a credential, and a handshake left from a replaced code could finish or count against the new one. A registered code now pairs exactly one Studio window.
-- **Fixed, rotate:** a broker still running on a port other than the one configured now is stopped too, so it can't go on accepting the old secret.
-- **Fixed, broker start:** when a broker Keywright starts finds its port taken, the adapter now reports the conflict, instead of waiting and then saying the broker didn't start.
-- **Hardening:** on macOS and Linux, Keywright's state folder and secret are closed to other users when found open, as after a restore, and state belonging to another user is refused.
-- **Fixed:** pre-release versions are ordered as semantic versioning says (beta.2 before beta.10) when deciding whether to replace a running broker.
-- **Documentation:** a shorter README with a quick start, and new pages: a guide to making animations, troubleshooting, testing, and CONTRIBUTING.md for building from source and releasing.
+## [0.3.0] - 2026-11-26
+
+**New**
+
+- **Setup by an agent:** `node keywright.mjs setup` installs the plugin, prints how to add Keywright to Claude Code, Codex, Claude Desktop and other apps with the file's path filled in, and says what is left for the person. The README has a prompt to paste to an AI app that sets Keywright up this way. Inside WSL it also gives the `wsl.exe` entry, naming this distribution, that apps on Windows need.
 - **Clearer refusal of an R6 rig:** it is told only that its rig type is not supported, not also each of the fifteen R15 joints it lacks.
-- **Setup by an agent:** `node keywright.mjs setup` installs the plugin and prints how to add Keywright to Claude Code, Codex, Claude Desktop and other apps, with the file's path filled in (and, inside WSL, the `wsl.exe` entry for apps on Windows), then what is left for the person. The README has a prompt to paste to an AI app that sets Keywright up this way.
+
+**Fixed**
+
+- **Access per place:** each place's agent access is now kept in a setting of its own. Before, every Studio window rewrote one shared list, so a window writing for one place could bring back access another window had just turned off. Access turned on before this version is still honoured.
+- **Turning access off:** when Studio fails to save that access is off, the panel now says so, since access could otherwise come back on the next time the place opens. A setting that can't be read is no longer taken as saved.
+- **Reconnecting:** a request that arrived on a new connection while one from the old connection was still finishing could wait forever. It now runs as soon as the old one is done.
+- **Pairing:** two handshakes begun with one code could both get a credential, and a handshake left from a replaced code could finish or count against the new one. A registered code now pairs exactly one Studio window.
+- **Rotate:** a broker still running on a port other than the one configured is now stopped too, so it can't go on accepting the old secret.
+- **Broker start:** when a broker Keywright starts finds its port taken, the adapter reports the conflict, instead of waiting and then saying the broker didn't start.
+- **Working copies:** a working copy a person moved out of Keywright's folder, for example among the Animation Editor's saved clips, is no longer listed or edited as a working copy.
+- **Replacing a clip:** a renamed keyframe in the source now counts as a change, as game scripts see keyframe names. Working copies opened before this version treat their source as changed.
+- **Setup's commands:** the Claude Code command adds Keywright for every project (`--scope user`), not just the folder it was run in. Paths in terminal commands are quoted for the shell, so characters such as `$` survive, and Windows paths keep single backslashes in PowerShell. The full path to Node is printed for apps that can't find `node`.
+- **Versions:** pre-release versions are ordered as semantic versioning says (beta.2 before beta.10) when deciding whether to replace a running broker.
+- **Building:** the bundler works when run from any folder.
+
+**Hardening**
+
+- `keywright.mjs` no longer looks for `ws`'s optional native modules, which Node would search for in folders above the release's.
+- On macOS and Linux, Keywright's state folder and secret are closed to other users when found open, as after a restore, and state belonging to another user is refused.
+
+**Documentation**
+
+- A shorter README with a quick start, and new pages: a guide to making animations, troubleshooting, testing, and CONTRIBUTING.md for building from source and releasing.
+- The docs say plainly that what the agent reads goes to your AI app, which may send it to its model provider, describe exactly what the adapter's image screening removes, and say when a pairing code's 5 minutes start.
+- WSL with mirrored networking, and the beta demonstration in Claude Desktop and Codex, are recorded as tested, with new measurements taken with 0.2.0.
 
 ## [0.2.0] - 2026-11-26
 
@@ -54,7 +68,8 @@ The first numbered release.
 - **Setup:** `npm run install:plugin` installs the plugin into Studio. The panel and `node dist/src/cli.js version` show the version, and the agent is told when the plugin and the adapter don't match.
 - **Panel:** fits whatever size it is docked or floated at, follows Studio's theme, and shows the pairing command ready to copy.
 
-[Unreleased]: https://github.com/Barenton/keywright/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Barenton/keywright/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Barenton/keywright/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Barenton/keywright/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/Barenton/keywright/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/Barenton/keywright/compare/v0.1.0...v0.1.1
