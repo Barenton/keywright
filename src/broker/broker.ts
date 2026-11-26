@@ -41,6 +41,7 @@ import {
 	writeBrokerState,
 	type CredentialStore,
 } from "./state.js";
+import { VERSION } from "../version.js";
 
 const LOG_LIMIT_BYTES = 1024 * 1024;
 
@@ -52,6 +53,8 @@ export interface BrokerOptions {
 	onIdle?: () => void;
 	/** Called when an adapter asks the broker to stop. Default: the broker stops itself. */
 	onShutdown?: () => void;
+	/** The release this broker says it belongs to. Default: this one. Tests give others. */
+	version?: string;
 }
 
 interface Peer {
@@ -129,6 +132,7 @@ export class Broker {
 			port: this.options.port,
 			pid: process.pid,
 			protocol: PROTOCOL_VERSION,
+			version: this.options.version ?? VERSION,
 			startedAt: new Date().toISOString(),
 		});
 		this.log(`listening on 127.0.0.1:${this.options.port} pid=${process.pid}`);
@@ -371,6 +375,7 @@ export class Broker {
 				pid: process.pid,
 				port: this.options.port,
 				protocol: PROTOCOL_VERSION,
+				version: this.options.version ?? VERSION,
 				adapters,
 				sessions: this.sessions.size,
 			};

@@ -152,9 +152,9 @@ npm install
 npm run install:plugin   # rebuilds the adapter and the plugin, and installs the plugin
 ```
 
-Then reconnect Keywright in your AI app, for example with `/mcp` in Claude Code, so that it starts the new adapter.
+Then reconnect Keywright in your AI app, for example with `/mcp` in Claude Code, so that it starts the new adapter. The old broker is replaced automatically the next time the adapter needs it.
 
-The plugin and the adapter are released together and share one version number. The panel shows the plugin's version at the bottom, and `node dist/src/cli.js version` prints the adapter's. What changed in each version is in [CHANGELOG.md](CHANGELOG.md).
+The plugin and the adapter are released together and share one version number. The panel shows the plugin's version at the bottom, and `node dist/src/cli.js version` prints the adapter's. If they differ, the agent is told to ask you to update the older one. What changed in each version is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Troubleshooting
 
@@ -162,6 +162,7 @@ The plugin and the adapter are released together and share one version number. T
 |---|---|
 | Edits or saves fail while the Animation Editor is open | Close the Animation Editor. While it is open, Studio doesn't let plugins record undo steps, so Keywright refuses to make changes you couldn't undo. |
 | The agent can't find a Studio session | Check that the Keywright panel says **Connected to the broker.** If you just reinstalled the plugin, reconnect the MCP server in your AI app. |
+| The panel says the plugin or the adapter is older | Update the one it names, as in [Updating](#updating). The panel reconnects on its own once they match. |
 | The panel says **Pairing is needed again** | Turn agent access off and on to get a new code, then run `node dist/src/cli.js pair <code>` again. |
 | The pairing code stopped working | Codes last 5 minutes and work once. Turn agent access off and on for a fresh one. |
 | The panel says **Another program is using the broker port**, or the agent gets `BROKER_PORT_CONFLICT` | Another program is using port 47318, which Keywright needs. Close that program, then turn agent access off and on. |

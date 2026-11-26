@@ -38,7 +38,7 @@ async function expectConflict(home: string, port: number): Promise<void> {
 		assert.ok(error instanceof BridgeError, String(error));
 		assert.equal(error.code, "BROKER_PORT_CONFLICT");
 		assert.match(error.message, new RegExp(String(port)));
-		assert.ok(error.hint?.includes("KEYWRIGHT_PORT"));
+		assert.ok(error.hint?.includes("Close that program"));
 		// Nothing of ours may have started behind the foreign listener.
 		assert.equal(readBrokerState(home), undefined);
 		return;

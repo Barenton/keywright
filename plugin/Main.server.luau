@@ -208,6 +208,12 @@ local function start()
 					then "Waiting for the pairing code to be registered."
 					else "Not paired with the broker.")
 				elseif state == "foreign" then "Another program is using the broker port. Nothing was sent to it."
+				elseif
+					state == "denied" and detail == "plugin_older"
+				then 'This plugin is older than the Keywright adapter, and the two cannot work together. Update the plugin: run "npm run install:plugin" in the keywright folder.'
+				elseif
+					state == "denied" and detail == "adapter_older"
+				then "The Keywright adapter is older than this plugin, and the two cannot work together. Update the adapter (git pull, npm install, npm run build in the keywright folder), then reconnect it in your AI app."
 				elseif state == "denied" then `The broker refused the connection ({detail or "unknown"}).`
 				elseif state == "stopped" then "Agent access is off."
 				else "Broker not reachable. Retrying..."

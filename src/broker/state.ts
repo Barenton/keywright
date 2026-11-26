@@ -8,6 +8,8 @@ export interface BrokerState {
 	port: number;
 	pid: number;
 	protocol: number;
+	/** The release the broker belongs to; empty for one from before releases had numbers. */
+	version: string;
 	startedAt: string;
 }
 
@@ -97,6 +99,7 @@ export function readBrokerState(dir: string): BrokerState | undefined {
 				port: parsed.port,
 				pid: parsed.pid,
 				protocol: typeof parsed.protocol === "number" ? parsed.protocol : 0,
+				version: typeof parsed.version === "string" ? parsed.version : "",
 				startedAt: typeof parsed.startedAt === "string" ? parsed.startedAt : "",
 			};
 		}

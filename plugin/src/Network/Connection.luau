@@ -75,6 +75,9 @@ local HANDSHAKE_TIMEOUT = 5
 local BACKOFF = { 0.5, 1, 2, 4, 5 }
 local FOREIGN_RETRY = 30
 local PAIRING_RETRY = 2
+-- After a broker of another release refused the connection: long enough apart to cost
+-- nothing, soon enough to connect once the older half has been updated.
+local VERSION_RETRY = 10
 
 function Connection.start(config: Config)
 	local platform = Connection.platform or studio()
@@ -267,6 +270,13 @@ function Connection.start(config: Config)
 						-- one yet. Keep it and ask again; with nothing pending, asking cannot
 						-- count as a failed attempt against any code.
 						return fail("unpaired", "waiting for the pairing code to be registered", PAIRING_RETRY)
+					elseif code == "version" then
+						-- The broker says which protocol it speaks, so which half is older.
+						local theirs = tonumber(message.v)
+						local older = if theirs and theirs > Auth.PROTOCOL_VERSION
+							then "plugin_older"
+							else "adapter_older"
+						return fail("denied", older, VERSION_RETRY)
 					end
 					return fail("denied", code)
 				end

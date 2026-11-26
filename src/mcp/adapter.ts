@@ -4,7 +4,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import type { BrokerClient } from "../broker/client.js";
 import { IMAGE_METHOD, screenResult, scrub } from "../render/image.js";
-import { ensureBroker } from "../broker/launcher.js";
+import { compareVersions, ensureBroker } from "../broker/launcher.js";
 import { BridgeError, type SessionInfo } from "../broker/protocol.js";
 import { MAX_TILE, MAX_VIEWS, MIN_TILE, renderResult, VIEWS } from "../render/render.js";
 
@@ -102,6 +102,23 @@ export interface AdapterOptions {
 	port: number;
 }
 
+/**
+ * What to tell the agent when a Studio window's plugin is not the adapter's release. A
+ * test build's suffix (0.1.0+fault) is not a different release.
+ */
+export function versionCheck(session: SessionInfo): { update_needed?: string } {
+	const plugin = session.pluginVersion.split("+")[0] ?? "";
+	if (plugin === VERSION) return {};
+	const older = compareVersions(plugin, VERSION) < 0 ? "plugin" : "adapter";
+	const how =
+		older === "plugin"
+			? "Ask the person to update the plugin: npm run install:plugin in the keywright folder."
+			: "Ask the person to update the adapter (git pull, npm install, npm run build in the keywright folder) and then reconnect it.";
+	return {
+		update_needed: `This Studio window's Keywright plugin is ${session.pluginVersion || "unnumbered"} and the adapter is ${VERSION}; the ${older} is older. Tools may fail or behave differently until they match. ${how}`,
+	};
+}
+
 export function createAdapter(options: AdapterOptions): McpServer {
 	const server = new McpServer({ name: "keywright", version: ADAPTER_VERSION });
 	let client: BrokerClient | undefined;
@@ -124,7 +141,7 @@ export function createAdapter(options: AdapterOptions): McpServer {
 		"get_workspace",
 		{
 			description:
-				"List connected Roblox Studio sessions with their rigs, working copies and revisions, the current selection, and whether screenshots are available.",
+				"List connected Roblox Studio sessions with their rigs, working copies and revisions, the current selection, and whether screenshots are available. A session whose plugin is a different version from this adapter carries update_needed, saying what to ask the person to update.",
 			inputSchema: {},
 			annotations: { readOnlyHint: true },
 		},
@@ -136,13 +153,13 @@ export function createAdapter(options: AdapterOptions): McpServer {
 					sessions.map(async (session) => {
 						try {
 							const answer = await connection.request("get_workspace", {}, session.id);
-							return { session, ...(screenResult("get_workspace", {}, answer).payload as object) };
+							return { session, ...versionCheck(session), ...(screenResult("get_workspace", {}, answer).payload as object) };
 						} catch (error) {
-							return { session, error: error instanceof BridgeError ? error.toWire() : String(error) };
+							return { session, ...versionCheck(session), error: error instanceof BridgeError ? error.toWire() : String(error) };
 						}
 					}),
 				);
-				return ok("get_workspace", {}, { sessions: workspaces });
+				return ok("get_workspace", {}, { adapter_version: VERSION, sessions: workspaces });
 			} catch (error) {
 				return fail(error);
 			}

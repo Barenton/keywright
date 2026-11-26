@@ -7,6 +7,8 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { Broker } from "../../src/broker/broker.js";
 import { connectAdapter } from "../../src/broker/client.js";
 import { loadOrCreateSecret } from "../../src/broker/state.js";
+import { versionCheck } from "../../src/mcp/adapter.js";
+import { VERSION } from "../../src/version.js";
 import { CLI_PATH, FakePlugin, freePort, PluginError, tempHome } from "../helpers.js";
 
 const SESSION = "d".repeat(16);
@@ -218,6 +220,9 @@ describe("MCP adapter over stdio", () => {
 		assert.equal(json.sessions.length, 1);
 		assert.equal(json.sessions[0].session.id, SESSION);
 		assert.equal(json.sessions[0].rigs[0].rig_id, "rig_1");
+		assert.equal(json.adapter_version, VERSION);
+		// The stand-in plugin reports a version that is not this release's.
+		assert.match(json.sessions[0].update_needed, /plugin is test and the adapter is/);
 	});
 
 	test("studio_session routes the call and is not forwarded as a parameter", async () => {
@@ -431,4 +436,13 @@ describe("MCP adapter over stdio", () => {
 		assert.equal(isError, true);
 		assert.equal(json.error.code, "SESSION_NOT_FOUND");
 	});
+});
+
+test("a plugin of another release is pointed out, with which side to update", () => {
+	const session = (pluginVersion: string) => ({ id: "0123456789abcdef", placeName: "Place", placeId: 0, pluginVersion });
+	assert.deepEqual(versionCheck(session(VERSION)), {});
+	assert.deepEqual(versionCheck(session(`${VERSION}+fault`)), {}, "a test build of this release is this release");
+	assert.match(versionCheck(session("0.0.1")).update_needed ?? "", /the plugin is older.*install:plugin/);
+	assert.match(versionCheck(session("999.0.0")).update_needed ?? "", /the adapter is older.*git pull/);
+	assert.match(versionCheck(session("")).update_needed ?? "", /plugin is unnumbered.*the plugin is older/);
 });

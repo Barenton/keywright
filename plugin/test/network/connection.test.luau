@@ -247,6 +247,18 @@ case("a broker that no longer knows the credential leads to pairing again", func
 	)
 end)
 
+case("a broker of another release says which half is older, and is asked again later", function()
+	for theirs, older in { [99] = "plugin_older", [0] = "adapter_older" } do
+		local world = start({ credential = CREDENTIAL })
+		world.socket.Opened.fire()
+		world.receive({ t = "denied", code = "version", v = theirs })
+		check(`protocol {theirs}: {older}`, world.state() == "denied" and world.detail == older, world.detail)
+		check(`protocol {theirs}: the credential is kept`, #world.credentials == 0)
+		local again = world.timers[#world.timers]
+		check(`protocol {theirs}: it asks again later`, again and again.seconds == 10)
+	end
+end)
+
 case("pairing waits for the code to be registered, then stores a derived credential", function()
 	local world = start({ pairingCode = "ABCD2345EF" })
 	world.socket.Opened.fire()

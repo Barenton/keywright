@@ -3,10 +3,9 @@ import { join } from "node:path";
 import { runAdapter } from "./mcp/adapter.js";
 import { isValidPairingCode } from "./broker/auth.js";
 import { Broker } from "./broker/broker.js";
-import { BrokerAbsentError, connectAdapter, ForeignListenerError } from "./broker/client.js";
-import { ensureBroker } from "./broker/launcher.js";
+import { ensureBroker, stopBroker } from "./broker/launcher.js";
 import { BridgeError } from "./broker/protocol.js";
-import { configuredPort, loadOrCreateSecret, rotateSecret, stateDir } from "./broker/state.js";
+import { configuredPort, rotateSecret, stateDir } from "./broker/state.js";
 import { builtPlugin, installPlugin, robloxFolder, thisMachine } from "./install.js";
 import { VERSION } from "./version.js";
 
@@ -65,40 +64,9 @@ async function runBroker(): Promise<number> {
 async function rotate(): Promise<number> {
 	const home = stateDir();
 	const port = configuredPort();
-	const absent = async (): Promise<boolean> => {
-		try {
-			(await connectAdapter(port, loadOrCreateSecret(home))).close();
-			return false;
-		} catch (error) {
-			if (error instanceof BrokerAbsentError) return true;
-			if (error instanceof ForeignListenerError) throw error;
-			// A broker caught in the middle of stopping: not gone yet, look again.
-			return false;
-		}
-	};
-	try {
-		const client = await connectAdapter(port, loadOrCreateSecret(home));
-		try {
-			await client.request("broker.shutdown");
-		} catch (error) {
-			// A broker started by an older version does not know how to be asked. It has
-			// proved it holds this user's secret, so it is ours: stop it by its process id.
-			if (!(error instanceof BridgeError) || error.code !== "INVALID_ARGUMENT") throw error;
-			const { pid } = (await client.request("broker.status")) as { pid: number };
-			process.kill(pid, "SIGTERM");
-		}
-		client.close();
-	} catch (error) {
-		// No broker running is fine. Anything else on the port is not ours to stop.
-		if (!(error instanceof BrokerAbsentError)) throw error;
-	}
-	const deadline = Date.now() + 5000;
-	while (!(await absent())) {
-		if (Date.now() > deadline) {
-			process.stderr.write("The broker did not stop, so the secret was left as it is.\n");
-			return 1;
-		}
-		await new Promise((resolve) => setTimeout(resolve, 100));
+	if (!(await stopBroker(home, port))) {
+		process.stderr.write("The broker did not stop, so the secret was left as it is.\n");
+		return 1;
 	}
 	rotateSecret(home);
 	process.stdout.write("The secret was replaced. Every Studio window must pair again: turn agent access off and on in the Keywright panel to get a new code.\n");
