@@ -53,13 +53,20 @@ function Workspace.install(methods: { [string]: (params: any) -> any }, kit: Sha
 			})
 		end
 		local captureAvailable, captureReason = Capture.available()
+		-- Also counts the working copies whose rig has gone, deleted or taken out of the
+		-- place, as it would after a reload; they are left out of the list below. If the
+		-- rig comes back, for example by an undo, so does the copy.
 		local unassigned = restore()
-		-- A working copy says so when a replacement of its source has been proposed.
-		local copies = Clips.list()
-		for _, copy in copies do
-			local proposal = Proposals.get(copy.clip_id)
-			if proposal then
-				copy.replacement = { status = proposal.status, revision = proposal.revision }
+		local copies = {}
+		for _, copy in Clips.list() do
+			local model = registry.models[copy.rig_id]
+			if model and model.Parent ~= nil then
+				-- A working copy says so when a replacement of its source has been proposed.
+				local proposal = Proposals.get(copy.clip_id)
+				if proposal then
+					copy.replacement = { status = proposal.status, revision = proposal.revision }
+				end
+				table.insert(copies, copy)
 			end
 		end
 		return {
@@ -67,7 +74,7 @@ function Workspace.install(methods: { [string]: (params: any) -> any }, kit: Sha
 			rigs = rigs,
 			selection = selection,
 			working_copies = copies,
-			-- Working copies in the place whose rig can no longer be told.
+			-- Working copies in the place whose rig is gone or can no longer be told.
 			unassigned_working_copies = if unassigned > 0 then unassigned else nil,
 			capture = { available = captureAvailable, reason = captureReason },
 		}

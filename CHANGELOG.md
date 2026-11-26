@@ -6,6 +6,7 @@ What changed in each release of Keywright. The plugin and the adapter are releas
 
 - **Documentation:** a tool reference written from the tools themselves, and pages on errors and findings, security, limitations, and measured performance, in `docs/`.
 - **Tool descriptions:** every argument and operation field now says what it is for.
+- **Fixed:** a working copy whose rig was deleted stayed listed until the plugin reloaded. It is now counted with the working copies whose rig is gone, and listed again if the rig comes back.
 - **Fixed:** the advice to close the Animation Editor before the agent works. Checked in Studio on 2026-11-26: edits, previews and saves all work with the editor open, with a clip loaded in it and with it playing, and during Play and Run. When Studio does refuse an undo step, the message now says to finish what is in progress in Studio.
 
 ## [0.1.1] - 2026-11-26

@@ -11,6 +11,9 @@
 --                      plugin unloads and cancels it.
 --   "Fault stall raw"  as above, but the plugin does not cancel it on unload either, to
 --                      show what Studio does with a recording nobody finishes.
+--   "Fault invalid"    keyframe clips only: the batch finishes, but with a second keyframe
+--                      at the time of the first, a structural error no operation can make,
+--                      so that a save can be seen to be refused.
 --
 -- Edits to a working copy with any other name behave as usual.
 --
@@ -23,13 +26,14 @@ local Fault = {}
 Fault.FAIL = "Fault fail"
 Fault.STALL = "Fault stall"
 Fault.STALL_RAW = "Fault stall raw"
+Fault.INVALID = "Fault invalid"
 Fault.SETTINGS = "Fault settings"
 
 -- `stall` suspends the calling thread for good; a test passes its own.
 function Fault.install(Edit: any, Recording: any, stall: (() -> ())?)
 	local suspend: () -> () = stall or coroutine.yield
 	Edit.fault = function(working: any, index: number)
-		if index < 2 then
+		if index ~= 2 then
 			return
 		end
 		local name = working.instance.Name
@@ -42,6 +46,13 @@ function Fault.install(Edit: any, Recording: any, stall: (() -> ())?)
 				return false
 			end
 			suspend()
+		elseif name == Fault.INVALID then
+			for _, child in working.instance:GetChildren() do
+				if child:IsA("Keyframe") then
+					child:Clone().Parent = working.instance
+					break
+				end
+			end
 		end
 	end
 end

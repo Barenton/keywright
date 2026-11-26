@@ -7,6 +7,7 @@
 -- recording is cancelled, and what it does with a recording that is never finished.
 
 local process = require("@lune/process")
+local roblox = require("@lune/roblox") :: any
 
 local Fault = require("../../fault/Fault")
 local Recording = require("../../src/Editing/Recording")
@@ -190,6 +191,37 @@ case("the raw stall stops the plugin cancelling on unload", function()
 	check("unload cancels nothing", Recording.abandon() == false)
 	check("the recording stays open", state.open == id)
 	Recording.abandon = abandon
+end)
+
+case("the test build gives a keyframe clip a structural error after its first operation", function()
+	local state = history()
+	local edit = installed()
+	local sequence = roblox.Instance.new("KeyframeSequence")
+	sequence.Name = Fault.INVALID
+	for _, time in { 0, 0.5 } do
+		local keyframe = roblox.Instance.new("Keyframe")
+		keyframe.Time = time
+		keyframe.Parent = sequence
+	end
+	local id = Recording.begin("Name", "Display")
+	local ok = pcall(function()
+		for index = 1, 3 do
+			edit.fault({ instance = sequence }, index)
+		end
+	end)
+	Recording.finish(id, ok)
+	check("the batch finishes", ok and #state.committed == 1)
+	local times: { [number]: number } = {}
+	for _, child in sequence:GetChildren() do
+		times[child.Time] = (times[child.Time] or 0) + 1
+	end
+	check("with one more keyframe, at the time of one already there", #sequence:GetChildren() == 3 and times[0] == 2)
+	local curves = roblox.Instance.new("CurveAnimation")
+	curves.Name = Fault.INVALID
+	for index = 1, 3 do
+		edit.fault({ instance = curves }, index)
+	end
+	check("a curve clip is left alone", #curves:GetChildren() == 0)
 end)
 
 print(`{count - failures} of {count} checks passed`)
