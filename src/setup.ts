@@ -4,10 +4,20 @@
 
 import type { Installed } from "./install.js";
 
+/** How an AI app starts Keywright: node with this copy's file, or npx with the package's name. */
+export interface Launch {
+	command: string;
+	args: string[];
+	/** The full path of the command, for wsl.exe and for apps that cannot find it on their own. */
+	fullPath: string;
+}
+
 export interface SetupFacts {
 	version: string;
 	/** The file the AI app is to run with node: keywright.mjs, or dist/src/cli.js. */
 	entry: string;
+	/** Set when run through npx: the app then starts Keywright the same way, not by a path in npm's cache. */
+	launch?: Launch;
 	installed: Installed;
 	/** True inside WSL, where an AI app on the Windows side starts this file through wsl.exe. */
 	wsl: boolean;
@@ -30,9 +40,12 @@ export function shellArgument(value: string, platform: NodeJS.Platform): string 
 }
 
 export function setupGuide(facts: SetupFacts): string {
-	const { version, entry, installed } = facts;
+	const { version, installed } = facts;
+	const launch: Launch = facts.launch ?? { command: "node", args: [facts.entry], fullPath: facts.node };
 	const shell = (value: string) => shellArgument(value, facts.platform);
-	const wslArgs = [...(facts.distro ? ["-d", facts.distro] : []), "--exec", facts.node, entry];
+	const line = [launch.command, ...launch.args].map((part, index) => (index === 0 ? part : shell(part))).join(" ");
+	const args = launch.args.map(quoted).join(", ");
+	const wslArgs = [...(facts.distro ? ["-d", facts.distro] : []), "--exec", launch.fullPath, ...launch.args];
 	const lines = [
 		`Keywright v${version} is set up.`,
 		"",
@@ -45,25 +58,25 @@ export function setupGuide(facts: SetupFacts): string {
 		"   Studio loads it on its own. If the Keywright button does not appear on the Plugins tab, restart Studio.",
 		"",
 		"2. Add Keywright to the AI app. The app starts it with:",
-		`   node ${shell(entry)}`,
+		`   ${line}`,
 		"",
 		"   Claude Code, in a terminal (for every project):",
-		`     claude mcp add --scope user keywright -- node ${shell(entry)}`,
+		`     claude mcp add --scope user keywright -- ${line}`,
 		"",
 		"   Codex, in ~/.codex/config.toml:",
 		"     [mcp_servers.keywright]",
-		'     command = "node"',
-		`     args = [${quoted(entry)}]`,
+		`     command = ${quoted(launch.command)}`,
+		`     args = [${args}]`,
 		"",
 		"   Claude Desktop, Cursor and most other apps, in their MCP settings (JSON):",
-		`     { "mcpServers": { "keywright": { "command": "node", "args": [${quoted(entry)}] } } }`,
+		`     { "mcpServers": { "keywright": { "command": ${quoted(launch.command)}, "args": [${args}] } } }`,
 		"",
-		`   If an app cannot find node, use its full path in place of "node": ${facts.node}`,
+		`   If an app cannot find ${launch.command}, use its full path in place of "${launch.command}": ${launch.fullPath}`,
 		...(facts.wsl
 			? [
 					"",
 					"   This copy is inside WSL. An app that runs on Windows starts it through wsl.exe, in this",
-					`   distribution${facts.distro ? ` (${facts.distro})` : ""}, with the full path to node inside WSL:`,
+					`   distribution${facts.distro ? ` (${facts.distro})` : ""}, with the full path to ${launch.command} inside WSL:`,
 					`     { "mcpServers": { "keywright": { "command": "wsl.exe", "args": [${wslArgs.map(quoted).join(", ")}] } } }`,
 					"   or, for Codex on Windows, in its config.toml:",
 					"     [mcp_servers.keywright]",
@@ -78,7 +91,7 @@ export function setupGuide(facts: SetupFacts): string {
 		"      Turn on agent access. Access is off until a person turns it on, separately for each place.",
 		"   c. The first time only, the panel shows a pairing code that works once within 5 minutes.",
 		'      Tell the AI app "Pair Keywright with code <the code>", or run:',
-		`      node ${shell(entry)} pair <the code>`,
+		`      ${line} pair <the code>`,
 		"",
 		"Then ask for an animation, for example: make a 1-second looping walk cycle for the rig in my place.",
 	];

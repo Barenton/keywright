@@ -3,6 +3,10 @@
 // it go the built plugin, Keywright.rbxm (which the bundle's install-plugin looks for in
 // its own folder), and THIRD_PARTY_LICENSES.txt, the licences of the packages bundled.
 //
+// The folder is also the npm package: a package.json of its own, with no dependencies,
+// since everything is in the bundle, and the README and LICENSE. `npm publish build/release`
+// publishes it, and `npx -y keywright` then runs it.
+//
 // Usage: npm run build:release        (builds the plugin first)
 //        node scripts/bundle.mjs [--out <folder>] [--no-plugin]
 
@@ -68,6 +72,25 @@ export async function bundle({ out = join(ROOT, "build", "release"), plugin = tr
 		join(out, "THIRD_PARTY_LICENSES.txt"),
 		`keywright.mjs ${version} contains the following packages, under their own licences.\n\n${notices.join("\n")}`,
 	);
+
+	const project = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
+	const manifest = {
+		name: "keywright",
+		version,
+		description: "Let an AI agent animate your Roblox rigs: an MCP server and Roblox Studio plugin.",
+		keywords: ["roblox", "roblox-studio", "animation", "mcp", "model-context-protocol"],
+		license: project.license,
+		homepage: "https://github.com/Barenton/keywright#readme",
+		bugs: "https://github.com/Barenton/keywright/issues",
+		repository: { type: "git", url: "git+https://github.com/Barenton/keywright.git" },
+		type: "module",
+		bin: { keywright: "keywright.mjs" },
+		engines: project.engines,
+		files: ["keywright.mjs", "Keywright.rbxm", "THIRD_PARTY_LICENSES.txt"],
+	};
+	writeFileSync(join(out, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+	copyFileSync(join(ROOT, "README.md"), join(out, "README.md"));
+	copyFileSync(join(ROOT, "LICENSE"), join(out, "LICENSE"));
 
 	if (plugin) {
 		const built = join(ROOT, "build", "Keywright.rbxm");

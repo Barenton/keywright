@@ -60,3 +60,22 @@ test("the guide mentions other copies Studio would also load", () => {
 	const guide = setupGuide({ ...facts, installed: { path: "x", others: ["Keywright (old).rbxm"] } });
 	assert.match(guide, /also has Keywright \(old\)\.rbxm/);
 });
+
+test("run through npx, the guide tells apps to start Keywright with npx, not by a path in npm's cache", () => {
+	const guide = setupGuide({
+		...facts,
+		platform: "linux",
+		entry: "/home/me/.npm/_npx/abc/node_modules/keywright/keywright.mjs",
+		launch: { command: "npx", args: ["-y", "keywright"], fullPath: "/usr/bin/npx" },
+		wsl: true,
+		distro: "Ubuntu",
+	});
+	assert.ok(guide.includes("claude mcp add --scope user keywright -- npx -y keywright"));
+	const json = guide.split("\n").find((line) => line.includes('"mcpServers"') && !line.includes("wsl.exe"));
+	assert.deepEqual(JSON.parse(json ?? ""), { mcpServers: { keywright: { command: "npx", args: ["-y", "keywright"] } } });
+	assert.ok(guide.includes('command = "npx"'));
+	assert.ok(guide.includes("npx -y keywright pair <the code>"));
+	assert.equal(guide.includes("_npx"), false, "no path into npm's cache");
+	const wsl = guide.split("\n").find((line) => line.includes('"wsl.exe"'));
+	assert.deepEqual(JSON.parse(wsl ?? "").mcpServers.keywright.args, ["-d", "Ubuntu", "--exec", "/usr/bin/npx", "-y", "keywright"]);
+});

@@ -51,7 +51,7 @@ npm run test:luau         # run every plugin/test/**/*.test.luau with Lune
 npm run format:check      # check Luau formatting with StyLua
 npm run build:plugin      # build/Keywright.rbxm
 npm run install:plugin    # build both, then install the plugin into Studio
-npm run build:release     # build/release/: keywright.mjs, Keywright.rbxm and the bundled licences
+npm run build:release     # build/release/: the npm package (keywright.mjs, Keywright.rbxm, licences, package.json)
 npm run build:fault       # build/KeywrightFault.rbxm, the fault test build
 npm run docs:tools        # write docs/tools.md from the adapter's tools
 npm run measure -- --place-id <id>   # measure against a connected Studio session
@@ -84,6 +84,7 @@ The plugin and the adapter share one version number, kept in `package.json`. `sc
 
 1. In `CHANGELOG.md`, rename `## [Unreleased]` to `## [0.3.0] - <today's date>`, start a new empty `## [Unreleased]` above it, and update the links at the bottom. Commit that.
 2. Run `npm version 0.3.0 -m "Release %s"`. This sets the version in `package.json` and the plugin, then commits and tags `v0.3.0`.
-3. Run `git push --follow-tags`.
+3. Publish the npm package from the release build: `npm run build:release`, then `npm publish build/release`. Do this before pushing, so the README's `npx -y keywright` works from the moment it's public.
+4. Run `git push --follow-tags`.
 
 Pushing the tag starts the release workflow (`.github/workflows/release.yml`). It checks that the tag matches `package.json`, runs every test, builds the plugin and the single-file adapter, and publishes a GitHub release titled with the tag, with `keywright.mjs`, `Keywright.rbxm` and `THIRD_PARTY_LICENSES.txt` attached and that version's changelog section as its notes. The CI workflow runs the same tests on every push to `main` and every pull request.

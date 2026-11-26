@@ -58,10 +58,10 @@ function Panel.describe(state: string, detail: string?): (string, Tone)
 	elseif state == "foreign" then
 		return "Another program is using the broker port. Nothing was sent to it.", "problem"
 	elseif state == "denied" and detail == "plugin_older" then
-		return 'This plugin is older than the Keywright adapter, and the two cannot work together. Update the plugin: with the latest release, run "node keywright.mjs install-plugin" (in a source checkout, "npm run install:plugin").',
+		return 'This plugin is older than the Keywright adapter, and the two cannot work together. Update the plugin: run "npx -y keywright@latest install-plugin", or with the files from the latest release, "node keywright.mjs install-plugin" (in a source checkout, "npm run install:plugin").',
 			"problem"
 	elseif state == "denied" and detail == "adapter_older" then
-		return "The Keywright adapter is older than this plugin, and the two cannot work together. Update the adapter: download keywright.mjs from the latest release (in a source checkout, git pull, npm install and npm run build), then reconnect it in your AI app.",
+		return "The Keywright adapter is older than this plugin, and the two cannot work together. Update the adapter: reconnect it in your AI app if it runs through npx, or download keywright.mjs from the latest release (in a source checkout, git pull, npm install and npm run build), then reconnect it.",
 			"problem"
 	elseif state == "denied" then
 		return `The broker refused the connection ({detail or "unknown"}).`, "problem"
@@ -387,12 +387,12 @@ function Panel.new(widget: DockWidgetPluginGui): View
 	local pairingText = text(1, pairing)
 	local code = copyable(2, 20)
 	local orText = text(3, pairing)
-	say(orText, "Or run this in a terminal, in the folder with keywright.mjs:")
+	say(orText, "Or run this in a terminal:")
 	local command = copyable(4, 14)
 	local copyHint = text(5, pairing, SMALL_TEXT_SIZE)
 	say(
 		copyHint,
-		"Click a box to select it, then copy it with Ctrl+C (Cmd+C on a Mac). In a source checkout, the command is node dist/src/cli.js pair with the same code."
+		"Click a box to select it, then copy it with Ctrl+C (Cmd+C on a Mac). With the downloaded files, run node keywright.mjs pair with the same code, in their folder; in a source checkout, node dist/src/cli.js pair."
 	)
 	painted(function()
 		copyHint.TextColor3 = color(Enum.StudioStyleGuideColor.DimmedText)
@@ -442,7 +442,7 @@ function Panel.new(widget: DockWidgetPluginGui): View
 					else ""
 			)
 			code.Text = given or ""
-			command.Text = if given then `node keywright.mjs pair {given}` else ""
+			command.Text = if given then `npx -y keywright pair {given}` else ""
 		end,
 		setNote = function(words: string)
 			say(note, words)

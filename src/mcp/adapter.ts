@@ -11,6 +11,7 @@ import { MAX_TILE, MAX_VIEWS, MIN_TILE, renderResult, VIEWS } from "../render/re
 
 import { studioSession, clipId, time, joint } from "./schemas/common.js";
 import { operations } from "./schemas/operations.js";
+import { viaNpx } from "../layout.js";
 import { VERSION } from "../version.js";
 
 export const ADAPTER_VERSION = VERSION;
@@ -113,8 +114,12 @@ export function versionCheck(session: SessionInfo): { update_needed?: string } {
 	const older = compareVersions(plugin, VERSION) < 0 ? "plugin" : "adapter";
 	const how =
 		older === "plugin"
-			? "Ask the person to update the plugin: node keywright.mjs install-plugin with the latest release, or npm run install:plugin in a source checkout."
-			: "Ask the person to update the adapter: download keywright.mjs from the latest release (in a source checkout, git pull, npm install and npm run build), then reconnect it.";
+			? viaNpx()
+				? "Ask the person to update the plugin: npx -y keywright@latest install-plugin."
+				: "Ask the person to update the plugin: node keywright.mjs install-plugin with the latest release, or npm run install:plugin in a source checkout."
+			: viaNpx()
+				? "Ask the person to reconnect Keywright in their AI app, so that npx starts the latest; if it stays older, to run npx -y keywright@latest setup."
+				: "Ask the person to update the adapter: download keywright.mjs from the latest release (in a source checkout, git pull, npm install and npm run build), then reconnect it.";
 	return {
 		update_needed: `This Studio window's Keywright plugin is ${session.pluginVersion || "unnumbered"} and the adapter is ${VERSION}; the ${older} is older. Tools may fail or behave differently until they match. ${how}`,
 	};

@@ -4,6 +4,8 @@ What changed in each release of Keywright. The plugin and the adapter are releas
 
 ## [Unreleased]
 
+- **On npm:** Keywright is published as the `keywright` package, so `npx -y keywright setup` installs it with nothing to download by hand. Run through npx, `setup` tells AI apps to start it with `npx -y keywright`, and the advice messages give that form too. The README leads with it; the downloads from GitHub releases still work.
+
 - **Public beta:** the README now calls Keywright a public beta, from 0.3.0.
 
 ## [0.3.0] - 2026-11-26

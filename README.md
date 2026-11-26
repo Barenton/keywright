@@ -40,28 +40,26 @@ The AI app can run on Windows, or inside WSL while Studio runs on Windows.
 
 If your AI app can run commands, as Claude Code and Codex can, paste this to it:
 
-> Install Keywright for Roblox Studio. Download `keywright.mjs` and `Keywright.rbxm` from https://github.com/Barenton/keywright/releases/latest into a new folder (for example `~/keywright`), run `node keywright.mjs setup` there, add Keywright to yourself the way it says, and tell me what is left for me to do.
+> Install Keywright for Roblox Studio: run `npx -y keywright setup`, add Keywright to yourself the way it says, and tell me what is left for me to do.
 
 Then [turn on agent access and pair](#3-turn-on-agent-access-and-pair).
 
 ### Or install it yourself
 
-#### 1. Download and install the plugin
-
-Download [`keywright.mjs`](https://github.com/Barenton/keywright/releases/latest/download/keywright.mjs) and [`Keywright.rbxm`](https://github.com/Barenton/keywright/releases/latest/download/Keywright.rbxm) from the latest release into one folder, and keep them together. From that folder:
+#### 1. Install the plugin
 
 ```sh
-node keywright.mjs setup
+npx -y keywright setup
 ```
 
-This copies the plugin into Studio's plugins folder and prints the settings for your AI app, with the file's path filled in. Studio loads the plugin on its own; if the **Keywright** button doesn't appear on the Plugins tab, restart Studio.
+This copies the plugin into Studio's plugins folder and prints the settings for your AI app. Studio loads the plugin on its own; if the **Keywright** button doesn't appear on the Plugins tab, restart Studio.
 
 #### 2. Add Keywright to your AI app
 
 For Claude Code, available in every project:
 
 ```sh
-claude mcp add --scope user keywright -- node /full/path/to/keywright.mjs
+claude mcp add --scope user keywright -- npx -y keywright
 ```
 
 Most other apps take an entry like this in their MCP settings:
@@ -69,19 +67,26 @@ Most other apps take an entry like this in their MCP settings:
 ```json
 {
   "mcpServers": {
-    "keywright": { "command": "node", "args": ["/full/path/to/keywright.mjs"] }
+    "keywright": { "command": "npx", "args": ["-y", "keywright"] }
   }
 }
 ```
 
-`setup` also prints the entry for Codex, the full path to Node for apps that can't find it, and the `wsl.exe` form that apps on Windows need when Keywright is inside WSL. Restart the app, or reconnect its MCP servers, so it starts Keywright.
+`setup` also prints the entry for Codex, the full path to `npx` for apps that can't find it, and the `wsl.exe` form that apps on Windows need when Keywright runs inside WSL. Restart the app, or reconnect its MCP servers, so it starts Keywright.
 
 #### 3. Turn on agent access and pair
 
 1. In Studio, open a place, click **Keywright** on the Plugins tab, and click **Turn on agent access**. Access is off until you turn it on, separately for each place.
-2. **The first time only**, the panel shows a pairing code. It works once, within 5 minutes of being registered. Tell your AI app *"Pair Keywright with code ABCD234XYZ"* (using your code), or run `node keywright.mjs pair ABCD234XYZ`.
+2. **The first time only**, the panel shows a pairing code. It works once, within 5 minutes of being registered. Tell your AI app *"Pair Keywright with code ABCD234XYZ"* (using your code), or run `npx -y keywright pair ABCD234XYZ`.
 
 The panel then says **Connected to the broker**, and Studio remembers the pairing.
+
+<details>
+<summary>Without npm</summary>
+
+Download [`keywright.mjs`](https://github.com/Barenton/keywright/releases/latest/download/keywright.mjs) and [`Keywright.rbxm`](https://github.com/Barenton/keywright/releases/latest/download/Keywright.rbxm) from the latest release into one folder, keep them together, and run `node keywright.mjs setup` there. It prints the settings for your AI app with that file's path, and every command works the same with `node keywright.mjs` in place of `npx -y keywright`.
+
+</details>
 
 ### Make your first animation
 
@@ -91,13 +96,13 @@ Add an R15 rig to your place, for example from **Rig Builder** on the **Avatar**
 
 Open the saved clip in the Animation Editor to watch it. The [guide](docs/guide.md) has tips, and explains what the agent can do.
 
-To update later, download both files again and run `node keywright.mjs install-plugin`. To build from source instead, see [Contributing](CONTRIBUTING.md).
+To update later, run `npx -y keywright@latest install-plugin` and reconnect Keywright in your AI app. To build from source instead, see [Contributing](CONTRIBUTING.md).
 
 ## How it works
 
 ```
 AI app ──> adapter ──> broker <── Studio plugin
-           (keywright.mjs)        (inside Roblox Studio)
+           (npx keywright)        (inside Roblox Studio)
 ```
 
 - **The Studio plugin** does all the animation work. Your animations never leave Studio.

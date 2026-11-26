@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { runAdapter } from "./mcp/adapter.js";
 import { isValidPairingCode } from "./broker/auth.js";
 import { Broker } from "./broker/broker.js";
@@ -7,7 +7,7 @@ import { ensureBroker, PORT_TAKEN_EXIT, stopBroker } from "./broker/launcher.js"
 import { BridgeError } from "./broker/protocol.js";
 import { configuredPort, readBrokerState, rotateSecret, stateDir } from "./broker/state.js";
 import { builtPlugin, installPlugin, robloxFolder, thisMachine, type Installed } from "./install.js";
-import { cliPath, command as howToRun } from "./layout.js";
+import { cliPath, command as howToRun, viaNpx } from "./layout.js";
 import { setupGuide } from "./setup.js";
 import { VERSION } from "./version.js";
 
@@ -111,8 +111,11 @@ function setup(args: string[]): number {
 	const installed = installFrom("setup", args);
 	if (!installed) return 2;
 	const machine = thisMachine();
+	// Started through npx, the app is told to start it the same way. npx sits beside node.
+	const npx = join(dirname(process.execPath), process.platform === "win32" ? "npx.cmd" : "npx");
+	const launch = viaNpx() ? { command: "npx", args: ["-y", "keywright"], fullPath: npx } : undefined;
 	process.stdout.write(
-		setupGuide({ version: VERSION, entry: cliPath(), installed, wsl: machine.wsl, distro: machine.env.WSL_DISTRO_NAME, node: process.execPath, platform: process.platform }),
+		setupGuide({ version: VERSION, entry: cliPath(), launch, installed, wsl: machine.wsl, distro: machine.env.WSL_DISTRO_NAME, node: process.execPath, platform: process.platform }),
 	);
 	return 0;
 }

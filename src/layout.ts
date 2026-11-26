@@ -21,8 +21,17 @@ export function cliPath(): string {
 	return fileURLToPath(BUNDLED ? import.meta.url : new URL("./cli.js", import.meta.url));
 }
 
+/**
+ * True when started through npx (npm exec), from the npm package. Its files then sit in
+ * npm's cache, which can be cleared, so an AI app is told to start it with npx, not by path.
+ */
+export function viaNpx(env: NodeJS.ProcessEnv = process.env): boolean {
+	return BUNDLED && env.npm_command === "exec";
+}
+
 /** How a person runs Keywright from a terminal, for messages that tell them a command. */
 export function command(): string {
+	if (viaNpx()) return "npx -y keywright";
 	return BUNDLED ? "node keywright.mjs" : "node dist/src/cli.js";
 }
 

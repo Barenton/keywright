@@ -61,12 +61,10 @@ In a looping clip, an edit whose time range touches the end also changes the sta
 
 ## Updating
 
-Download `keywright.mjs` and `Keywright.rbxm` from the [latest release](https://github.com/Barenton/keywright/releases/latest) over the old ones, then, from that folder:
-
 ```sh
-node keywright.mjs install-plugin
+npx -y keywright@latest install-plugin
 ```
 
-Then reconnect Keywright in your AI app, for example with `/mcp` in Claude Code. The old broker is replaced the next time it's needed.
+Then reconnect Keywright in your AI app, for example with `/mcp` in Claude Code, so that it starts the new adapter. The old broker is replaced the next time it's needed. With the downloaded files instead, download `keywright.mjs` and `Keywright.rbxm` from the [latest release](https://github.com/Barenton/keywright/releases/latest) over the old ones, and run `node keywright.mjs install-plugin` in their folder.
 
-The plugin and the adapter share one version number. The panel shows the plugin's at the bottom, and `node keywright.mjs version` prints the adapter's. If they differ, the agent is told to ask you to update the older one.
+The plugin and the adapter share one version number. The panel shows the plugin's at the bottom, and `npx -y keywright version` prints the adapter's. If they differ, the agent is told to ask you to update the older one.
