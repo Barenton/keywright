@@ -56,9 +56,11 @@ jobs:
       - name: Publish the npm package
         # Last, so that the GitHub release is out whatever npm says. Off until trusted
         # publishing is set up for this repository on npmjs.com and the repository variable
-        # NPM_PUBLISH is set to true. The trusted publisher may only stage a version: a
-        # maintainer then approves it on npmjs.com before it goes live. Trusted publishing
-        # needs npm 11.5 or later, newer than the npm that comes with Node 22, so npm 11 is
-        # run through npx.
+        # NPM_PUBLISH is set to true. The trusted publisher may only stage a version, which
+        # refuses a plain `npm publish`: `npm stage publish` puts the version in npm's
+        # staging area, and a maintainer approves it on npmjs.com before it goes live. It
+        # packs the folder it runs in, and needs npm 11.15 or later, newer than the npm that
+        # comes with Node 22, so npm 11 is run through npx.
         if: vars.NPM_PUBLISH == 'true'
-        run: npx -y npm@11 publish ./build/release --provenance --access public
+        working-directory: build/release
+        run: npx -y npm@11 stage publish --provenance --access public
