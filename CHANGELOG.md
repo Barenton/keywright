@@ -4,6 +4,8 @@ What changed in each release of Keywright. The plugin and the adapter are releas
 
 ## [Unreleased]
 
+- **Fixed, pairing:** a refusal of the stored credential, which comes before the broker has proved itself, no longer erases it. That session pairs again, and the stored credential is replaced only when the new pairing succeeds, so a program posing as the broker can't wipe Studio's pairing.
+- **Releases:** the release workflow can publish the npm package itself, through npm's trusted publishing, once it is switched on.
 - **On npm:** Keywright is published as the `keywright` package, so `npx -y keywright setup` installs it with nothing to download by hand. Run through npx, `setup` tells AI apps to start it with `npx -y keywright`, and the advice messages give that form too. The README leads with it; the downloads from GitHub releases still work.
 
 - **Public beta:** the README now calls Keywright a public beta, from 0.3.0.
