@@ -4,12 +4,14 @@ What changed in each release of Keywright. The plugin and the adapter are releas
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-26
+
 **New**
 
-- **`update`:** `npx -y keywright@latest update` installs the newest plugin, checks that it is the newest release, and says what is left: reconnecting Keywright in the AI app. Run from a downloaded file that is older than the newest release, it says where to get that first. Update advice in the panel and in `update_needed` now gives this command.
+- **Previewing an interruption:** `preview_animation` takes `interrupt`, showing this clip interrupted by another as a game plays it: a block pressed partway through a jab. Roblox's animation engine plays both on a disposable copy of the rig, the other faded in as this one fades out, both advancing in real time; each frame reports both clips' times and the weights the engine gave them, and the result both priorities. Strips, onion skins, `track` and `measure` work through the blend.
 - **Copy a pose from another clip:** `copy_pose` takes `from_clip`, naming another clip of the same rig as `compare_with` does. A revised guard in a ready clip can be carried into every attack's start and recovery, copying only the joints and channels named, so each attack keeps its feet, timing and markers. A keyframe clip can be the source; it is only read.
 - **`nudge`:** move a hand or foot off its own path by an offset for a few frames, easing in and out, the limb solved to follow: lift a kicking foot at the chamber, carry a punch higher. Unlike `pin`, which holds a point and so drags a fast limb back toward it while easing out, the part keeps travelling along its own motion. The skill has the recipe for fixing what an onion skin or a measurement shows.
-- **Previewing an interruption:** `preview_animation` takes `interrupt`, showing this clip interrupted by another as a game plays it: a block pressed partway through a jab. Roblox's animation engine plays both on a disposable copy of the rig, the other faded in as this one fades out, both advancing in real time; each frame reports both clips' times and the weights the engine gave them, and the result both priorities. Strips, onion skins, `track` and `measure` work through the blend.
+- **`update`:** `npx -y keywright@latest update` installs the newest plugin, checks that it is the newest release, and says what is left: reconnecting Keywright in the AI app. Run from a downloaded file that is older than the newest release, it says where to get that first. Update advice in the panel and in `update_needed` now gives this command.
 - **Told when a newer release is out:** once a day, in the background, the adapter asks npm's registry for the latest version of Keywright. When it is newer, `get_workspace` carries `update_available` with the steps, and agents are told to mention it once. The request carries nothing about you or your work; `KEYWRIGHT_NO_UPDATE_CHECK=1` turns it off.
 
 **Fixed**
@@ -129,7 +131,8 @@ The first numbered release.
 - **Setup:** `npm run install:plugin` installs the plugin into Studio. The panel and `node dist/src/cli.js version` show the version, and the agent is told when the plugin and the adapter don't match.
 - **Panel:** fits whatever size it is docked or floated at, follows Studio's theme, and shows the pairing command ready to copy.
 
-[Unreleased]: https://github.com/Barenton/keywright/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/Barenton/keywright/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/Barenton/keywright/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/Barenton/keywright/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/Barenton/keywright/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Barenton/keywright/compare/v0.3.0...v0.4.0
