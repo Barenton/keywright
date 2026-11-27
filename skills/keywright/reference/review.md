@@ -39,6 +39,22 @@ dot at each (1 is the first time). Use `style: "slim"`, and the view that shows 
 Look for where the limb turns round (is it where the plan says?), whether the path bows
 into an arc, and the spacing of the dots: bunched is slow, spread out is fast.
 
+## Interruptions
+
+Each clip can start and end in the same guard and still look wrong when a player chains
+them: a block pressed while the jab is extended, a cross started halfway through the
+idle. Check the hand-overs a game will play with `interrupt`:
+
+- `preview_animation` on the first clip with `interrupt: {clip, at, fade}` and `times` in
+  seconds after the interruption, covering the fade and a frame or two after it. A jab
+  blocked at frame 6 with a 3-frame blend: `at` 0.2, `fade` 0.1, `times` 0 to 0.167.
+- `render` with `style: "slim"` (or `onion: true`) to see the body through the blend;
+  `track` the wrists and planted feet, and `measure` a hand against the head, to catch a
+  wrist cutting through the face or a foot shifting.
+- The weights and priorities come from Roblox's engine. A clip of a higher priority
+  overrides one of a lower as it fades in; clips of the same priority blend by weight.
+- Try the worst moments: the attack at full extension, the idle at its widest.
+
 ## Fixing what a trail shows
 
 When an onion skin or a measurement shows a hand or foot in the wrong place for a few

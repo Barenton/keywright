@@ -9,6 +9,7 @@ local Edit = require("../Editing/Edit")
 local Errors = require("../Core/Errors")
 local Pose = require("../Rigs/Pose")
 local Preview = require("../Preview/Preview")
+local Sampler = require("../Preview/Sampler")
 local Rig = require("../Rigs/Rig")
 local Shared = require("./Shared")
 
@@ -79,10 +80,10 @@ function PreviewMethod.install(methods: { [string]: (params: any) -> any }, kit:
 			then
 				Errors.throw("INVALID_ARGUMENT", `samples must be a whole number from {MIN_SAMPLES} to {MAX_SAMPLES}.`)
 			end
-			if times or params.capture == true or params.check_placement == true then
+			if times or params.capture == true or params.check_placement == true or params.interrupt ~= nil then
 				Errors.throw(
 					"INVALID_ARGUMENT",
-					"samples cannot be combined with times, a screenshot or a placement check."
+					"samples cannot be combined with times, an interruption, a screenshot or a placement check."
 				)
 			end
 			samples = params.samples
@@ -226,6 +227,120 @@ function PreviewMethod.install(methods: { [string]: (params: any) -> any }, kit:
 				duration = math.round(duration * 1000) / 1000,
 				motion = { times = sampleTimes, keyframes = keyframes, parts = paths, lowest = lowest },
 				pose = if firstPose then { parts = firstPose, rest = restPose() } else nil,
+			}
+		end
+
+		if params.interrupt ~= nil then
+			-- Another clip of the rig interrupting this one, played by the engine as a game
+			-- plays it: the pose through the hand-over, and how each clip was weighted.
+			local cut = params.interrupt
+			if type(cut) ~= "table" then
+				Errors.throw("INVALID_ARGUMENT", "interrupt must give the clip, at and fade.")
+			end
+			if not times then
+				Errors.throw(
+					"INVALID_ARGUMENT",
+					"interrupt needs times: the moments to show, in seconds after the interruption."
+				)
+			end
+			if params.compare_with ~= nil or params.capture == true then
+				Errors.throw("INVALID_ARGUMENT", "interrupt cannot be combined with compare_with or a screenshot.")
+			end
+			local offsets = times :: { number }
+			for index = 2, #offsets do
+				if offsets[index] <= offsets[index - 1] then
+					Errors.throw("INVALID_ARGUMENT", "With interrupt, times must rise: seconds after the interruption.")
+				end
+			end
+			if not usableTime(cut.at) or cut.at > duration + Clips.TIME_TOLERANCE then
+				Errors.throw(
+					"INVALID_ARGUMENT",
+					`interrupt.at must be a time in this clip, from 0 to {math.round(duration * 1000) / 1000} seconds.`
+				)
+			end
+			if type(cut.fade) ~= "number" or cut.fade ~= cut.fade or cut.fade < 0 or cut.fade > 2 then
+				Errors.throw("INVALID_ARGUMENT", "interrupt.fade must be from 0 to 2 seconds.")
+			end
+			local from = if cut.from == nil then 0 else cut.from
+			if not usableTime(from) then
+				Errors.throw("INVALID_ARGUMENT", `interrupt.from must be from 0 to {Edit.MAX_TIME} seconds.`)
+			end
+			local other = Shared.otherClip(working, cut.clip, model, "interrupt.clip")
+			-- The other clip's own length, and whether it loops: a clip that doesn't ends,
+			-- and after both have ended nothing is playing to show.
+			local otherLength = Clips.duration(other)
+			local otherLoops = (other :: any).Loop == true
+			if from > otherLength + Clips.TIME_TOLERANCE then
+				Errors.throw(
+					"INVALID_ARGUMENT",
+					`interrupt.from is after the other clip ends, at {math.round(otherLength * 1000) / 1000} seconds.`
+				)
+			end
+			if not otherLoops then
+				-- A clip of a single pose has no length; it is played padded, for as long.
+				local left = if otherLength > 0 then otherLength - from else Sampler.PAD_SECONDS
+				if offsets[#offsets] > left + Clips.TIME_TOLERANCE then
+					Errors.throw(
+						"INVALID_ARGUMENT",
+						`The other clip ends {math.round(left * 1000) / 1000} seconds after the interruption, and it doesn't loop: ask for times up to then.`
+					)
+				end
+			end
+			local result = Preview.run({
+				model = model,
+				sequence = working.instance,
+				time = 0,
+				parent = workspace,
+				interrupt = { sequence = other, at = cut.at, from = from, fade = cut.fade, offsets = offsets },
+			})
+			if Clips.revisionOf(working) ~= revision then
+				Errors.throw("PREVIEW_UNAVAILABLE", "The clip changed while it was being sampled.", "Preview it again.")
+			end
+			local frames, poses, moments = {}, {}, {}
+			local function round(value: number, places: number): number
+				return math.round(value * 10 ^ places) / 10 ^ places
+			end
+			local found: { any } = result.moments or {}
+			for index, moment in found do
+				local tracked = if #track > 0 then Pose.track(scan, moment.transforms, CFrame.new(), track) else nil
+				if tracked then
+					table.insert(moments, tracked)
+				end
+				local asked: { [string]: CFrame } = {}
+				for _, name in joints do
+					asked[name] = moment.transforms[name]
+				end
+				table.insert(frames, {
+					time = offsets[index],
+					this_time = round(moment.times[1], 3),
+					-- A clip of a single pose plays padded to a length of its own: its time is 0.
+					other_time = round(math.min(moment.times[2], otherLength), 3),
+					weights = { this = round(moment.weights[1], 3), other = round(moment.weights[2], 3) },
+					joints = if #joints > 0 then encoded(asked) else nil,
+					parts = tracked,
+				})
+				if render then
+					table.insert(poses, Pose.parts(scan, moment.transforms, CFrame.new()))
+				end
+			end
+			if #moments > 0 then
+				Pose.speeds(moments, offsets)
+			end
+			local priorities = result.priorities or {}
+			return {
+				clip_id = working.id,
+				revision = revision,
+				interrupt = {
+					clip = other.Name,
+					at = cut.at,
+					from = from,
+					fade = cut.fade,
+					priorities = { this = priorities[1], other = priorities[2] },
+					blended_by = "Roblox's animation engine, on a disposable copy of the rig: the other clip started with Play(fade) and this one stopped with Stop(fade), both advancing in real time. The weights are the tracks' own as the engine reports them.",
+				},
+				frames = frames,
+				ranges = if #moments > 0 then Pose.ranges(moments) else nil,
+				pose = if render then { frames = poses, rest = restPose() } else nil,
 			}
 		end
 

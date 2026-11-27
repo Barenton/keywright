@@ -65,6 +65,16 @@ export type Request = {
 	current: (() -> boolean)?,
 	-- Also report where Studio has put each driven part of the clone.
 	measure: boolean?,
+	-- Another clip interrupting this one: from `at` in this clip, the other starts at
+	-- `from` and the two cross-fade over `fade` seconds. The pose is read at each of
+	-- `offsets`, seconds after the interruption, in place of `time`.
+	interrupt: {
+		sequence: Instance,
+		at: number,
+		from: number,
+		fade: number,
+		offsets: { number },
+	}?,
 }
 
 export type Result = {
@@ -73,6 +83,9 @@ export type Result = {
 	-- placed it after the seek. Only when asked for.
 	placed: { [string]: CFrame }?,
 	capture: CaptureResult?,
+	-- With interrupt: each moment asked for, and each track's priority as the engine has it.
+	moments: { Sampler.Moment }?,
+	priorities: { string }?,
 }
 
 -- Clones this module created that still exist. Normally empty between previews.
@@ -403,6 +416,37 @@ function Preview.run(request: Request): Result
 		handle = sampler
 		if sampler.animator ~= animator then
 			unavailable("The sampler did not use the preview clone's own Animator.")
+		end
+		if request.interrupt then
+			local cut = request.interrupt
+			local moments = Sampler.interrupt(
+				sampler,
+				cut.sequence,
+				cut.at,
+				cut.from,
+				cut.fade,
+				cut.offsets,
+				nil,
+				function()
+					checkBudget()
+					if run.cancelled then
+						unavailable(run.cancelled)
+					end
+				end
+			)
+			checkBudget()
+			local priorities = {}
+			for _, track in { sampler.track, sampler.others[1] } :: { any } do
+				local ok, priority = pcall(function()
+					return track.Priority.Name
+				end)
+				table.insert(priorities, if ok then priority else "unknown")
+			end
+			return {
+				transforms = moments[1] and moments[1].transforms or {},
+				moments = moments,
+				priorities = priorities,
+			}
 		end
 		Sampler.seek(sampler, request.time)
 		checkBudget()

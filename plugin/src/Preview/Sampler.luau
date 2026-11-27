@@ -48,6 +48,18 @@ export type Handle = {
 	owned: { any },
 	-- Latest time that can be sampled: the time of the clip's last keyframe.
 	duration: number,
+	-- Further tracks on the same Animator, as the clip that interrupts this one.
+	others: { any },
+	-- Whether the clip loops, which a static seek ignores and an interruption keeps.
+	loops: boolean,
+}
+
+-- One moment of an interruption: the pose, and each clip's time and weight as the engine
+-- reports them.
+export type Moment = {
+	transforms: { [string]: CFrame },
+	times: { number },
+	weights: { number },
 }
 
 -- Seconds a newly registered clip may take to load before sampling is refused.
@@ -159,6 +171,11 @@ function Sampler.close(handle: Handle): { string }
 		end
 	end
 
+	for _, other in handle.others do
+		attempt("stop track", function()
+			other:Stop(0)
+		end)
+	end
 	if handle.track then
 		attempt("stop track", function()
 			handle.track:Stop(0)
@@ -178,8 +195,61 @@ function Sampler.close(handle: Handle): { string }
 	end
 	table.clear(handle.owned)
 	table.clear(handle.saved)
+	table.clear(handle.others)
 	handle.track = nil
 	return problems
+end
+
+-- Registers a clip and loads it as a track on the handle's Animator, waiting until it has
+-- loaded. Everything made is recorded as the handle's own, so close destroys it.
+local function load(handle: Handle, sequence: Instance, duration: number, checkpoint: (() -> ())?): any
+	local engine = Sampler.engine()
+	local animation = engine.newInstance("Animation")
+	table.insert(handle.owned, animation)
+	local played: any = sequence
+	if duration <= 0 then
+		-- A loaded track is recognised by its length, which this clip would never have.
+		-- A copy is played with something at a later time that moves nothing: an empty
+		-- keyframe, or for a clip made of curves, a curve that drives no joint.
+		played = sequence:Clone()
+		table.insert(handle.owned, played)
+		if sequence:IsA("CurveAnimation") then
+			local folder = engine.newInstance("Folder")
+			-- Owned from the start, so a failure while it is put together still frees it.
+			table.insert(handle.owned, folder)
+			folder.Name = Sampler.PAD_NAME
+			-- Laid out as a joint's rotation is, so that it counts toward the length.
+			local group = engine.newInstance("EulerRotationCurve")
+			group.Name = "Rotation"
+			group.Parent = folder
+			local curve = engine.newInstance("FloatCurve")
+			curve.Name = "X"
+			curve.Parent = group
+			Curves.setKeys(curve, {
+				{ time = 0, value = 0, interpolation = "Constant" },
+				{ time = Sampler.PAD_SECONDS, value = 0, interpolation = "Constant" },
+			})
+			folder.Parent = played
+		else
+			local pad = engine.newInstance("Keyframe")
+			pad.Time = Sampler.PAD_SECONDS
+			pad.Parent = played
+		end
+	end
+	animation.AnimationId = engine.registerClip(played)
+	local track = engine.loadTrack(handle.animator, animation)
+	table.insert(handle.owned, track)
+	local deadline = engine.clock() + Sampler.LOAD_BUDGET
+	while track.Length <= 0 do
+		if engine.clock() >= deadline then
+			Errors.throw("PREVIEW_UNAVAILABLE", "The clip did not finish loading in time.")
+		end
+		engine.waitFrames(1)
+		if checkpoint then
+			checkpoint()
+		end
+	end
+	return track
 end
 
 function Sampler.open(model: Model, joints: { [string]: Rig.Joint }, sequence: Instance): Handle
@@ -205,6 +275,8 @@ function Sampler.open(model: Model, joints: { [string]: Rig.Joint }, sequence: I
 		saved = {},
 		owned = {},
 		duration = duration,
+		others = {},
+		loops = (sequence :: any).Loop == true,
 	}
 	local ok, problem = pcall(function()
 		for _, joint in joints do
@@ -216,47 +288,8 @@ function Sampler.open(model: Model, joints: { [string]: Rig.Joint }, sequence: I
 			created.Parent = humanoid
 			handle.animator = created
 		end
-		local animation = engine.newInstance("Animation")
-		table.insert(handle.owned, animation)
-		local played: any = sequence
-		if duration <= 0 then
-			-- A loaded track is recognised by its length, which this clip would never have.
-			-- A copy is played with something at a later time that moves nothing: an empty
-			-- keyframe, or for a clip made of curves, a curve that drives no joint.
-			played = sequence:Clone()
-			table.insert(handle.owned, played)
-			if sequence:IsA("CurveAnimation") then
-				local folder = engine.newInstance("Folder")
-				folder.Name = Sampler.PAD_NAME
-				-- Laid out as a joint's rotation is, so that it counts toward the length.
-				local group = engine.newInstance("EulerRotationCurve")
-				group.Name = "Rotation"
-				group.Parent = folder
-				local curve = engine.newInstance("FloatCurve")
-				curve.Name = "X"
-				curve.Parent = group
-				Curves.setKeys(curve, {
-					{ time = 0, value = 0, interpolation = "Constant" },
-					{ time = Sampler.PAD_SECONDS, value = 0, interpolation = "Constant" },
-				})
-				folder.Parent = played
-			else
-				local pad = engine.newInstance("Keyframe")
-				pad.Time = Sampler.PAD_SECONDS
-				pad.Parent = played
-			end
-		end
-		animation.AnimationId = engine.registerClip(played)
-		local track = engine.loadTrack(handle.animator, animation)
-		table.insert(handle.owned, track)
+		local track = load(handle, sequence, duration)
 		handle.track = track
-		local deadline = engine.clock() + Sampler.LOAD_BUDGET
-		while track.Length <= 0 do
-			if engine.clock() >= deadline then
-				Errors.throw("PREVIEW_UNAVAILABLE", "The clip did not finish loading in time.")
-			end
-			engine.waitFrames(1)
-		end
 		track.Looped = false
 		track:Play(0, 1, 0)
 	end)
@@ -307,6 +340,58 @@ function Sampler.transforms(handle: Handle, names: { string }?): { [string]: CFr
 		end
 	end
 	return result
+end
+
+-- Plays another clip interrupting this one, as a game does: this clip plays on from `at`,
+-- the other starts from `from`, and over `fade` seconds this one fades out and the other
+-- in, each by the engine's own fading, its priorities and blending. Both clips advance at
+-- their own speed. The Animator is stepped to each of `offsets`, seconds after the
+-- interruption in rising order, and the pose, each clip's time and each track's weight
+-- are read there as the engine has them.
+function Sampler.interrupt(
+	handle: Handle,
+	sequence: Instance,
+	at: number,
+	from: number,
+	fade: number,
+	offsets: { number },
+	names: { string }?,
+	checkpoint: (() -> ())?
+): { Moment }
+	local engine = Sampler.engine()
+	if handle.track == nil then
+		Errors.throw("PREVIEW_UNAVAILABLE", "The sampler is closed.")
+	end
+	local first: any = handle.track
+	local second: any = load(handle, sequence, clipDuration(sequence), checkpoint)
+	table.insert(handle.others, second)
+	-- Each clip loops or not as it was made to, as in a game; a static seek ignores it.
+	first.Looped = handle.loops
+	second.Looped = (sequence :: any).Loop == true
+	first.TimePosition = math.clamp(at, 0, handle.duration)
+	first:AdjustSpeed(1)
+	second:Play(fade, 1, 1)
+	second.TimePosition = math.max(0, from)
+	first:Stop(fade)
+	engine.step(handle.animator, 0)
+	local moments: { Moment } = {}
+	local elapsed = 0
+	for _, offset in offsets do
+		-- Asked before each step: a preview given up on, or out of time, goes no further.
+		if checkpoint then
+			checkpoint()
+		end
+		if offset > elapsed then
+			engine.step(handle.animator, offset - elapsed)
+			elapsed = offset
+		end
+		table.insert(moments, {
+			transforms = Sampler.transforms(handle, names),
+			times = { first.TimePosition, second.TimePosition },
+			weights = { first.WeightCurrent, second.WeightCurrent },
+		})
+	end
+	return moments
 end
 
 return Sampler

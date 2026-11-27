@@ -87,21 +87,45 @@ local function newWorld()
 	}
 
 	local function newTrack(): Track
-		local track = { TimePosition = 0, Looped = true, playing = false, steps = 0, destroyed = false } :: any
+		local track = {
+			TimePosition = 0,
+			Looped = true,
+			playing = false,
+			steps = 0,
+			destroyed = false,
+			-- How fast it plays, its weight now and the one it fades toward, as the engine's are.
+			speed = 1,
+			WeightCurrent = 0,
+			target = 0,
+			fade = 0,
+		} :: any
 		-- Until a track has loaded it has no length, and a seek lands at zero.
 		track.loadsAt = if world.neverLoads then math.huge else world.now + world.loadAfter
 		track.loadedLength = world.registeredLength
 		track.Length = if track.loadsAt <= world.now then track.loadedLength else 0
-		function track:Play()
+		function track:Play(fade: number?, weight: number?, speed: number?)
 			self.playing = true
+			self.speed = speed or 1
+			self.target = weight or 1
+			self.fade = fade or 0.1
+			if self.fade <= 0 then
+				self.WeightCurrent = self.target
+			end
 		end
-		function track:Stop()
+		function track:Stop(fade: number?)
 			if world.failStop then
 				error("forced stop failure")
 			end
-			self.playing = false
+			self.target = 0
+			self.fade = fade or 0.1
+			if self.fade <= 0 then
+				self.WeightCurrent = 0
+				self.playing = false
+			end
 		end
-		function track:AdjustSpeed() end
+		function track:AdjustSpeed(speed: number?)
+			self.speed = speed or 1
+		end
 		function track:Destroy()
 			self.destroyed = true
 			self.playing = false
@@ -142,7 +166,8 @@ local function newWorld()
 			return track
 		end,
 		-- The engine advances every playing track on the Animator and poses that Animator's model.
-		step = function(animator: any)
+		step = function(animator: any, delta: number?)
+			local seconds = delta or 0
 			world.stepCount += 1
 			if world.failStepAt == world.stepCount then
 				error("forced step failure")
@@ -153,13 +178,44 @@ local function newWorld()
 				world.steppedProtected = true
 			end
 			local model = animator.Parent.Parent
+			-- Each playing track moves on by its speed and its weight toward its target over
+			-- its fade; the pose is the playing tracks' positions blended by weight.
+			local sum, weights = 0, 0
 			for _, track in world.tracks[animator] or {} do
 				if track.playing then
 					track.steps += 1
-					for _, descendant in model:GetDescendants() do
-						if descendant:IsA("Motor6D") then
-							descendant.Transform = CFrame.new(math.min(track.TimePosition, track.Length), 0, 0)
+					-- A looping track wraps at its end; any other stops there, once posed.
+					local moved = track.TimePosition + seconds * track.speed
+					local ended = false
+					if track.Looped and track.Length > 0 then
+						moved = moved % track.Length
+					elseif moved >= track.Length and seconds > 0 then
+						moved = track.Length
+						ended = true
+					end
+					track.TimePosition = moved
+					if track.WeightCurrent ~= track.target then
+						local change = if track.fade > 0 then seconds / track.fade else 1
+						if track.WeightCurrent < track.target then
+							track.WeightCurrent = math.min(track.target, track.WeightCurrent + change)
+						else
+							track.WeightCurrent = math.max(track.target, track.WeightCurrent - change)
 						end
+					end
+					if track.target == 0 and track.WeightCurrent <= 0 and track.fade > 0 and seconds > 0 then
+						track.playing = false
+					end
+					sum += track.WeightCurrent * math.min(track.TimePosition, track.Length)
+					weights += track.WeightCurrent
+					if ended then
+						track.playing = false
+					end
+				end
+			end
+			if weights > 0 then
+				for _, descendant in model:GetDescendants() do
+					if descendant:IsA("Motor6D") then
+						descendant.Transform = CFrame.new(sum / weights, 0, 0)
 					end
 				end
 			end

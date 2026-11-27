@@ -425,7 +425,7 @@ export function createAdapter(options: AdapterOptions): McpServer {
 					.max(8)
 					.optional()
 					.describe(
-						"Several times to sample in one call, in place of time. With render, the picture is a filmstrip: one column for each time in the order given, one row for each view (at most two), all framed alike so that what moves can be seen. The result lists the frames in the same order.",
+						"Several times to sample in one call, in place of time (with interrupt, seconds after the interruption). With render, the picture is a filmstrip: one column for each time in the order given, one row for each view (at most two), all framed alike so that what moves can be seen. The result lists the frames in the same order.",
 					),
 				samples: z
 					.number()
@@ -465,6 +465,21 @@ export function createAdapter(options: AdapterOptions): McpServer {
 					.optional()
 					.describe(
 						'With times: also sample another clip of the same rig at the same times. "source" is the clip this working copy was opened from, "saved:" followed by a name is one of the rig\'s saved clips, anything else is the id of another working copy. The result gains compared: for each time, the largest distance in studs and turn in degrees between where the two clips put the rig\'s parts, and the part furthest apart. With render, the picture has this clip along the top row and the other along the bottom.',
+					),
+				interrupt: z
+					.object({
+						clip: z
+							.string()
+							.min(1)
+							.max(120)
+							.describe('The clip that interrupts this one, named as compare_with names one: "source", "saved:" and a saved clip\'s name, or a working copy\'s id. Same rig.'),
+						at: z.number().finite().min(0).max(300).describe("When in this clip the other starts, in seconds: a jab's frame 6 is 0.2."),
+						fade: z.number().finite().min(0).max(2).describe("Seconds over which this clip fades out and the other fades in: 3 frames is 0.1."),
+						from: z.number().finite().min(0).max(300).optional().describe("Where in the other clip it starts, in seconds. Default 0."),
+					})
+					.optional()
+					.describe(
+						"With times: show this clip being interrupted by another, as a game does when a player blocks partway through a jab. Both clips are played by Roblox's animation engine on a disposable copy of the rig: this one from at, the other started with a fade while this one is stopped with the same fade, both advancing in real time, blended by their weights and priorities. times are then seconds after the interruption (0, 0.033, 0.067, 0.1, 0.133 covers a 3-frame fade and a frame after). Each frame gains this_time and other_time, each clip's own time, and weights, each track's weight as the engine reports it; the result's interrupt gives both priorities. track, measure, render, style and onion work as with times alone: watch a wrist that cuts through the face or a planted foot that shifts during the blend, which each clip on its own would not show. Not with compare_with.",
 					),
 				compare_times: z
 					.array(z.number().finite().min(0).max(300))
