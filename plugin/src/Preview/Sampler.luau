@@ -369,6 +369,9 @@ function Sampler.interrupt(
 	first.Looped = handle.loops
 	second.Looped = (sequence :: any).Loop == true
 	first.TimePosition = math.clamp(at, 0, handle.duration)
+	-- A weight takes effect only when the Animator is stepped: without this step the clip
+	-- would still be at the weight 0 it was loaded with, and fade out from nothing.
+	engine.step(handle.animator, 0)
 	first:AdjustSpeed(1)
 	second:Play(fade, 1, 1)
 	second.TimePosition = math.max(0, from)

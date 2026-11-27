@@ -108,9 +108,8 @@ local function newWorld()
 			self.speed = speed or 1
 			self.target = weight or 1
 			self.fade = fade or 0.1
-			if self.fade <= 0 then
-				self.WeightCurrent = self.target
-			end
+			-- As in Roblox, the weight changes only when the Animator is stepped, even
+			-- with no fade.
 		end
 		function track:Stop(fade: number?)
 			if world.failStop then
@@ -195,6 +194,8 @@ local function newWorld()
 					end
 					track.TimePosition = moved
 					if track.WeightCurrent ~= track.target then
+						-- With no fade the weight jumps on the next step; with one, it moves
+						-- by the share of the fade stepped.
 						local change = if track.fade > 0 then seconds / track.fade else 1
 						if track.WeightCurrent < track.target then
 							track.WeightCurrent = math.min(track.target, track.WeightCurrent + change)
