@@ -10,6 +10,24 @@ does not give you taste: a clip can pass every check and still look stiff, float
 Animate as a professional does: **plan the poses, block them, look, refine, look again.**
 Never trust a clip you have not looked at.
 
+## In short
+
+- Read `inspect_rig`'s `turns` before posing: which way each joint moves on this rig.
+- Plan first: the beats, a key pose for each with its frame, the timing, the contacts.
+- Block only the key poses, and look at every one in a pose strip (`style: "slim"`) before
+  adding in-betweens.
+- Look after every revision: a strip of the key moments and a motion plot. Judge the upper
+  and lower body separately.
+- Weight: the hips are lowest 2–3 frames after each landing (`measure` `LowerTorso` `up`),
+  never at the moment of contact.
+- No limb stops partway through a swing; hands and feet travel in arcs; parts arrive 2–4
+  frames apart, not all at once.
+- Planted feet stay put (`pin`), swinging feet clear the floor, and a loop ends in the pose
+  it starts with (`copy_pose`).
+- Curve keys go on exact frames: `0.0333333`, not `0.033`.
+- Validation is necessary, not enough. Run `reduce_keys`, then save under a new name.
+- If Studio refuses a change, ask the person to close the Animation Editor.
+
 This file is the workflow. Open the references when you need them:
 - [reference/rig.md](reference/rig.md): which way R15 joints turn, how to build common
   poses, and the traps (angle order, rest poses, the floor).

@@ -13,7 +13,7 @@ import { MAX_TILE, MAX_VIEWS, MIN_TILE, renderResult, STYLES, VIEWS } from "../r
 
 import { studioSession, clipId, time, joint } from "./schemas/common.js";
 import { operations } from "./schemas/operations.js";
-import { guideText, TOPICS, type Topic } from "../guide.js";
+import { guideEssentials, guideText, TOPICS, type Topic } from "../guide.js";
 import { builtPlugin, installPlugin, pluginsFolder, thisMachine } from "../install.js";
 import { viaNpx } from "../layout.js";
 import { VERSION } from "../version.js";
@@ -230,12 +230,18 @@ export function createAdapter(options: AdapterOptions): McpServer {
 					.enum(Object.keys(TOPICS) as [Topic, ...Topic[]])
 					.optional()
 					.describe('"workflow" (default): the whole process, start to finish. "rig": which way joints turn, posing, traps. "moves": timing and method for each kind of move. "review": reading pose strips, motion plots, onion skins and measurements, and fixing what they show.'),
+				section: z
+					.string()
+					.min(1)
+					.max(80)
+					.optional()
+					.describe('Only one section of the topic, by its heading or the start of it, ignoring case: "Run cycle", "strikes", "Interruptions". Default: the whole topic. Every answer ends with the topic\'s sections, so the part needed next can be asked for alone.'),
 			},
 			annotations: { readOnlyHint: true },
 		},
-		async ({ topic }) => {
+		async ({ topic, section }) => {
 			try {
-				return { content: [{ type: "text", text: guideText(topic ?? "workflow") }] };
+				return { content: [{ type: "text", text: guideText(topic ?? "workflow", section) }] };
 			} catch (error) {
 				return fail(error);
 			}
@@ -359,7 +365,10 @@ export function createAdapter(options: AdapterOptions): McpServer {
 			if (!guidePointed && !result.isError && result.content[0]?.type === "text") {
 				guidePointed = true;
 				const payload = JSON.parse(result.content[0].text) as Record<string, unknown>;
-				payload.guide = 'If you have not read it in this conversation, read get_guide (topic "workflow", then "moves" for this kind of move) before editing: it is how to plan, block, review and finish a clip that looks right, not only one that validates.';
+				payload.guide = {
+					essentials: guideEssentials(),
+					more: 'That is the short version. get_guide has the full guide, which is how to make a clip that looks right, not only one that validates: topic "workflow" for the whole process; "moves" for timing and method, with a section for each kind of move (for example section "Run cycle" or "Strikes"); "rig" for which way joints turn; "review" for reading the pictures and fixing what they show. Read the workflow and the section for this move before editing, if you have not in this conversation.',
+				};
 				result.content[0] = { type: "text", text: JSON.stringify(payload) };
 			}
 			return result;

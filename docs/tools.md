@@ -48,6 +48,7 @@ Read Keywright's animator's guide: how to plan key poses, block them, review eve
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `topic` | one of `workflow`, `rig`, `moves`, `review` |  | "workflow" (default): the whole process, start to finish. "rig": which way joints turn, posing, traps. "moves": timing and method for each kind of move. "review": reading pose strips, motion plots, onion skins and measurements, and fixing what they show. |
+| `section` | text, 1 to 80 characters |  | Only one section of the topic, by its heading or the start of it, ignoring case: "Run cycle", "strikes", "Interruptions". Default: the whole topic. Every answer ends with the topic's sections, so the part needed next can be asked for alone. |
 
 ## install_plugin
 

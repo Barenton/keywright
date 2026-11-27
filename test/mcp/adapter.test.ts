@@ -164,8 +164,16 @@ describe("MCP adapter over stdio", () => {
 		assert.match((workflow.content as Array<{ text: string }>)[0]?.text ?? "", /^# Animating with Keywright/);
 		const moves = await mcp.callTool({ name: "get_guide", arguments: { topic: "moves" } });
 		assert.match((moves.content as Array<{ text: string }>)[0]?.text ?? "", /## Run cycle/);
+		const run = await mcp.callTool({ name: "get_guide", arguments: { topic: "moves", section: "run" } });
+		const runText = (run.content as Array<{ text: string }>)[0]?.text ?? "";
+		assert.match(runText, /^## Run cycle/);
+		assert.equal(runText.includes("## Walk cycle"), false, "that section alone");
+		const missing = await mcp.callTool({ name: "get_guide", arguments: { topic: "moves", section: "Backflip" } });
+		assert.equal(missing.isError, true);
+		assert.match((missing.content as Array<{ text: string }>)[0]?.text ?? "", /Run cycle/, "the sections there are are named");
 		const first = await callTool("open_animation", { studio_session: SESSION, rig_id: "rig_1" });
-		assert.match(first.json.guide, /get_guide/);
+		assert.match(first.json.guide.essentials, /Plan first/);
+		assert.match(first.json.guide.more, /get_guide has the full guide/);
 		const second = await callTool("open_animation", { studio_session: SESSION, rig_id: "rig_1" });
 		assert.equal(second.json.guide, undefined, "once a session");
 	});
