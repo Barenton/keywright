@@ -4,12 +4,14 @@ What changed in each release of Keywright. The plugin and the adapter are releas
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-27
+
 **New**
 
+- **`setup` adds Keywright to your AI apps:** it finds Claude Desktop, Claude Code, Codex and Cursor and, with your yes, adds Keywright to each. In a terminal it asks; an agent passes `--add-to` after asking you. Only Keywright's entry is added or brought up to date, a copy of each file changed is kept beside it, and a file it can't read is left alone.
 - **The guide through Keywright itself:** `get_guide` serves the Keywright skill, the animator's guide, by topic (`workflow`, `rig`, `moves`, `review`), in every AI app connected to Keywright, with nothing to download or install. A `section` gives one part alone, such as `moves`' "Run cycle", and every answer lists the topic's sections. The first `open_animation` of a session carries the guide's essentials, a ten-line checklist every agent sees, with where to read more; the connect instructions also point to the guide. The single-file release has it built in, and the npm package also carries the skill as files.
 - **`install_plugin`:** installs or updates the Studio plugin from inside Keywright, so an AI app whose own commands can't reach Studio's folder can still update it when the person asks. It writes only to Studio's plugins folder, and refuses to put an older plugin over a newer one a Studio window is running. `update_needed` mentions it when the plugin is the older one. `KEYWRIGHT_PLUGIN_FOLDER`, set where Keywright is started, names the plugins folder for an unusual Studio install.
 - **The skill for Claude Code:** when `setup` adds Keywright to Claude Code, it also installs the skill in Claude Code's skills folder.
-- **`setup` adds Keywright to your AI apps:** it finds Claude Desktop, Claude Code, Codex and Cursor and, with your yes, adds Keywright to each. In a terminal it asks; an agent passes `--add-to` after asking you. Only Keywright's entry is added or brought up to date, a copy of each file changed is kept beside it, and a file it can't read is left alone.
 
 **Fixed**
 
@@ -142,7 +144,8 @@ The first numbered release.
 - **Setup:** `npm run install:plugin` installs the plugin into Studio. The panel and `node dist/src/cli.js version` show the version, and the agent is told when the plugin and the adapter don't match.
 - **Panel:** fits whatever size it is docked or floated at, follows Studio's theme, and shows the pairing command ready to copy.
 
-[Unreleased]: https://github.com/Barenton/keywright/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/Barenton/keywright/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/Barenton/keywright/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/Barenton/keywright/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/Barenton/keywright/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/Barenton/keywright/compare/v0.4.0...v0.5.0
