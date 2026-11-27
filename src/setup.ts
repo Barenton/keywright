@@ -3,7 +3,7 @@
 // Written for a person and for an agent doing the setup for them alike.
 
 import { posix } from "node:path";
-import { type App, entryFor, type Outcome } from "./apps.js";
+import { type App, entryFor, type Outcome, windowsFallback } from "./apps.js";
 import type { Installed } from "./install.js";
 
 /** How an AI app starts Keywright: node with this copy's file, or npx with the package's name. */
@@ -49,8 +49,9 @@ export function setupGuide(facts: SetupFacts): string {
 	const launch: Launch = facts.launch ?? { command: "node", args: [facts.entry], fullPath: facts.node };
 	const shell = (value: string) => shellArgument(value, facts.platform);
 	const line = [launch.command, ...launch.args].map((part, index) => (index === 0 ? part : shell(part))).join(" ");
-	// What an app runs: on Windows, npx through cmd /c (see entryFor).
+	// What an app runs, and on Windows the way out for an app that can't start npx.
 	const entry = entryFor(launch, facts.platform);
+	const fallback = facts.platform === "win32" ? windowsFallback(entry) : undefined;
 	const appLine = [entry.command, ...entry.args].map((part, index) => (index === 0 ? part : shell(part))).join(" ");
 	const args = entry.args.map(quoted).join(", ");
 	// What setup did in each app the person said yes to, and the apps it found but left.
@@ -100,9 +101,13 @@ export function setupGuide(facts: SetupFacts): string {
 		"",
 		"   Claude Desktop, Cursor and most other apps, in their MCP settings (JSON):",
 		`     { "mcpServers": { "keywright": { "command": ${quoted(entry.command)}, "args": [${args}] } } }`,
-		// Not npx.cmd on Windows: an app that can't find npx can't run a .cmd file either.
-		...(facts.platform === "win32" && launch.command === "npx"
-			? []
+		// Not npx.cmd on Windows: an app that can't start npx can't run a .cmd file either.
+		...(fallback
+			? [
+					"",
+					"   If an app on Windows says it can't start Keywright, give it npx through cmd instead:",
+					`     { "mcpServers": { "keywright": { "command": "cmd", "args": [${fallback.args.map(quoted).join(", ")}] } } }`,
+				]
 			: ["", `   If an app cannot find ${launch.command}, use its full path in place of "${launch.command}": ${launch.fullPath}`]),
 		...(facts.wsl
 			? [

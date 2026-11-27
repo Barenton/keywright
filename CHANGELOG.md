@@ -10,7 +10,7 @@ What changed in each release of Keywright. The plugin and the adapter are releas
 
 **Fixed**
 
-- **Windows:** AI apps are given `cmd /c npx …`, since an app that starts programs without a shell can't run `npx`, which is a `.cmd` file on Windows. The commands `setup` prints are no longer quoted where they needn't be, so they work in Command Prompt too. The README and Troubleshooting say what to do when PowerShell won't run `npx`, and that an AI app whose commands run in a separate virtual machine can't install Keywright.
+- **Windows:** for an AI app that says it can't start Keywright, `setup` now offers `cmd /c npx …`, which an app that starts programs without a shell can run; plain `npx`, which works in Claude Desktop, stays the default, and the full path to `npx.cmd`, which such apps can't run either, is no longer offered. The commands `setup` prints are no longer quoted where they needn't be, so they work in Command Prompt too. The README and Troubleshooting say what to do when PowerShell won't run `npx`, and that an AI app whose commands run in a separate virtual machine can't install Keywright.
 
 ## [0.7.0] - 2026-11-26
 

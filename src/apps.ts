@@ -69,12 +69,19 @@ export function findApps(where: Where): App[] {
 }
 
 /**
- * What an app is to run to start Keywright. On Windows npx is a .cmd file, which an app
- * that starts programs without a shell cannot run, so it is started through cmd /c there.
+ * What an app is to run to start Keywright: npx, or node with this copy's file. Plain npx
+ * was seen to work in Claude Desktop on Windows (2026-11-27), where npx is a .cmd file.
  */
-export function entryFor(launch: Launch, platform: NodeJS.Platform): { command: string; args: string[] } {
-	if (platform === "win32" && launch.command === "npx") return { command: "cmd", args: ["/c", "npx", ...launch.args] };
+export function entryFor(launch: Launch, _platform: NodeJS.Platform): { command: string; args: string[] } {
 	return { command: launch.command, args: launch.args };
+}
+
+/**
+ * On Windows, for an app that starts programs without a shell and so can't run npx.cmd:
+ * npx started through cmd /c. Offered only as the way out when an app can't start it.
+ */
+export function windowsFallback(entry: { command: string; args: string[] }): { command: string; args: string[] } | undefined {
+	return entry.command === "npx" ? { command: "cmd", args: ["/c", "npx", ...entry.args] } : undefined;
 }
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);

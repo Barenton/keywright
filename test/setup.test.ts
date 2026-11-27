@@ -92,7 +92,7 @@ test("run through npx, the guide tells apps to start Keywright with npx, not by 
 	]);
 });
 
-test("on Windows the guide gives the cmd /c entry, unquoted commands, and what was added", () => {
+test("on Windows the guide gives plain npx, cmd /c as the way out, unquoted commands, and what was added", () => {
 	const app = { name: "claude-desktop" as const, label: "Claude Desktop", file: "C:\\Users\\x\\AppData\\Roaming\\Claude\\claude_desktop_config.json" };
 	const guide = setupGuide({
 		...facts,
@@ -102,6 +102,8 @@ test("on Windows the guide gives the cmd /c entry, unquoted commands, and what w
 	});
 	assert.ok(guide.includes("Added Keywright to Claude Desktop"));
 	assert.ok(guide.includes("npx -y keywright@latest setup --add-to codex"), "the app found but not added, and how");
+	assert.ok(guide.includes('{ "command": "npx", "args": ["-y", "keywright@latest"] }'), "plain npx first");
+	assert.ok(guide.includes("can't start Keywright, give it npx through cmd"), "with the way out");
 	assert.ok(guide.includes('{ "command": "cmd", "args": ["/c", "npx", "-y", "keywright@latest"] }'));
 	assert.ok(guide.includes("npx -y keywright@latest pair <the code>"), "no quotes Command Prompt would keep");
 	assert.equal(guide.includes("npx.cmd"), false, "no full path to npx.cmd, which such apps can't run either");

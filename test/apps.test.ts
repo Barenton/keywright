@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { addToClaudeCode, addToJson, addToToml, appFor, entryFor, findApps } from "../src/apps.js";
+import { addToClaudeCode, addToJson, addToToml, appFor, entryFor, findApps, windowsFallback } from "../src/apps.js";
 
 const npx = { command: "npx", args: ["-y", "keywright@latest"], fullPath: "/usr/bin/npx" };
 const entry = { command: "npx", args: ["-y", "keywright@latest"] };
@@ -17,9 +17,10 @@ function withHome(run: (home: string) => void) {
 	}
 }
 
-test("on Windows an app starts npx through cmd /c, which an app without a shell can run", () => {
-	assert.deepEqual(entryFor(npx, "win32"), { command: "cmd", args: ["/c", "npx", "-y", "keywright@latest"] });
+test("an app starts npx as it is, with cmd /c kept as Windows' way out", () => {
+	assert.deepEqual(entryFor(npx, "win32"), entry, "plain npx works in Claude Desktop on Windows");
 	assert.deepEqual(entryFor(npx, "linux"), entry);
+	assert.deepEqual(windowsFallback(entry), { command: "cmd", args: ["/c", "npx", "-y", "keywright@latest"] });
 	assert.deepEqual(entryFor({ command: "node", args: ["C:\\\\k\\\\keywright.mjs"], fullPath: "node.exe" }, "win32"), { command: "node", args: ["C:\\\\k\\\\keywright.mjs"] });
 });
 
