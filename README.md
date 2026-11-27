@@ -38,9 +38,11 @@ The AI app can run on Windows, or inside WSL while Studio runs on Windows.
 
 ### Let your AI app install it
 
-If your AI app can run commands, as Claude Code and Codex can, paste this to it:
+If your AI app can run commands on your computer itself, as Claude Code and Codex can, paste this to it:
 
-> Install Keywright for Roblox Studio: run `npx -y keywright@latest setup`, add Keywright to yourself the way it says, and tell me what is left for me to do.
+> Install Keywright for Roblox Studio: run `npx -y keywright@latest setup`, ask me before adding Keywright to any AI app it finds, and tell me what is left for me to do.
+
+An app whose commands run in a separate virtual machine, such as Claude Desktop's, can't reach Studio's plugins folder: install it yourself, below. It can use Keywright once that's done.
 
 Then [turn on agent access and pair](#3-turn-on-agent-access-and-pair).
 
@@ -52,11 +54,13 @@ Then [turn on agent access and pair](#3-turn-on-agent-access-and-pair).
 npx -y keywright@latest setup
 ```
 
-This copies the plugin into Studio's plugins folder and prints the settings for your AI app. Studio loads the plugin on its own; if the **Keywright** button doesn't appear on the Plugins tab, restart Studio.
+This copies the plugin into Studio's plugins folder, then offers to add Keywright to each AI app it finds: Claude Desktop, Claude Code, Codex and Cursor. It changes only Keywright's entry and keeps a copy of each file it changes. Studio loads the plugin on its own; if the **Keywright** button doesn't appear on the Plugins tab, restart Studio.
+
+On Windows, if PowerShell says scripts can't be run, type `npx.cmd` instead of `npx`, or use Command Prompt.
 
 #### 2. Add Keywright to your AI app
 
-For Claude Code, available in every project:
+Skip this for any app `setup` added Keywright to; restart that app. Otherwise, for Claude Code, available in every project:
 
 ```sh
 claude mcp add --scope user keywright -- npx -y keywright@latest

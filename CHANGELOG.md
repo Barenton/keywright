@@ -4,6 +4,14 @@ What changed in each release of Keywright. The plugin and the adapter are releas
 
 ## [Unreleased]
 
+**New**
+
+- **`setup` adds Keywright to your AI apps:** it finds Claude Desktop, Claude Code, Codex and Cursor and, with your yes, adds Keywright to each. In a terminal it asks; an agent passes `--add-to` after asking you. Only Keywright's entry is added or brought up to date, a copy of each file changed is kept beside it, and a file it can't read is left alone.
+
+**Fixed**
+
+- **Windows:** AI apps are given `cmd /c npx …`, since an app that starts programs without a shell can't run `npx`, which is a `.cmd` file on Windows. The commands `setup` prints are no longer quoted where they needn't be, so they work in Command Prompt too. The README and Troubleshooting say what to do when PowerShell won't run `npx`, and that an AI app whose commands run in a separate virtual machine can't install Keywright.
+
 ## [0.7.0] - 2026-11-26
 
 **New**

@@ -8,6 +8,8 @@
 | The panel says **Pairing is needed again** | Turn agent access off and on to get a new code, then pair again: tell your AI app the code, or run `npx -y keywright@latest pair <code>`. |
 | The pairing code stopped working | A code works once, within 5 minutes of being registered, and registering another code (for example one typed wrong) replaces it. Turn agent access off and on for a new one. |
 | The panel says **Another program is using the broker port**, or the agent gets `BROKER_PORT_CONFLICT` | Another program is using port 47318, which Keywright needs. Close it, then turn agent access off and on. |
+| PowerShell says `npx` **cannot be loaded because running scripts is disabled** | Type `npx.cmd` instead of `npx`, or use Command Prompt. Nothing needs changing in Windows' settings. |
+| An AI app's own commands **can't install** Keywright, or can't start | Some apps run commands in a separate virtual machine, which can't reach Studio's plugins folder. Run `npx -y keywright@latest setup` yourself; it offers to add Keywright to the apps it finds. |
 | The **Keywright** button doesn't appear in Studio | Restart Studio. If it still doesn't, run `npx -y keywright@latest install-plugin` again and read what it says. |
 
 What each error code means is in [Errors and findings](errors.md).
@@ -17,7 +19,7 @@ What each error code means is in [Errors and findings](errors.md).
 
 | Command | What it does |
 |---|---|
-| `npx -y keywright@latest setup` | Installs the plugin and prints the settings for your AI app. |
+| `npx -y keywright@latest setup` | Installs the plugin, offers to add Keywright to each AI app it finds, and prints the settings for others. `--add-to found` (or a list: `claude-desktop,claude-code,codex,cursor`) adds it without asking, for an agent that has asked you. |
 | `npx -y keywright@latest update` | Updates: installs the newest plugin and says what is left, which is reconnecting Keywright in your AI app. |
 | `npx -y keywright@latest install-plugin` | Installs or updates the plugin only. Add `--folder <path>` to install somewhere else. |
 | `npx -y keywright@latest pair <code>` | Pairs a Studio window, with the code its panel shows. |

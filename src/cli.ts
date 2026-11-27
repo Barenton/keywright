@@ -9,6 +9,8 @@ import { configuredPort, readBrokerState, rotateSecret, stateDir } from "./broke
 import { builtPlugin, installPlugin, robloxFolder, thisMachine, type Installed } from "./install.js";
 import { cliPath, command as howToRun, viaNpx } from "./layout.js";
 import { setupGuide } from "./setup.js";
+import { type App, type AppName, APPS, addTo as addTo_, appFor, entryFor, findApps } from "./apps.js";
+import { createInterface } from "node:readline/promises";
 import { compareVersions } from "./broker/launcher.js";
 import { checkDisabled, refreshLatest, updateSteps } from "./updates.js";
 import { VERSION } from "./version.js";
@@ -114,16 +116,58 @@ function installFrom(command: string, args: string[]): Installed | undefined {
 	return installPlugin(builtPlugin(), target);
 }
 
-function setup(args: string[]): number {
-	const installed = installFrom("setup", args);
+/** Asks a yes-or-no question in the terminal; Enter means yes. */
+async function confirm(question: string): Promise<boolean> {
+	const prompt = createInterface({ input: process.stdin, output: process.stdout });
+	try {
+		const answer = (await prompt.question(`${question} [Y/n] `)).trim().toLowerCase();
+		return answer === "" || answer === "y" || answer === "yes";
+	} finally {
+		prompt.close();
+	}
+}
+
+/**
+ * Installs the plugin, adds Keywright to the AI apps the person says yes to, and prints
+ * the rest. In a terminal it asks for each app found; run by an agent, which cannot
+ * answer, it adds Keywright only to the apps named by --add-to (or all found, with
+ * --add-to found), which the agent passes after asking the person.
+ */
+async function setup(args: string[]): Promise<number> {
+	const rest: string[] = [];
+	let addTo: string[] | undefined;
+	for (let index = 0; index < args.length; index += 1) {
+		if (args[index] === "--add-to" && args[index + 1] !== undefined) {
+			addTo = (args[index + 1] as string).split(",").map((name) => name.trim()).filter(Boolean);
+			index += 1;
+		} else {
+			rest.push(args[index] as string);
+		}
+	}
+	const unknown = (addTo ?? []).filter((name) => name !== "found" && !(APPS as readonly string[]).includes(name));
+	if (unknown.length > 0) {
+		process.stderr.write(`Usage: ${howToRun()} setup [--folder <path>] [--add-to found|${APPS.join(",")}]\nNot an app setup knows: ${unknown.join(", ")}\n`);
+		return 2;
+	}
+	const installed = installFrom("setup", rest);
 	if (!installed) return 2;
 	const machine = thisMachine();
 	// Started through npx, the app is told to start it the same way. npx sits beside node.
 	const npx = join(dirname(process.execPath), process.platform === "win32" ? "npx.cmd" : "npx");
 	const launch = viaNpx() ? { command: "npx", args: ["-y", "keywright@latest"], fullPath: npx } : undefined;
-	process.stdout.write(
-		setupGuide({ version: VERSION, entry: cliPath(), launch, installed, wsl: machine.wsl, distro: machine.env.WSL_DISTRO_NAME, node: process.execPath, platform: process.platform }),
-	);
+	const facts = { version: VERSION, entry: cliPath(), launch, installed, wsl: machine.wsl, distro: machine.env.WSL_DISTRO_NAME, node: process.execPath, platform: process.platform };
+	const where = { platform: machine.platform, env: machine.env, home: machine.home };
+	const found = findApps(where);
+	let chosen: App[] = [];
+	if (addTo) {
+		// Named apps are set up even if not found, so a missing settings file is made.
+		chosen = addTo.includes("found") ? found : addTo.map((name) => found.find((app) => app.name === name) ?? appFor(name as AppName, where)).filter((app): app is App => app !== undefined);
+	} else if (process.stdin.isTTY && process.stdout.isTTY) {
+		for (const app of found) if (await confirm(`Add Keywright to ${app.label}?`)) chosen.push(app);
+	}
+	const entry = entryFor(launch ?? { command: "node", args: [cliPath()], fullPath: process.execPath }, process.platform);
+	const results = chosen.map((app) => ({ app, outcome: addTo_(app, entry) }));
+	process.stdout.write(setupGuide({ ...facts, apps: { found, results } }));
 	return 0;
 }
 
@@ -178,7 +222,7 @@ async function main(argv: string[]): Promise<number> {
 	if (command === "broker") return runBroker();
 	if (command === "install-plugin") return install(rest);
 	if (command === "update") return update(rest);
-	if (command === "setup") return setup(rest);
+	if (command === "setup") return await setup(rest);
 	if (command === "version" || command === "--version") {
 		process.stdout.write(`${VERSION}\n`);
 		return 0;

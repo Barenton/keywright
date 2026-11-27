@@ -3,6 +3,7 @@
 // Written for a person and for an agent doing the setup for them alike.
 
 import { posix } from "node:path";
+import { type App, entryFor, type Outcome } from "./apps.js";
 import type { Installed } from "./install.js";
 
 /** How an AI app starts Keywright: node with this copy's file, or npx with the package's name. */
@@ -28,6 +29,8 @@ export interface SetupFacts {
 	node: string;
 	/** Where setup runs, which decides how a terminal command is quoted: PowerShell on Windows. */
 	platform: NodeJS.Platform;
+	/** The AI apps found here, and what was done for each one the person said yes to. */
+	apps?: { found: App[]; results: Array<{ app: App; outcome: Outcome }> };
 }
 
 /** A value as a quoted string that JSON and TOML both read back exactly. */
@@ -35,8 +38,9 @@ const quoted = (value: string) => JSON.stringify(value);
 
 /** A value as one argument of a terminal command: PowerShell's quoting on Windows, a POSIX shell's elsewhere. */
 export function shellArgument(value: string, platform: NodeJS.Platform): string {
-	if (platform === "win32") return `'${value.replace(/'/g, "''")}'`;
+	// Plain as it is where nothing in it needs quoting, so it works in Command Prompt too.
 	if (/^[A-Za-z0-9_./:=@%+-]+$/.test(value)) return value;
+	if (platform === "win32") return `'${value.replace(/'/g, "''")}'`;
 	return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
@@ -45,7 +49,21 @@ export function setupGuide(facts: SetupFacts): string {
 	const launch: Launch = facts.launch ?? { command: "node", args: [facts.entry], fullPath: facts.node };
 	const shell = (value: string) => shellArgument(value, facts.platform);
 	const line = [launch.command, ...launch.args].map((part, index) => (index === 0 ? part : shell(part))).join(" ");
-	const args = launch.args.map(quoted).join(", ");
+	// What an app runs: on Windows, npx through cmd /c (see entryFor).
+	const entry = entryFor(launch, facts.platform);
+	const appLine = [entry.command, ...entry.args].map((part, index) => (index === 0 ? part : shell(part))).join(" ");
+	const args = entry.args.map(quoted).join(", ");
+	// What setup did in each app the person said yes to, and the apps it found but left.
+	const results = facts.apps?.results ?? [];
+	const done = new Set(results.map((result) => result.app.name));
+	const left = (facts.apps?.found ?? []).filter((app) => !done.has(app.name));
+	const reported = results.map(({ app, outcome }) => {
+		if (outcome.status === "skipped") return `   Not added to ${app.label}: ${outcome.reason}`;
+		if (outcome.status === "unchanged") return `   ${app.label} already starts Keywright.`;
+		const where = app.file ? ` (${app.file})` : "";
+		const kept = outcome.backup ? " The file as it was is kept beside it, ending in .before-keywright." : "";
+		return `   ${outcome.status === "added" ? "Added Keywright to" : "Brought Keywright up to date in"} ${app.label}${where}.${kept}`;
+	});
 	// Started from Windows, wsl.exe --exec gives no login shell, so a node installed with nvm
 	// is not on PATH. npx finds node through PATH, so it is run with node's folder put there.
 	const throughPath = launch.command === "node" ? [] : ["/usr/bin/env", `PATH=${posix.dirname(facts.node)}:/usr/local/bin:/usr/bin:/bin`];
@@ -61,21 +79,31 @@ export function setupGuide(facts: SetupFacts): string {
 			: []),
 		"   Studio loads it on its own. If the Keywright button does not appear on the Plugins tab, restart Studio.",
 		"",
-		"2. Add Keywright to the AI app. The app starts it with:",
-		`   ${line}`,
+		"2. Add Keywright to the AI app",
+		...reported,
+		...(left.length > 0
+			? [
+					`   Found here: ${left.map((app) => app.label).join(", ")}. Setup can add Keywright to ${left.length === 1 ? "it" : "them"}: ask the person, then run`,
+					`     ${line} setup --add-to ${left.map((app) => app.name).join(",")}`,
+				]
+			: []),
+		...(reported.length > 0 || left.length > 0 ? [""] : []),
+		`   To add it by hand, the app starts it with: ${appLine}`,
 		"",
 		"   Claude Code, in a terminal (for every project):",
-		`     claude mcp add --scope user keywright -- ${line}`,
+		`     claude mcp add --scope user keywright -- ${appLine}`,
 		"",
 		"   Codex, in ~/.codex/config.toml:",
 		"     [mcp_servers.keywright]",
-		`     command = ${quoted(launch.command)}`,
+		`     command = ${quoted(entry.command)}`,
 		`     args = [${args}]`,
 		"",
 		"   Claude Desktop, Cursor and most other apps, in their MCP settings (JSON):",
-		`     { "mcpServers": { "keywright": { "command": ${quoted(launch.command)}, "args": [${args}] } } }`,
-		"",
-		`   If an app cannot find ${launch.command}, use its full path in place of "${launch.command}": ${launch.fullPath}`,
+		`     { "mcpServers": { "keywright": { "command": ${quoted(entry.command)}, "args": [${args}] } } }`,
+		// Not npx.cmd on Windows: an app that can't find npx can't run a .cmd file either.
+		...(facts.platform === "win32" && launch.command === "npx"
+			? []
+			: ["", `   If an app cannot find ${launch.command}, use its full path in place of "${launch.command}": ${launch.fullPath}`]),
 		...(facts.wsl
 			? [
 					"",
