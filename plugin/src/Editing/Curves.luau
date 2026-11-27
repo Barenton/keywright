@@ -39,6 +39,7 @@ local MirrorOp = require("./CurveEdit/MirrorOp")
 local Need = require("./CurveEdit/Need")
 local OverlapOp = require("./CurveEdit/OverlapOp")
 local PinOp = require("./CurveEdit/PinOp")
+local NudgeOp = require("./CurveEdit/NudgeOp")
 local Read = require("./CurveEdit/Read")
 local Seam = require("./CurveEdit/Seam")
 local Store = require("./CurveEdit/Store")
@@ -108,7 +109,7 @@ type Operation = {
 	wraps: boolean?,
 }
 local operations: { [string]: Operation } = {}
-for _, family in { KeyOps, ClipOps, TimeOps, MirrorOp, PinOp, FloorOps, LayerOps, AimOp, OverlapOp } :: { any } do
+for _, family in { KeyOps, ClipOps, TimeOps, MirrorOp, PinOp, NudgeOp, FloorOps, LayerOps, AimOp, OverlapOp } :: { any } do
 	for name, operation in family do
 		operations[name] = operation
 	end

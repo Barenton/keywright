@@ -357,7 +357,9 @@ Ops.pin = {
 					bend = Limb.BEND[operation.part],
 					pole = if poleLocal then anchor * poleLocal else nil,
 					poleWeight = weight,
-					soft = operation.soft,
+					-- Eased in with the hold, so a limb near full stretch doesn't jump on the
+					-- first frame of a blend.
+					soft = if operation.soft then operation.soft * weight else nil,
 				})
 			local result = solution.transforms
 			if weight >= 1 and not solution.beyond and solution.miss > 0.001 then

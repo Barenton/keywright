@@ -8,10 +8,15 @@ What changed in each release of Keywright. The plugin and the adapter are releas
 
 - **`update`:** `npx -y keywright@latest update` installs the newest plugin, checks that it is the newest release, and says what is left: reconnecting Keywright in the AI app. Run from a downloaded file that is older than the newest release, it says where to get that first. Update advice in the panel and in `update_needed` now gives this command.
 - **Copy a pose from another clip:** `copy_pose` takes `from_clip`, naming another clip of the same rig as `compare_with` does. A revised guard in a ready clip can be carried into every attack's start and recovery, copying only the joints and channels named, so each attack keeps its feet, timing and markers. A keyframe clip can be the source; it is only read.
+- **`nudge`:** move a hand or foot off its own path by an offset for a few frames, easing in and out, the limb solved to follow: lift a kicking foot at the chamber, carry a punch higher. Unlike `pin`, which holds a point and so drags a fast limb back toward it while easing out, the part keeps travelling along its own motion. The skill has the recipe for fixing what an onion skin or a measurement shows.
 - **Told when a newer release is out:** once a day, in the background, the adapter asks npm's registry for the latest version of Keywright. When it is newer, `get_workspace` carries `update_available` with the steps, and agents are told to mention it once. The request carries nothing about you or your work; `KEYWRIGHT_NO_UPDATE_CHECK=1` turns it off.
 
 **Fixed**
 
+- **`pin` and `nudge` near full stretch:** with `soft`, a limb near full stretch no longer jumps on the first frame of a blend; the softening now eases in with it.
+- **A point too near to reach is reported:** a hand or foot asked to come closer than its limb can fold is now counted in `frames_out_of_reach`, not reported as softened.
+- **No clip made longer by an edit:** the key `pin`, `nudge` and other per-frame operations add after their range to keep the motion beyond it no longer lands past the clip's end.
+- **Ranges across a loop's end need a loop that closes:** where a channel ends on another value than it starts (0 to 360 degrees, the same pose in other numbers), joining its end to its start could move a limb by studs, so such a range is now refused, with the hint to close the loop first.
 - **A curve read at a key just after a step:** operations that read a curve (`copy_pose`, `pin`, `aim` and others) took the value before a key, at that key's own time, when the stretch before it was Constant. They now take the key's own value, as Studio plays it.
 
 ## [0.6.0] - 2026-11-26

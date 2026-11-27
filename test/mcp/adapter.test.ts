@@ -196,7 +196,7 @@ describe("MCP adapter over stdio", () => {
 		// Each operation is a module field, `Ops.name = {`, in the folder for its kind of clip.
 		const curves = opsIn("CurveEdit");
 		assert.equal(keyframes.length, 15);
-		assert.equal(curves.length, 22);
+		assert.equal(curves.length, 23);
 		const applied = [...new Set([...keyframes, ...curves])].sort();
 		assert.deepEqual(published, applied);
 		// Which way each easing direction goes is spelt out where a client will read it.

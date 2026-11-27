@@ -61,6 +61,29 @@ export const bodyOperations = [
 	}),
 	z.object({
 		type: z
+			.literal("nudge")
+			.describe(
+				"Curve clips only. Move a foot or hand off its own path by an offset for a few frames, easing in and out, by turning the limb's three joints at every frame: lift a kicking foot at the chamber, carry a punch a little higher, clear a scuffing toe. Unlike pin, which holds the part at one point, the part keeps travelling along its own motion, moved by its share of the offset at each frame, so a fast limb is not dragged back toward a held point. The hips and everything else are left as they are, and frames outside the range and its blends are unchanged. The limb's rotation keys in the range are replaced by one key a frame, with smooth tangents; run reduce_keys after. Use track or measure to read where the part is before choosing the offset, and an onion skin to compare its path before and after. The result counts frames_nudged and largest_nudge_studs, and frames_out_of_reach with largest_miss_studs where the limb could not reach.",
+			),
+		part: z.enum(["LeftFoot", "RightFoot", "LeftHand", "RightHand"]).describe("The end of the limb to move."),
+		time_from: spanFrom,
+		time_to: spanTo,
+		offset: vec3.describe("How far to move it, in studs, in the rig's own directions: x toward its right, y up, z toward its back (forward is negative z). All of it from time_from to time_to, a share of it while easing in and out."),
+		blend_in: z.number().finite().min(0).max(2).optional().describe("Seconds before time_from over which the offset eases in from nothing; the frame where it starts is unchanged. Default 0."),
+		blend_out: z.number().finite().min(0).max(2).optional().describe("Seconds after time_to over which it eases out; the frame where it ends is unchanged. Default 0."),
+		hold: z
+			.enum(["full", "position"])
+			.optional()
+			.describe("full (default) moves the part without turning it, as a point dragged along its trail. position moves only the ankle or wrist, and the foot or hand turns with the limb."),
+		soft: z
+			.number()
+			.min(0)
+			.max(0.5)
+			.optional()
+			.describe("Soften the limb's reach over this last share of it, as pin's soft does. Default 0."),
+	}),
+	z.object({
+		type: z
 			.literal("aim")
 			.describe(
 				"Curve clips only. Turn one joint so the front of its part faces a point over a time range, by the smallest turn from how it is animated: a head that watches an opponent through a whole combo, a chest that squares up to a target. With hold instead, the part keeps the facing it has at `at` while the body moves under it, as a head stays level through a run. To turn the chest part of the way and the head the rest, aim the chest first with a weight, then the head. Written at every frame and then reduced to as few keys as keep it; the joint's motion outside the range and its blends is unchanged.",

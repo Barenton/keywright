@@ -19,6 +19,7 @@ type Changed = Frames.Changed
 export type Apply = (where: string, clip: Instance, operation: any, context: Context, changed: Changed) -> ()
 
 local milliseconds = Need.milliseconds
+local rounded = Need.rounded
 local refuse = Need.refuse
 
 local Seam = {}
@@ -167,6 +168,25 @@ function Seam.apply(where: string, clip: Instance, operation: any, context: Cont
 		)
 	end
 
+	-- The loop must close: each channel ending where it starts. A loop that doesn't, such
+	-- as one turning from 0 to 360 degrees, can't have its end joined to its start without
+	-- changing its motion, which the operation would then be worked out from.
+	for _, track in Store.tracks(clip) do
+		local keys = Store.keys(track.curve)
+		if #keys > 0 then
+			local opening, closing = Store.evaluate(keys, 0), Store.evaluate(keys, duration)
+			if math.abs(opening - closing) > 1e-3 then
+				refuse(
+					where,
+					`the range reaches the end of the loop, but the loop doesn't close: {track.joint} {track.channel} starts at {rounded(
+						opening,
+						4
+					)} and ends at {rounded(closing, 4)}, so its end can't be joined to its start.`,
+					"Close the loop first: copy_pose from 0 to its end."
+				)
+			end
+		end
+	end
 	-- The loop is cut and joined at its whole number of frames. A loop that ends a little
 	-- off a frame (0.667 typed for 20/30 of a second) would otherwise put every key that
 	-- comes round the end that little off a frame too. Its stray end key, within a

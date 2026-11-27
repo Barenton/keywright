@@ -88,7 +88,7 @@ Read a working copy. Returns a summary: format, duration, keyframe times, animat
 
 ## edit_animation
 
-Apply a batch of operations to a working copy atomically. A keyframe clip takes poses, easing, keyframes and smoothing; a curve clip takes keys, tangents, auto_tangents, add_offset, add_noise, aim, clear_floor, clear_keys, copy_pose, mirror, overlap, pin, place_on_floor, reduce_keys and reverse_time. Both take shift_time and scale_time (retiming), markers, the clip's settings and restore_source; each operation's description says which clips it is for. The operations apply in the order given, each to the clip as the ones before it leave it. The whole batch is tried first; if any operation cannot be done, nothing changes and the error names it by its place in the list. Requires the current revision. One Studio undo reverts the whole batch. Only what an operation names is changed.
+Apply a batch of operations to a working copy atomically. A keyframe clip takes poses, easing, keyframes and smoothing; a curve clip takes keys, tangents, auto_tangents, add_offset, add_noise, aim, clear_floor, clear_keys, copy_pose, mirror, nudge, overlap, pin, place_on_floor, reduce_keys and reverse_time. Both take shift_time and scale_time (retiming), markers, the clip's settings and restore_source; each operation's description says which clips it is for. The operations apply in the order given, each to the clip as the ones before it leave it. The whole batch is tried first; if any operation cannot be done, nothing changes and the error names it by its place in the list. Requires the current revision. One Studio undo reverts the whole batch. Only what an operation names is changed.
 
 | Argument | Type | Required | Description |
 |---|---|---|---|
@@ -102,7 +102,7 @@ Apply a batch of operations to a working copy atomically. A keyframe clip takes 
 
 Each item of `operations` is one of these, chosen by its `type`.
 
-[`set_pose`](#set_pose) · [`remove_pose`](#remove_pose) · [`offset_pose`](#offset_pose) · [`set_easing`](#set_easing) · [`add_keyframe`](#add_keyframe) · [`remove_keyframe`](#remove_keyframe) · [`move_keyframe`](#move_keyframe) · [`duplicate_keyframe`](#duplicate_keyframe) · [`smooth_motion`](#smooth_motion) · [`shift_time`](#shift_time) · [`scale_time`](#scale_time) · [`set_properties`](#set_properties) · [`set_marker`](#set_marker) · [`remove_marker`](#remove_marker) · [`restore_source`](#restore_source) · [`set_key`](#set_key) · [`remove_key`](#remove_key) · [`set_tangent`](#set_tangent) · [`auto_tangents`](#auto_tangents) · [`clear_keys`](#clear_keys) · [`copy_pose`](#copy_pose) · [`add_offset`](#add_offset) · [`add_noise`](#add_noise) · [`reduce_keys`](#reduce_keys) · [`reverse_time`](#reverse_time) · [`mirror`](#mirror) · [`pin`](#pin) · [`aim`](#aim) · [`overlap`](#overlap) · [`place_on_floor`](#place_on_floor) · [`clear_floor`](#clear_floor)
+[`set_pose`](#set_pose) · [`remove_pose`](#remove_pose) · [`offset_pose`](#offset_pose) · [`set_easing`](#set_easing) · [`add_keyframe`](#add_keyframe) · [`remove_keyframe`](#remove_keyframe) · [`move_keyframe`](#move_keyframe) · [`duplicate_keyframe`](#duplicate_keyframe) · [`smooth_motion`](#smooth_motion) · [`shift_time`](#shift_time) · [`scale_time`](#scale_time) · [`set_properties`](#set_properties) · [`set_marker`](#set_marker) · [`remove_marker`](#remove_marker) · [`restore_source`](#restore_source) · [`set_key`](#set_key) · [`remove_key`](#remove_key) · [`set_tangent`](#set_tangent) · [`auto_tangents`](#auto_tangents) · [`clear_keys`](#clear_keys) · [`copy_pose`](#copy_pose) · [`add_offset`](#add_offset) · [`add_noise`](#add_noise) · [`reduce_keys`](#reduce_keys) · [`reverse_time`](#reverse_time) · [`mirror`](#mirror) · [`pin`](#pin) · [`nudge`](#nudge) · [`aim`](#aim) · [`overlap`](#overlap) · [`place_on_floor`](#place_on_floor) · [`clear_floor`](#clear_floor)
 
 #### set_pose
 
@@ -413,6 +413,21 @@ Curve clips only. Hold a foot or hand in place over a time range, or put it some
 | `pole` | 3 numbers |  | A point the knee or elbow is to point toward, in the same space as position (so also against relative_to when given). |
 | `blend_in` | number, 0 to 2 |  | Seconds before time_from over which the limb eases from its own motion into the hold. While easing in or out, the part travels straight from where its own motion has it to where it is held, turning evenly between the two. Default 0. |
 | `blend_out` | number, 0 to 2 |  | Seconds after time_to over which it eases back out. Default 0. |
+
+#### nudge
+
+Curve clips only. Move a foot or hand off its own path by an offset for a few frames, easing in and out, by turning the limb's three joints at every frame: lift a kicking foot at the chamber, carry a punch a little higher, clear a scuffing toe. Unlike pin, which holds the part at one point, the part keeps travelling along its own motion, moved by its share of the offset at each frame, so a fast limb is not dragged back toward a held point. The hips and everything else are left as they are, and frames outside the range and its blends are unchanged. The limb's rotation keys in the range are replaced by one key a frame, with smooth tangents; run reduce_keys after. Use track or measure to read where the part is before choosing the offset, and an onion skin to compare its path before and after. The result counts frames_nudged and largest_nudge_studs, and frames_out_of_reach with largest_miss_studs where the limb could not reach.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `part` | one of `LeftFoot`, `RightFoot`, `LeftHand`, `RightHand` | yes | The end of the limb to move. |
+| `time_from` | number, 0 to 300 | yes | Start of the range in seconds. In a looping clip it may be after time_to: the range then runs on past the end and round from the start, as a step that lands just after the loop begins (time_from 0.9, time_to 0.2), blends included. |
+| `time_to` | number, 0 to 300 | yes | End of the range in seconds. Must not be past the end of the clip. In a looping clip, a range or blend that reaches the end, or the start, changes both alike, so the loop stays closed. |
+| `offset` | 3 numbers | yes | How far to move it, in studs, in the rig's own directions: x toward its right, y up, z toward its back (forward is negative z). All of it from time_from to time_to, a share of it while easing in and out. |
+| `blend_in` | number, 0 to 2 |  | Seconds before time_from over which the offset eases in from nothing; the frame where it starts is unchanged. Default 0. |
+| `blend_out` | number, 0 to 2 |  | Seconds after time_to over which it eases out; the frame where it ends is unchanged. Default 0. |
+| `hold` | one of `full`, `position` |  | full (default) moves the part without turning it, as a point dragged along its trail. position moves only the ankle or wrist, and the foot or hand turns with the limb. |
+| `soft` | number, 0 to 0.5 |  | Soften the limb's reach over this last share of it, as pin's soft does. Default 0. |
 
 #### aim
 

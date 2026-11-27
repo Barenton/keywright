@@ -43,7 +43,8 @@ export type Solution = {
 	transforms: { CFrame },
 	-- How far the end joint is from where it was wanted, in studs: 0 when it was reached.
 	miss: number,
-	-- Whether the point was beyond the limb's full reach, as against only softened.
+	-- Whether the point was out of the limb's reach, too far or too near for it to fold
+	-- to, as against only softened.
 	beyond: boolean,
 }
 
@@ -150,7 +151,10 @@ function Limb.solve(request: Request): Solution
 	local q = u.Z * n.Y - u.Y * n.Z
 	local size = math.sqrt(p * p + q * q)
 	local fullest = Limb.fullest(request.joints, current)
-	local beyond = distance > fullest + 1e-6
+	-- As near as the end joint comes to the upper one, with the middle joint folded as far
+	-- as it goes: a point nearer than that is out of reach too.
+	local nearest = math.sqrt(math.max(0, n:Dot(n) + u:Dot(u) - 2 * u.X * n.X - 2 * size))
+	local beyond = distance > fullest + 1e-6 or distance < nearest - 1e-6
 	local soft = request.soft or 0
 	if soft > 0 and distance > 1e-6 then
 		local start = (1 - soft) * fullest

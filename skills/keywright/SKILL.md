@@ -168,5 +168,5 @@ dialog or a drag.
   `mirror`; close loops with `copy_pose`. When a shared pose changes (a guard lowered in
   the ready clip), carry it into every move with `copy_pose` and `from_clip`, naming only
   the joints that changed, so each move keeps its own feet, timing and markers.
-- **Keep keys editable.** After `pin`, `aim`, `overlap` or `add_noise` write a key every
+- **Keep keys editable.** After `pin`, `nudge`, `aim`, `overlap` or `add_noise` write a key every
   frame, run `reduce_keys` so a person can still work with the curves.

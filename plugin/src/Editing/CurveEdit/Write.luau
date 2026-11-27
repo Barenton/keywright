@@ -173,7 +173,9 @@ local function writeFrames(
 		end
 	end
 	if endTime < frames.duration - tolerance then
-		local after = cut((frames.last + 1) / rate)
+		-- At the next frame, or at the clip's end if that comes first: a key past the end
+		-- would make the clip longer.
+		local after = cut(math.min((frames.last + 1) / rate, frames.duration))
 		if after then
 			table.insert(kept, after)
 			guards += 1

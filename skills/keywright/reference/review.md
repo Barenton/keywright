@@ -39,6 +39,26 @@ dot at each (1 is the first time). Use `style: "slim"`, and the view that shows 
 Look for where the limb turns round (is it where the plan says?), whether the path bows
 into an arc, and the spacing of the dots: bunched is slow, spread out is fast.
 
+## Fixing what a trail shows
+
+When an onion skin or a measurement shows a hand or foot in the wrong place for a few
+frames (a kick's foot dipping at the chamber, a punch arriving low), move it there, not
+the joints by hand:
+
+1. `track` the part at the frames around it, to see where it is.
+2. `nudge` it: `part`, the frame (`time_from` and `time_to`, or a range at full offset),
+   the `offset` in studs (`[0, 0.15, 0]` lifts it), and `blend_in` and `blend_out` to the
+   frames that must stay as they are. Lift a foot at frame 4 keeping frames 2 and 7:
+   `time_from` and `time_to` 4/30, `blend_in` 2/30, `blend_out` 3/30.
+3. Check: `measure` the part's height (or reach) at those frames against before, and an
+   onion skin with the part tracked, beside one of the clip it was opened from.
+4. `reduce_keys` from where the blend in starts to where the blend out ends: `nudge` keys
+   every frame there, and a single frame alone has nothing to reduce.
+
+Use `nudge` for a limb that's moving; use `pin` for one that should stay put, such as a
+planted foot. A pin holds a point, so easing out of one on a fast limb drags it back
+toward that point.
+
 ## Measurements
 
 `measure` turns a check into a number at every time sampled, with the least and greatest
