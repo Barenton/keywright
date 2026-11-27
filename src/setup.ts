@@ -60,10 +60,11 @@ export function setupGuide(facts: SetupFacts): string {
 	const left = (facts.apps?.found ?? []).filter((app) => !done.has(app.name));
 	const reported = results.map(({ app, outcome }) => {
 		if (outcome.status === "skipped") return `   Not added to ${app.label}: ${outcome.reason}`;
-		if (outcome.status === "unchanged") return `   ${app.label} already starts Keywright.`;
+		if (outcome.status === "unchanged") return `   ${app.label} already starts Keywright.${outcome.skill ? ` Its skill is brought up to date at ${outcome.skill}.` : ""}`;
 		const where = app.file ? ` (${app.file})` : "";
 		const kept = outcome.backup ? " The file as it was is kept beside it, ending in .before-keywright." : "";
-		return `   ${outcome.status === "added" ? "Added Keywright to" : "Brought Keywright up to date in"} ${app.label}${where}.${kept}`;
+		const skill = outcome.skill ? ` Its skill is installed at ${outcome.skill}.` : "";
+		return `   ${outcome.status === "added" ? "Added Keywright to" : "Brought Keywright up to date in"} ${app.label}${where}.${kept}${skill}`;
 	});
 	// Started from Windows, wsl.exe --exec gives no login shell, so a node installed with nvm
 	// is not on PATH. npx finds node through PATH, so it is run with node's folder put there.

@@ -6,7 +6,7 @@
 // is saved beside it first. A file that cannot be read as what it should be is left alone.
 
 import { spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { constants, copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Launch } from "./setup.js";
 
@@ -21,7 +21,7 @@ export interface App {
 }
 
 export type Outcome =
-	| { status: "added" | "updated" | "unchanged"; backup?: string }
+	| { status: "added" | "updated" | "unchanged"; backup?: string; skill?: string }
 	| { status: "skipped"; reason: string };
 
 export interface Where {
@@ -44,6 +44,11 @@ function claudeDesktopFile(where: Where): string | undefined {
 	return undefined;
 }
 
+/** Codex's folder: CODEX_HOME when it is set, as Codex itself reads it, else ~/.codex. */
+function codexFolder(where: Where): string {
+	return where.env.CODEX_HOME ? where.env.CODEX_HOME : join(where.home, ".codex");
+}
+
 /** An app by name, where its settings would be, whether or not it is installed here. */
 export function appFor(name: AppName, where: Where): App | undefined {
 	if (name === "claude-desktop") {
@@ -51,7 +56,7 @@ export function appFor(name: AppName, where: Where): App | undefined {
 		return file ? { name, label: "Claude Desktop", file } : undefined;
 	}
 	if (name === "claude-code") return { name, label: "Claude Code" };
-	if (name === "codex") return { name, label: "Codex", file: join(where.home, ".codex", "config.toml") };
+	if (name === "codex") return { name, label: "Codex", file: join(codexFolder(where), "config.toml") };
 	return { name, label: "Cursor", file: join(where.home, ".cursor", "mcp.json") };
 }
 
@@ -61,7 +66,7 @@ export function findApps(where: Where): App[] {
 	const desktop = claudeDesktopFile(where);
 	if (desktop && existsSync(dirname(desktop))) found.push({ name: "claude-desktop", label: "Claude Desktop", file: desktop });
 	if ((where.hasCommand ?? commandExists)("claude")) found.push({ name: "claude-code", label: "Claude Code" });
-	const codex = join(where.home, ".codex");
+	const codex = codexFolder(where);
 	if (existsSync(codex)) found.push({ name: "codex", label: "Codex", file: join(codex, "config.toml") });
 	const cursor = join(where.home, ".cursor");
 	if (existsSync(cursor)) found.push({ name: "cursor", label: "Cursor", file: join(cursor, "mcp.json") });
@@ -86,17 +91,25 @@ export function windowsFallback(entry: { command: string; args: string[] }): { c
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
-/** Writes a file whole or not at all, after saving a copy of what was there. */
+/**
+ * Writes a file whole or not at all, keeping its permissions (a settings file may hold
+ * tokens), after keeping a copy of it as it was before Keywright first changed it. Files
+ * are made afresh and exclusively, so a link left at a path is never written through.
+ */
 function replaceFile(file: string, text: string): string | undefined {
 	let backup: string | undefined;
+	let mode = 0o600;
 	if (existsSync(file)) {
+		mode = statSync(file).mode & 0o777;
 		backup = `${file}.before-keywright`;
-		copyFileSync(file, backup);
+		// The first copy is the one from before Keywright; a later update keeps it.
+		if (!existsSync(backup)) copyFileSync(file, backup, constants.COPYFILE_EXCL);
 	} else {
 		mkdirSync(dirname(file), { recursive: true });
 	}
 	const temp = `${file}.${process.pid}.tmp`;
-	writeFileSync(temp, text);
+	rmSync(temp, { force: true });
+	writeFileSync(temp, text, { mode, flag: "wx" });
 	renameSync(temp, file);
 	return backup;
 }
@@ -121,8 +134,10 @@ export function addToJson(file: string, entry: { command: string; args: string[]
 		return { status: "skipped", reason: `mcpServers in ${file} is not an object, so the file was left as it is` };
 	}
 	const existing = (servers as Record<string, unknown> | undefined)?.keywright;
-	if (same(existing, entry)) return { status: "unchanged" };
-	const updated = { ...settings, mcpServers: { ...((servers as Record<string, unknown>) ?? {}), keywright: entry } };
+	const current = existing !== null && typeof existing === "object" && !Array.isArray(existing) ? (existing as Record<string, unknown>) : undefined;
+	if (current && same(current.command, entry.command) && same(current.args, entry.args)) return { status: "unchanged" };
+	// Only how it is started changes; anything else in the entry, as env, is kept.
+	const updated = { ...settings, mcpServers: { ...((servers as Record<string, unknown>) ?? {}), keywright: { ...(current ?? {}), ...entry } } };
 	const backup = replaceFile(file, `${JSON.stringify(updated, null, 2)}\n`);
 	return { status: existing === undefined ? "added" : "updated", backup };
 }
@@ -131,34 +146,86 @@ export function addToJson(file: string, entry: { command: string; args: string[]
 export function addToToml(file: string, entry: { command: string; args: string[] }): Outcome {
 	const text = existsSync(file) ? readFileSync(file, "utf8") : "";
 	const section = `[mcp_servers.keywright]\ncommand = ${JSON.stringify(entry.command)}\nargs = [${entry.args.map((arg) => JSON.stringify(arg)).join(", ")}]\n`;
-	if (/^\s*\[mcp_servers\.keywright\]\s*$/m.test(text)) {
-		if (text.includes(section)) return { status: "unchanged" };
-		// Rewriting TOML by hand could damage what is around it: say what to change instead.
-		return { status: "skipped", reason: `${file} already has a [mcp_servers.keywright] section; change it to:\n${section}` };
+	if (text.includes(section)) return { status: "unchanged" };
+	// A keywright entry already there in any spelling, or servers written as an inline
+	// table, can't be added to by appending: rewriting TOML by hand could damage what is
+	// around it, so say what to change instead.
+	const hasEntry = /^\s*\[\s*mcp_servers\s*\.\s*["']?keywright["']?\s*\]/m.test(text);
+	const inline = /^\s*mcp_servers\s*=/m.test(text) || /^\s*\[\s*mcp_servers\s*\]/m.test(text) && /^\s*keywright\s*=/m.test(text);
+	if (hasEntry || inline) {
+		return { status: "skipped", reason: `${file} already lists Keywright, or lists its servers in a way setup doesn't change; make Keywright's entry:\n${section}` };
 	}
 	const joined = text === "" || text.endsWith("\n\n") ? text : text.endsWith("\n") ? `${text}\n` : `${text}\n\n`;
 	const backup = replaceFile(file, `${joined}${section}`);
 	return { status: "added", backup };
 }
 
-/** Adds Keywright to Claude Code for every project, with its own command. */
-export function addToClaudeCode(entry: { command: string; args: string[] }, run: typeof spawnSync = spawnSync): Outcome {
-	const shell = process.platform === "win32";
-	const listed = run("claude", ["mcp", "get", "keywright"], { encoding: "utf8", shell, timeout: 30_000 });
-	if (listed.status === 0) {
-		const output = String(listed.stdout ?? "");
-		if (output.includes(`Args: ${entry.args.join(" ")}`) && output.includes(`Command: ${entry.command}`)) return { status: "unchanged" };
-		run("claude", ["mcp", "remove", "keywright", "-s", "user"], { encoding: "utf8", shell, timeout: 30_000 });
-	}
-	const added = run("claude", ["mcp", "add", "--scope", "user", "keywright", "--", entry.command, ...entry.args], { encoding: "utf8", shell, timeout: 30_000 });
-	if (added.status !== 0) return { status: "skipped", reason: `claude mcp add failed: ${String(added.stderr ?? "").trim() || `exit ${added.status}`}` };
-	return { status: listed.status === 0 ? "updated" : "added" };
+/**
+ * An argument for Windows' command shell, which claude (a .cmd file there) runs through:
+ * quoted where it holds a space or a character the shell would act on, or undefined if it
+ * holds one the shell would act on even in quotes.
+ */
+export function cmdArgument(value: string): string | undefined {
+	if (/["%!\r\n]/.test(value)) return undefined;
+	return /[\s&|<>^()]/.test(value) ? `"${value}"` : value;
 }
 
-/** Adds Keywright to one app. */
-export function addTo(app: App, entry: { command: string; args: string[] }): Outcome {
+/**
+ * Adds Keywright to Claude Code for every project, with its own command. An entry already
+ * there for every project is never removed: one that differs is reported with the commands
+ * to change it, so a failure part-way can't leave Claude Code without Keywright.
+ */
+export function addToClaudeCode(entry: { command: string; args: string[] }, run: typeof spawnSync = spawnSync, platform: NodeJS.Platform = process.platform): Outcome {
+	const windows = platform === "win32";
+	const args = (list: string[]): string[] | undefined => {
+		if (!windows) return list;
+		const quoted = list.map(cmdArgument);
+		return quoted.every((item) => item !== undefined) ? (quoted as string[]) : undefined;
+	};
+	const wanted = ["mcp", "add", "--scope", "user", "keywright", "--", entry.command, ...entry.args];
+	const by = `claude ${wanted.join(" ")}`;
+	const addArgs = args(wanted);
+	if (!addArgs) return { status: "skipped", reason: `the command has characters Windows' shell would change; run it yourself: ${by}` };
+	const listed = run("claude", ["mcp", "get", "keywright"], { encoding: "utf8", shell: windows, timeout: 30_000 });
+	const output = String(listed.stdout ?? "");
+	// Only the entry for every project counts: one for the project setup runs in doesn't.
+	if (listed.status === 0 && /Scope:\s*User/i.test(output)) {
+		if (output.includes(`Command: ${entry.command}`) && output.includes(`Args: ${entry.args.join(" ")}`)) return { status: "unchanged" };
+		return { status: "skipped", reason: `Claude Code already starts Keywright another way; to change it, run: claude mcp remove keywright -s user, then ${by}` };
+	}
+	const added = run("claude", addArgs, { encoding: "utf8", shell: windows, timeout: 30_000 });
+	if (added.status !== 0) return { status: "skipped", reason: `claude mcp add failed: ${String(added.stderr ?? "").trim() || `exit ${added.status}`}` };
+	return { status: "added" };
+}
+
+/**
+ * Puts the Keywright skill into Claude Code's skills folder for this user, from the folder
+ * the release carries, replacing an earlier copy of it. Returns where it went.
+ */
+export function installSkill(home: string, source: string): string {
+	const target = join(home, ".claude", "skills", "keywright");
+	// The copy there is set aside first, so local changes to it aren't lost and files a
+	// release no longer has don't linger; only the copy set aside last time is replaced.
+	if (existsSync(target)) {
+		// Outside the skills folder, where Claude Code would load it as a second skill.
+		const aside = join(home, ".claude", "keywright-skill.before-update");
+		rmSync(aside, { recursive: true, force: true });
+		renameSync(target, aside);
+	}
+	cpSync(source, target, { recursive: true });
+	return target;
+}
+
+/** Adds Keywright to one app; for Claude Code, with its skill when the release carries it. */
+export function addTo(app: App, entry: { command: string; args: string[] }, extras: { home?: string; skill?: string } = {}): Outcome {
 	try {
-		if (app.name === "claude-code") return addToClaudeCode(entry);
+		if (app.name === "claude-code") {
+			const outcome = addToClaudeCode(entry);
+			if (outcome.status !== "skipped" && extras.home && extras.skill && existsSync(extras.skill)) {
+				return { ...outcome, skill: installSkill(extras.home, extras.skill) };
+			}
+			return outcome;
+		}
 		if (app.name === "codex") return addToToml(app.file as string, entry);
 		return addToJson(app.file as string, entry);
 	} catch (error) {

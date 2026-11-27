@@ -5,6 +5,8 @@
 These are the tools Keywright gives an AI app, with the descriptions and arguments the app is given, word for word. Every tool except `get_workspace` and `pair_studio` takes `studio_session`, the id of a Studio window from `get_workspace`. A tool that fails returns an error with a `code`, a `message` and often a `hint`; the codes are listed in [Errors and findings](errors.md).
 
 - [`get_workspace`](#get_workspace)
+- [`get_guide`](#get_guide)
+- [`install_plugin`](#install_plugin)
 - [`pair_studio`](#pair_studio)
 - [`inspect_rig`](#inspect_rig)
 - [`open_animation`](#open_animation)
@@ -21,18 +23,35 @@ Besides the tools, an AI app is sent these instructions when it connects:
 
 > Keywright makes animations for rigs in Roblox Studio. How to work with it:
 >
-> 1. Start with get_workspace. If it, or any result, carries update_needed, tell the person straight away, with what it says to do: until the plugin and the adapter match, tools may fail or ignore options. If get_workspace carries update_available, a newer release is out: mention it once, with its steps; it is not urgent. Use pair_studio only with a code the person gives you. Call inspect_rig before posing: its turns say which way each joint moves for a positive rotation about X, Y and Z.
-> 2. Plan before editing. Write down the key poses, when each happens, and what each must read as: for a kick, the chamber, the contact (leg extended, hips turned over) and the recovery. Use curve clips (format "curves") for motion that should flow, with keys on whole frames (multiples of 1/30 s).
-> 3. Block the key poses first and check them. Then add the in-betweens, overlap, and contacts with the floor (pin, place_on_floor).
-> 4. After every revision, look at it. preview_animation with times at the key moments and render: true gives a pose strip, which shows whether each silhouette reads. With samples and render: true it gives motion paths and a speed plot, which show stops, pops and corners. Use both: a speed plot cannot tell you whether a pose reads, and a pose strip cannot show timing. Use compare_with to see what a revision changed, onion: true to see how a limb travels between poses, and measure to turn a check (a punch's reach, how low the hips sink after a landing) into numbers.
-> 5. validate_animation finds structural errors and measures loops, speeds and feet. Passing it is necessary, not enough. The animation is done when every key moment reads in the pose strip, the motion has no stops you did not plan, feet that should stay planted do, and a loop closes.
-> 6. Save with save_animation under a new name. Replace a clip the person already has only when they ask, and then they approve it in Studio. Tell the person what you made and ask them to play it in the Animation Editor: the pictures are schematics, not the rig's real look.
+> 1. Before animating, read the guide: get_guide (topic workflow) for how to plan, block, review and finish a clip, then the topic for what you are making (moves for walks, runs, strikes and the rest; rig for which way joints turn; review for reading the pictures and fixing what they show).
+> 2. Start with get_workspace. If it, or any result, carries update_needed, tell the person straight away, with what it says to do: until the plugin and the adapter match, tools may fail or ignore options. When the plugin is the older one, install_plugin can update it if the person agrees. If get_workspace carries update_available, a newer release is out: mention it once, with its steps; it is not urgent. Use pair_studio only with a code the person gives you. Call inspect_rig before posing: its turns say which way each joint moves for a positive rotation about X, Y and Z.
+> 3. Plan before editing. Write down the key poses, when each happens, and what each must read as: for a kick, the chamber, the contact (leg extended, hips turned over) and the recovery. Use curve clips (format "curves") for motion that should flow, with keys on whole frames (multiples of 1/30 s).
+> 4. Block the key poses first and check them. Then add the in-betweens, overlap, and contacts with the floor (pin, place_on_floor).
+> 5. After every revision, look at it. preview_animation with times at the key moments and render: true gives a pose strip, which shows whether each silhouette reads. With samples and render: true it gives motion paths and a speed plot, which show stops, pops and corners. Use both: a speed plot cannot tell you whether a pose reads, and a pose strip cannot show timing. Use compare_with to see what a revision changed, onion: true to see how a limb travels between poses, and measure to turn a check (a punch's reach, how low the hips sink after a landing) into numbers.
+> 6. validate_animation finds structural errors and measures loops, speeds and feet. Passing it is necessary, not enough. The animation is done when every key moment reads in the pose strip, the motion has no stops you did not plan, feet that should stay planted do, and a loop closes.
+> 7. Save with save_animation under a new name. Replace a clip the person already has only when they ask, and then they approve it in Studio. Tell the person what you made and ask them to play it in the Animation Editor: the pictures are schematics, not the rig's real look.
 
 ## get_workspace
 
 *Reads only: changes nothing in Studio.*
 
 List connected Roblox Studio sessions with their rigs, working copies and revisions, the current selection, and whether screenshots are available. A session whose plugin is a different version from this adapter carries update_needed, saying what to ask the person to update; every other tool's result for that session carries it too. Tell the person when you see it.
+
+No arguments.
+
+## get_guide
+
+*Reads only: changes nothing in Studio.*
+
+Read Keywright's animator's guide: how to plan key poses, block them, review every revision in pictures and numbers, and know when a clip is done; which way R15 joints turn; timing and method for walks, runs, strikes, jumps and the rest; and what to change for each kind of problem. Read the workflow before animating, and the topic for what you are making. The same text as the Keywright skill, and always for this version of the tools.
+
+| Argument | Type | Required | Description |
+|---|---|---|---|
+| `topic` | one of `workflow`, `rig`, `moves`, `review` |  | "workflow" (default): the whole process, start to finish. "rig": which way joints turn, posing, traps. "moves": timing and method for each kind of move. "review": reading pose strips, motion plots, onion skins and measurements, and fixing what they show. |
+
+## install_plugin
+
+Install or update the Keywright plugin in Roblox Studio's plugins folder for this user, from this copy of Keywright, so the plugin and this adapter match. Only when the person asks, or agrees after update_needed says the plugin is older; it works from apps whose own commands can't reach Studio's folder, since Keywright itself runs on the person's computer. It writes Keywright's plugin file there, replacing an older one and a copy saved from Studio by hand; other plugins are left. It refuses to put back an older plugin than one a connected Studio window runs. Studio loads the new plugin on its own; if the panel still shows an older version at its bottom, the person reopens the place or restarts Studio.
 
 No arguments.
 

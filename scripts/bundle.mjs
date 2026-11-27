@@ -16,6 +16,8 @@ import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+// The files of the Keywright skill, which the release carries for get_guide and for setup.
+const SKILL_FILES = ["SKILL.md", "reference/rig.md", "reference/moves.md", "reference/review.md"];
 
 /** The licence text of a package folder: its LICENSE file, or failing that the licence named in package.json. */
 function licenceOf(folder) {
@@ -51,6 +53,8 @@ export async function bundle({ out = join(ROOT, "build", "release"), plugin = tr
 		legalComments: "none",
 		define: {
 			__KEYWRIGHT_BUNDLED__: "true",
+			// The skill's files, for get_guide, so that a keywright.mjs downloaded alone has them.
+			__KEYWRIGHT_GUIDE__: JSON.stringify(Object.fromEntries(SKILL_FILES.map((file) => [file, readFileSync(join(ROOT, "skills", "keywright", file), "utf8")]))),
 			__KEYWRIGHT_VERSION__: JSON.stringify(version),
 			// ws would look for these optional speed-ups wherever Node searches for packages,
 			// including folders above the release's. The release uses ws's own code instead.
@@ -86,11 +90,16 @@ export async function bundle({ out = join(ROOT, "build", "release"), plugin = tr
 		type: "module",
 		bin: { keywright: "keywright.mjs" },
 		engines: project.engines,
-		files: ["keywright.mjs", "Keywright.rbxm", "THIRD_PARTY_LICENSES.txt"],
+		files: ["keywright.mjs", "Keywright.rbxm", "THIRD_PARTY_LICENSES.txt", "skills"],
 	};
 	writeFileSync(join(out, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`);
 	copyFileSync(join(ROOT, "README.md"), join(out, "README.md"));
 	copyFileSync(join(ROOT, "LICENSE"), join(out, "LICENSE"));
+	// The skill as files too, for setup to install into Claude Code's skills folder.
+	for (const file of SKILL_FILES) {
+		mkdirSync(dirname(join(out, "skills", "keywright", file)), { recursive: true });
+		copyFileSync(join(ROOT, "skills", "keywright", file), join(out, "skills", "keywright", file));
+	}
 
 	if (plugin) {
 		const built = join(ROOT, "build", "Keywright.rbxm");

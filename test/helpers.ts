@@ -1,5 +1,7 @@
-// Tests never ask npm whether a newer release is out; adapters they start inherit this.
+// Tests never ask npm whether a newer release is out, and never install a plugin into the
+// real Studio's folder; adapters and commands they start inherit both.
 process.env.KEYWRIGHT_NO_UPDATE_CHECK = "1";
+process.env.KEYWRIGHT_PLUGIN_FOLDER = join(mkdtempSync(join(tmpdir(), "keywright-plugins-")), "Plugins");
 
 import { mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:net";

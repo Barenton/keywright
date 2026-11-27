@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, before, describe, test } from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -27,6 +27,9 @@ describe("the single-file release", () => {
 		const made = await scripts.bundle({ out: folder, plugin: false });
 		bundle = made.outfile;
 		writeFileSync(join(folder, "Keywright.rbxm"), "stand-in plugin");
+		// A release downloaded from GitHub is the two files alone, without the npm package's
+		// copy of the skill: the guide must come from inside keywright.mjs.
+		rmSync(join(folder, "skills"), { recursive: true, force: true });
 	});
 
 	after(() => temp.cleanup());
@@ -54,8 +57,10 @@ describe("the single-file release", () => {
 			const { tools } = await client.listTools();
 			assert.deepEqual(
 				tools.map((tool) => tool.name),
-				["get_workspace", "pair_studio", "inspect_rig", "open_animation", "read_animation", "edit_animation", "validate_animation", "save_animation", "discard_animation", "preview_animation"],
+				["get_workspace", "get_guide", "install_plugin", "pair_studio", "inspect_rig", "open_animation", "read_animation", "edit_animation", "validate_animation", "save_animation", "discard_animation", "preview_animation"],
 			);
+			const guide = await client.callTool({ name: "get_guide", arguments: { topic: "review" } });
+			assert.match((guide.content as Array<{ text: string }>)[0]?.text ?? "", /# Reviewing an animation/, "the guide is inside the file");
 		} finally {
 			await client.close();
 		}

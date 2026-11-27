@@ -100,14 +100,15 @@ Add an R15 rig to your place, for example from **Rig Builder** on the **Avatar**
 
 Open the saved clip in the Animation Editor to watch it. The [guide](docs/guide.md) has tips, and explains what the agent can do.
 
-### Give your agent the Keywright skill (optional)
+### The Keywright skill
 
-Keywright tells every AI app how to work with it when it connects. For better animations, also give your agent the [Keywright skill](skills/keywright/SKILL.md): how to plan key poses, review them in pose strips after every change, and know when an animation is done.
+Your agent gets Keywright's animator's guide, the [Keywright skill](skills/keywright/SKILL.md), through Keywright itself: the `get_guide` tool serves it in any AI app, with nothing to install, and agents are told to read it before animating. It covers how to plan key poses, review them after every change, and know when an animation is done.
 
-- **Claude Code:** copy the `skills/keywright` folder into `~/.claude/skills/`.
-- **Other apps** that support skills in this format (a folder with a `SKILL.md`): put the folder where the app's documentation says.
+When `setup` adds Keywright to Claude Code, it also installs the skill in Claude Code's skills folder. For other apps that support skills in this format (a folder with a `SKILL.md`), the npm package carries the folder, under `skills/keywright`.
 
-To update later, run `npx -y keywright@latest update` and reconnect Keywright in your AI app. Your AI app tells you when a newer release is out. To build from source instead, see [Contributing](CONTRIBUTING.md).
+### Updating
+
+Run `npx -y keywright@latest update` and reconnect Keywright in your AI app, or ask your AI app to update the plugin: its `install_plugin` tool does it from inside Keywright. Your AI app tells you when a newer release is out. To build from source instead, see [Contributing](CONTRIBUTING.md).
 
 ## How it works
 

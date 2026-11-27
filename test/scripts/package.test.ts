@@ -32,13 +32,13 @@ describe("the npm package", () => {
 
 	after(() => temp.cleanup());
 
-	test("holds the adapter, the plugin, the licences and the README, and depends on nothing", () => {
+	test("holds the adapter, the plugin, the skill, the licences and the README, and depends on nothing", () => {
 		const installed = join(prefix, "node_modules", "keywright");
 		const manifest = JSON.parse(readFileSync(join(installed, "package.json"), "utf8")) as Record<string, unknown>;
 		assert.equal(manifest.version, VERSION);
 		assert.deepEqual(manifest.bin, { keywright: "keywright.mjs" });
 		assert.equal(manifest.dependencies, undefined);
-		for (const file of ["keywright.mjs", "Keywright.rbxm", "THIRD_PARTY_LICENSES.txt", "README.md", "LICENSE"]) {
+		for (const file of ["keywright.mjs", "Keywright.rbxm", "THIRD_PARTY_LICENSES.txt", "README.md", "LICENSE", "skills/keywright/SKILL.md", "skills/keywright/reference/moves.md"]) {
 			assert.ok(readFileSync(join(installed, file)).length > 0, file);
 		}
 	});

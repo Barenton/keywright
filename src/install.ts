@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync } from "node:fs";
+import { constants, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { BridgeError } from "./broker/protocol.js";
@@ -86,6 +86,14 @@ export interface Installed {
  * file is written beside it first and then moved into place, so Studio never sees half
  * of it. Nothing else in the folder is changed.
  */
+/**
+ * Studio's plugins folder for this user, or the folder KEYWRIGHT_PLUGIN_FOLDER names: set in
+ * the environment the person starts Keywright with, for an unusual install, never by an agent.
+ */
+export function pluginsFolder(machine: Machine): string {
+	return machine.env.KEYWRIGHT_PLUGIN_FOLDER || join(robloxFolder(machine), "Plugins");
+}
+
 export function installPlugin(source: string, folder: string): Installed {
 	if (!existsSync(source)) {
 		throw new BridgeError("INSTALL_FAILED", `There is no built plugin at ${source}.`, BUNDLED ? "Download Keywright.rbxm from the same release into the folder with keywright.mjs." : "Build it first: npm run build:plugin");
@@ -100,7 +108,10 @@ export function installPlugin(source: string, folder: string): Installed {
 	const path = join(folder, PLUGIN_FILE);
 	const partial = `${path}.partial`;
 	try {
-		copyFileSync(source, partial);
+		// Made afresh and exclusively: anything left at that path, a link to a file elsewhere
+		// included, is removed first and never written through.
+		rmSync(partial, { force: true });
+		copyFileSync(source, partial, constants.COPYFILE_EXCL);
 		renameSync(partial, path);
 	} finally {
 		rmSync(partial, { force: true });

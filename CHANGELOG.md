@@ -6,6 +6,9 @@ What changed in each release of Keywright. The plugin and the adapter are releas
 
 **New**
 
+- **The guide through Keywright itself:** `get_guide` serves the Keywright skill, the animator's guide, by topic (`workflow`, `rig`, `moves`, `review`), in every AI app connected to Keywright, with nothing to download or install. The connect instructions, and the first `open_animation` of a session, tell agents to read it. The single-file release has it built in, and the npm package also carries the skill as files.
+- **`install_plugin`:** installs or updates the Studio plugin from inside Keywright, so an AI app whose own commands can't reach Studio's folder can still update it when the person asks. It writes only to Studio's plugins folder, and refuses to put an older plugin over a newer one a Studio window is running. `update_needed` mentions it when the plugin is the older one. `KEYWRIGHT_PLUGIN_FOLDER`, set where Keywright is started, names the plugins folder for an unusual Studio install.
+- **The skill for Claude Code:** when `setup` adds Keywright to Claude Code, it also installs the skill in Claude Code's skills folder.
 - **`setup` adds Keywright to your AI apps:** it finds Claude Desktop, Claude Code, Codex and Cursor and, with your yes, adds Keywright to each. In a terminal it asks; an agent passes `--add-to` after asking you. Only Keywright's entry is added or brought up to date, a copy of each file changed is kept beside it, and a file it can't read is left alone.
 
 **Fixed**

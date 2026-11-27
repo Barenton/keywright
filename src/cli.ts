@@ -6,8 +6,8 @@ import { Broker } from "./broker/broker.js";
 import { ensureBroker, PORT_TAKEN_EXIT, stopBroker } from "./broker/launcher.js";
 import { BridgeError } from "./broker/protocol.js";
 import { configuredPort, readBrokerState, rotateSecret, stateDir } from "./broker/state.js";
-import { builtPlugin, installPlugin, robloxFolder, thisMachine, type Installed } from "./install.js";
-import { cliPath, command as howToRun, viaNpx } from "./layout.js";
+import { builtPlugin, installPlugin, pluginsFolder, thisMachine, type Installed } from "./install.js";
+import { cliPath, command as howToRun, skillPath, viaNpx } from "./layout.js";
 import { setupGuide } from "./setup.js";
 import { type App, type AppName, APPS, addTo as addTo_, appFor, entryFor, findApps } from "./apps.js";
 import { createInterface } from "node:readline/promises";
@@ -38,6 +38,8 @@ Usage: ${howToRun()} [command]
 Environment:
   KEYWRIGHT_PORT   Loopback port (default 47318).
   KEYWRIGHT_HOME   Directory for the secret, state file and log.
+  KEYWRIGHT_PLUGIN_FOLDER
+                   Studio's plugins folder, where it isn't the usual one.
   KEYWRIGHT_NO_UPDATE_CHECK=1
                    Never ask npm whether a newer release is out.`;
 
@@ -112,7 +114,7 @@ function installFrom(command: string, args: string[]): Installed | undefined {
 		}
 		folder = resolve(args[1] as string);
 	}
-	const target = folder ?? join(robloxFolder(thisMachine()), "Plugins");
+	const target = folder ?? pluginsFolder(thisMachine());
 	return installPlugin(builtPlugin(), target);
 }
 
@@ -166,7 +168,8 @@ async function setup(args: string[]): Promise<number> {
 		for (const app of found) if (await confirm(`Add Keywright to ${app.label}?`)) chosen.push(app);
 	}
 	const entry = entryFor(launch ?? { command: "node", args: [cliPath()], fullPath: process.execPath }, process.platform);
-	const results = chosen.map((app) => ({ app, outcome: addTo_(app, entry) }));
+	const skill = dirname(skillPath("SKILL.md"));
+	const results = chosen.map((app) => ({ app, outcome: addTo_(app, entry, { home: machine.home, skill }) }));
 	process.stdout.write(setupGuide({ ...facts, apps: { found, results } }));
 	return 0;
 }

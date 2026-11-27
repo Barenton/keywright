@@ -13,6 +13,8 @@ import { MAX_TILE, MAX_VIEWS, MIN_TILE, renderResult, STYLES, VIEWS } from "../r
 
 import { studioSession, clipId, time, joint } from "./schemas/common.js";
 import { operations } from "./schemas/operations.js";
+import { guideText, TOPICS, type Topic } from "../guide.js";
+import { builtPlugin, installPlugin, pluginsFolder, thisMachine } from "../install.js";
 import { viaNpx } from "../layout.js";
 import { VERSION } from "../version.js";
 
@@ -26,12 +28,13 @@ export const ADAPTER_VERSION = VERSION;
  */
 export const SERVER_INSTRUCTIONS = `Keywright makes animations for rigs in Roblox Studio. How to work with it:
 
-1. Start with get_workspace. If it, or any result, carries update_needed, tell the person straight away, with what it says to do: until the plugin and the adapter match, tools may fail or ignore options. If get_workspace carries update_available, a newer release is out: mention it once, with its steps; it is not urgent. Use pair_studio only with a code the person gives you. Call inspect_rig before posing: its turns say which way each joint moves for a positive rotation about X, Y and Z.
-2. Plan before editing. Write down the key poses, when each happens, and what each must read as: for a kick, the chamber, the contact (leg extended, hips turned over) and the recovery. Use curve clips (format "curves") for motion that should flow, with keys on whole frames (multiples of 1/30 s).
-3. Block the key poses first and check them. Then add the in-betweens, overlap, and contacts with the floor (pin, place_on_floor).
-4. After every revision, look at it. preview_animation with times at the key moments and render: true gives a pose strip, which shows whether each silhouette reads. With samples and render: true it gives motion paths and a speed plot, which show stops, pops and corners. Use both: a speed plot cannot tell you whether a pose reads, and a pose strip cannot show timing. Use compare_with to see what a revision changed, onion: true to see how a limb travels between poses, and measure to turn a check (a punch's reach, how low the hips sink after a landing) into numbers.
-5. validate_animation finds structural errors and measures loops, speeds and feet. Passing it is necessary, not enough. The animation is done when every key moment reads in the pose strip, the motion has no stops you did not plan, feet that should stay planted do, and a loop closes.
-6. Save with save_animation under a new name. Replace a clip the person already has only when they ask, and then they approve it in Studio. Tell the person what you made and ask them to play it in the Animation Editor: the pictures are schematics, not the rig's real look.`;
+1. Before animating, read the guide: get_guide (topic workflow) for how to plan, block, review and finish a clip, then the topic for what you are making (moves for walks, runs, strikes and the rest; rig for which way joints turn; review for reading the pictures and fixing what they show).
+2. Start with get_workspace. If it, or any result, carries update_needed, tell the person straight away, with what it says to do: until the plugin and the adapter match, tools may fail or ignore options. When the plugin is the older one, install_plugin can update it if the person agrees. If get_workspace carries update_available, a newer release is out: mention it once, with its steps; it is not urgent. Use pair_studio only with a code the person gives you. Call inspect_rig before posing: its turns say which way each joint moves for a positive rotation about X, Y and Z.
+3. Plan before editing. Write down the key poses, when each happens, and what each must read as: for a kick, the chamber, the contact (leg extended, hips turned over) and the recovery. Use curve clips (format "curves") for motion that should flow, with keys on whole frames (multiples of 1/30 s).
+4. Block the key poses first and check them. Then add the in-betweens, overlap, and contacts with the floor (pin, place_on_floor).
+5. After every revision, look at it. preview_animation with times at the key moments and render: true gives a pose strip, which shows whether each silhouette reads. With samples and render: true it gives motion paths and a speed plot, which show stops, pops and corners. Use both: a speed plot cannot tell you whether a pose reads, and a pose strip cannot show timing. Use compare_with to see what a revision changed, onion: true to see how a limb travels between poses, and measure to turn a check (a punch's reach, how low the hips sink after a landing) into numbers.
+6. validate_animation finds structural errors and measures loops, speeds and feet. Passing it is necessary, not enough. The animation is done when every key moment reads in the pose strip, the motion has no stops you did not plan, feet that should stay planted do, and a loop closes.
+7. Save with save_animation under a new name. Replace a clip the person already has only when they ask, and then they approve it in Studio. Tell the person what you made and ask them to play it in the Animation Editor: the pictures are schematics, not the rig's real look.`;
 
 
 // A result is text, plus at most two images, both only for a preview. One is the picture
@@ -137,8 +140,8 @@ export function versionCheck(session: Pick<SessionInfo, "pluginVersion">): { upd
 	const how =
 		older === "plugin"
 			? viaNpx()
-				? "Ask the person to update: npx -y keywright@latest update."
-				: "Ask the person to update the plugin: node keywright.mjs update with the latest release, or npm run install:plugin in a source checkout."
+				? "Ask the person to update: npx -y keywright@latest update. Or, if they agree, call install_plugin, then they reopen the place or restart Studio."
+				: "Ask the person to update the plugin: node keywright.mjs update with the latest release, or npm run install:plugin in a source checkout. Or, if they agree, call install_plugin."
 			: viaNpx()
 				? "Ask the person to run npx -y keywright@latest update, then reconnect Keywright in their AI app so that npx starts the latest; if it stays older, to run npx -y keywright@latest setup and use the entry it prints."
 				: "Ask the person to update the adapter: download keywright.mjs from the latest release (in a source checkout, git pull, npm install and npm run build), then reconnect it.";
@@ -161,6 +164,8 @@ export function createAdapter(options: AdapterOptions): McpServer {
 	// Each Studio window's plugin version, by session. A window keeps its version for as
 	// long as its session lasts: a plugin that is updated reconnects as a new session.
 	const pluginVersions = new Map<string, string>();
+	// Whether this adapter has pointed the agent to the guide yet.
+	let guidePointed = false;
 	const updateNeeded = async (session: string): Promise<string | undefined> => {
 		try {
 			if (!pluginVersions.has(session)) {
@@ -209,6 +214,75 @@ export function createAdapter(options: AdapterOptions): McpServer {
 				// An adapter that runs for days asks again once a day; this call shows the last answer.
 				void refreshLatest(options.home);
 				return ok("get_workspace", {}, { adapter_version: VERSION, ...updateAvailable(options.home, VERSION), sessions: workspaces });
+			} catch (error) {
+				return fail(error);
+			}
+		},
+	);
+
+	server.registerTool(
+		"get_guide",
+		{
+			description:
+				"Read Keywright's animator's guide: how to plan key poses, block them, review every revision in pictures and numbers, and know when a clip is done; which way R15 joints turn; timing and method for walks, runs, strikes, jumps and the rest; and what to change for each kind of problem. Read the workflow before animating, and the topic for what you are making. The same text as the Keywright skill, and always for this version of the tools.",
+			inputSchema: {
+				topic: z
+					.enum(Object.keys(TOPICS) as [Topic, ...Topic[]])
+					.optional()
+					.describe('"workflow" (default): the whole process, start to finish. "rig": which way joints turn, posing, traps. "moves": timing and method for each kind of move. "review": reading pose strips, motion plots, onion skins and measurements, and fixing what they show.'),
+			},
+			annotations: { readOnlyHint: true },
+		},
+		async ({ topic }) => {
+			try {
+				return { content: [{ type: "text", text: guideText(topic ?? "workflow") }] };
+			} catch (error) {
+				return fail(error);
+			}
+		},
+	);
+
+	server.registerTool(
+		"install_plugin",
+		{
+			description:
+				"Install or update the Keywright plugin in Roblox Studio's plugins folder for this user, from this copy of Keywright, so the plugin and this adapter match. Only when the person asks, or agrees after update_needed says the plugin is older; it works from apps whose own commands can't reach Studio's folder, since Keywright itself runs on the person's computer. It writes Keywright's plugin file there, replacing an older one and a copy saved from Studio by hand; other plugins are left. It refuses to put back an older plugin than one a connected Studio window runs. Studio loads the new plugin on its own; if the panel still shows an older version at its bottom, the person reopens the place or restarts Studio.",
+			inputSchema: {},
+			annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
+		},
+		async () => {
+			try {
+				// Never an older plugin over a newer one that a Studio window is running.
+				try {
+					const { sessions } = (await (await broker()).request("broker.sessions")) as { sessions: SessionInfo[] };
+					const newer = sessions.find((session) => compareVersions(session.pluginVersion.split("+")[0] ?? "", VERSION) > 0);
+					if (newer) {
+						throw new BridgeError(
+							"INVALID_ARGUMENT",
+							`Studio runs Keywright's plugin ${newer.pluginVersion}, newer than this Keywright, ${VERSION}, so it was left as it is.`,
+							"Update Keywright in the AI app instead: reconnect it so that npx starts the latest.",
+						);
+					}
+				} catch (error) {
+					if (error instanceof BridgeError && error.code === "INVALID_ARGUMENT") throw error;
+					// No broker to ask: nothing says a newer plugin is running.
+				}
+				const target = pluginsFolder(thisMachine());
+				const installed = installPlugin(builtPlugin(), target);
+				return {
+					content: [
+						{
+							type: "text",
+							text: JSON.stringify({
+								installed: installed.path,
+								version: VERSION,
+								...(installed.replaced ? { replaced: installed.replaced } : {}),
+								...(installed.others.length > 0 ? { other_plugins: installed.others, note: "Studio loads every plugin in that folder; the person may want to remove these other copies." } : {}),
+								next: "Studio loads it on its own. Ask the person to reopen the place, or restart Studio, if the Keywright panel still shows an older version at its bottom.",
+							}),
+						},
+					],
+				};
 			} catch (error) {
 				return fail(error);
 			}
@@ -278,7 +352,18 @@ export function createAdapter(options: AdapterOptions): McpServer {
 					.describe('What the working copy is made of. Default: the source\'s format, or keyframes for a blank clip. A curve clip cannot be turned into keyframes.'),
 			},
 		},
-		async ({ studio_session, ...params }, extra) => call("open_animation", studio_session, params, extra.signal),
+		async ({ studio_session, ...params }, extra) => {
+			const result = await call("open_animation", studio_session, params, extra.signal);
+			// Once a session, where every animation starts: a pointer to the guide, which a
+			// tool result is sure to bring to the agent's attention.
+			if (!guidePointed && !result.isError && result.content[0]?.type === "text") {
+				guidePointed = true;
+				const payload = JSON.parse(result.content[0].text) as Record<string, unknown>;
+				payload.guide = 'If you have not read it in this conversation, read get_guide (topic "workflow", then "moves" for this kind of move) before editing: it is how to plan, block, review and finish a clip that looks right, not only one that validates.';
+				result.content[0] = { type: "text", text: JSON.stringify(payload) };
+			}
+			return result;
+		},
 	);
 
 	server.registerTool(

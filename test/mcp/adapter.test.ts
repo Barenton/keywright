@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, before, describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -137,7 +137,7 @@ describe("MCP adapter over stdio", () => {
 		// Every tool it names is one the adapter offers.
 		for (const name of instructions.match(/\b[a-z]+_[a-z_]+\b/g) ?? []) {
 			if (name.endsWith("_animation") || name.startsWith("get_") || name.startsWith("inspect_") || name.startsWith("pair_")) {
-				assert.ok(["get_workspace", "pair_studio", "inspect_rig", "open_animation", "read_animation", "edit_animation", "validate_animation", "save_animation", "discard_animation", "preview_animation"].includes(name), name);
+				assert.ok(["get_workspace", "get_guide", "install_plugin", "pair_studio", "inspect_rig", "open_animation", "read_animation", "edit_animation", "validate_animation", "save_animation", "discard_animation", "preview_animation"].includes(name), name);
 			}
 		}
 	});
@@ -146,7 +146,7 @@ describe("MCP adapter over stdio", () => {
 		const { tools } = await mcp.listTools();
 		assert.deepEqual(
 			tools.map((tool) => tool.name).sort(),
-			["discard_animation", "edit_animation", "get_workspace", "inspect_rig", "open_animation", "pair_studio", "preview_animation", "read_animation", "save_animation", "validate_animation"],
+			["discard_animation", "edit_animation", "get_guide", "get_workspace", "inspect_rig", "install_plugin", "open_animation", "pair_studio", "preview_animation", "read_animation", "save_animation", "validate_animation"],
 		);
 		// A picture and a save are both asked for through documented inputs.
 		const properties = (name: string) => Object.keys((tools.find((tool) => tool.name === name)?.inputSchema.properties ?? {}) as object);
@@ -157,6 +157,31 @@ describe("MCP adapter over stdio", () => {
 		// No tool approves a replacement: that is for a person in Studio.
 		assert.equal(tools.some((tool) => /approve|decide|accept/.test(tool.name)), false);
 		for (const tool of tools) assert.equal(tool.inputSchema.type, "object");
+	});
+
+	test("the guide is served by topic, and the first opened clip points to it", async () => {
+		const workflow = await mcp.callTool({ name: "get_guide", arguments: {} });
+		assert.match((workflow.content as Array<{ text: string }>)[0]?.text ?? "", /^# Animating with Keywright/);
+		const moves = await mcp.callTool({ name: "get_guide", arguments: { topic: "moves" } });
+		assert.match((moves.content as Array<{ text: string }>)[0]?.text ?? "", /## Run cycle/);
+		const first = await callTool("open_animation", { studio_session: SESSION, rig_id: "rig_1" });
+		assert.match(first.json.guide, /get_guide/);
+		const second = await callTool("open_animation", { studio_session: SESSION, rig_id: "rig_1" });
+		assert.equal(second.json.guide, undefined, "once a session");
+	});
+
+	test("install_plugin puts the plugin in Studio's folder, or says to build it first", async () => {
+		// KEYWRIGHT_PLUGIN_FOLDER, set for every test, stands in for Studio's own folder.
+		const folder = process.env.KEYWRIGHT_PLUGIN_FOLDER as string;
+		mkdirSync(folder, { recursive: true });
+		const { isError, json, content } = await callTool("install_plugin", {});
+		if (isError) {
+			// A checkout whose plugin hasn't been built yet, as in CI before build:plugin.
+			assert.match(content[0]?.text ?? "", /INSTALL_FAILED.*build/);
+		} else {
+			assert.equal(json.installed, join(folder, "Keywright.rbxm"));
+			assert.ok(existsSync(json.installed));
+		}
 	});
 
 	test("pair_studio registers the code a Studio window shows, so that the window can pair", async () => {
@@ -503,8 +528,8 @@ describe("MCP adapter over stdio", () => {
 		for (const tool of tools) {
 			const schema = tool.inputSchema as { properties?: Record<string, unknown>; required?: string[] };
 			assert.equal(Object.hasOwn(schema.properties ?? {}, "session_id"), false, tool.name);
-			// These two talk to the broker, not to one Studio window.
-			if (tool.name !== "get_workspace" && tool.name !== "pair_studio") assert.ok(schema.required?.includes("studio_session"), tool.name);
+			// These talk to the broker, or to nothing in Studio at all, not to one Studio window.
+			if (!["get_workspace", "pair_studio", "get_guide", "install_plugin"].includes(tool.name)) assert.ok(schema.required?.includes("studio_session"), tool.name);
 		}
 		// A call without it is refused before anything is sent to Studio.
 		const refused = await mcp.callTool({ name: "read_animation", arguments: { clip_id: "clip_1" } });

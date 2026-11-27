@@ -40,6 +40,11 @@ export function pluginPath(file: string): string {
 	return fileURLToPath(new URL(BUNDLED ? `./${file}` : `../../build/${file}`, import.meta.url));
 }
 
+/** A file of the Keywright skill: beside the bundle in the npm package, or in the checkout's skills folder. */
+export function skillPath(file: string): string {
+	return fileURLToPath(new URL(BUNDLED ? `./skills/keywright/${file}` : `../../skills/keywright/${file}`, import.meta.url));
+}
+
 /** Keywright's version: written into the bundle, or read from the checkout's package.json. */
 export function packageVersion(): string {
 	if (BUNDLED && typeof __KEYWRIGHT_VERSION__ === "string") return __KEYWRIGHT_VERSION__;
