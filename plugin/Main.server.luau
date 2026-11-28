@@ -16,6 +16,9 @@ local Settings = require("./src/Network/Settings")
 local PLUGIN_VERSION = require("./src/Version")
 local DEFAULT_PORT = 47318
 local CODE_ALPHABET = "ABCDEFGHJKMNPQRSTVWXYZ23456789"
+-- Seconds a pairing code stays on the panel before a new one replaces it, so that a code
+-- left showing, or seen long ago, can't be used later.
+local CODE_LIFETIME = 15 * 60
 
 -- Only the edit data model talks to the broker.
 if not RunService:IsEdit() then
@@ -90,14 +93,17 @@ local connection: any = nil
 -- credential is kept, and only this session pairs again; a new pairing replaces it.
 local refused: string? = nil
 
-local function start()
+local start: () -> ()
+function start()
 	local port = settings.read(Settings.PORT)
 	local stored = settings.credential()
 	local credential = if stored and stored.id ~= refused then stored else nil
 	local code = if credential then nil else newPairingCode()
 	view.setPairing(code)
 	view.setNote("")
-	connection = Connection.start({
+	local paired = false
+	local this: any = nil
+	this = Connection.start({
 		port = if type(port) == "number" then port else DEFAULT_PORT,
 		session = {
 			id = sessionId,
@@ -118,6 +124,7 @@ local function start()
 		onCredential = function(newCredential)
 			view.setPairing(nil)
 			if newCredential then
+				paired = true
 				-- The connection now uses this one: a later refusal is of this one.
 				credential = newCredential
 				if not settings.saveCredential(newCredential) then
@@ -129,6 +136,18 @@ local function start()
 			end
 		end,
 	})
+	connection = this
+	if code then
+		-- A code not used in time is replaced, on this connection only: one turned off,
+		-- or already replaced, is left alone.
+		task.delay(CODE_LIFETIME, function()
+			if connection == this and not paired then
+				this.stop()
+				connection = nil
+				start()
+			end
+		end)
+	end
 end
 
 -- A proposed replacement of a clip: shown on the panel, and settled only there. The oldest
@@ -144,9 +163,17 @@ local function showProposals()
 	if first then
 		local more = if #waiting > 1 then ` ({#waiting - 1} more waiting)` else ""
 		local note = if stopped then `\n{stopped}` else ""
-		view.setProposal(
-			`It would replace the clip "{first.source}" with its working copy "{first.name}". Nothing is replaced unless you choose it.{more}{note}`
-		)
+		if first.kind == "delete" then
+			view.setProposal(
+				`It would delete the saved clip "{first.name}" of the rig "{first.source}". Nothing is deleted unless you choose it, and Undo (Ctrl+Z) puts it back.{more}{note}`,
+				"delete"
+			)
+		else
+			view.setProposal(
+				`It would replace the clip "{first.source}" with its working copy "{first.name}". Nothing is replaced unless you choose it.{more}{note}`,
+				"replace"
+			)
+		end
 		-- A person has to see it to settle it.
 		widget.Enabled = true
 	else
@@ -161,6 +188,15 @@ end)
 local function report(clipId: string)
 	local settled = Proposals.get(clipId)
 	if not settled or settled.status == "pending" then
+		return
+	end
+	if settled.kind == "delete" then
+		view.setOutcome(
+			if settled.status == "approved"
+				then `Deleted the saved clip "{settled.name}". Undo (Ctrl+Z) puts it back.`
+				elseif settled.reason == Handlers.REJECTED_IN_STUDIO then `Kept the saved clip "{settled.name}".`
+				else `The saved clip "{settled.name}" was not deleted: {settled.reason or "the proposal no longer applied."}`
+		)
 		return
 	end
 	view.setOutcome(

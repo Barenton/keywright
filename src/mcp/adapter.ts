@@ -505,6 +505,21 @@ export function createAdapter(options: AdapterOptions): McpServer {
 	);
 
 	server.registerTool(
+		"delete_saved_clip",
+		{
+			description:
+				"Ask to delete one of a rig's saved clips, such as a test clip no longer wanted. Like replacing a clip, it only proposes: a person approves or rejects it in the Keywright panel in Studio, and nothing is deleted otherwise. Call again with the same name to see the outcome: deletion.status is pending, approved or rejected. It is refused if the clip changes before it is approved, and one Studio undo puts a deleted clip back. Ask the person before proposing it.",
+			inputSchema: {
+				studio_session: studioSession,
+				rig_id: z.string().describe("Which rig: a rig_id from get_workspace."),
+				name: z.string().min(1).max(100).describe("The saved clip's name, as get_workspace lists it."),
+			},
+			annotations: { readOnlyHint: false, destructiveHint: true },
+		},
+		async ({ studio_session, ...params }, extra) => call("delete_saved_clip", studio_session, params, extra.signal),
+	);
+
+	server.registerTool(
 		"preview_animation",
 		{
 			description:

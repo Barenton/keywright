@@ -4,6 +4,14 @@ What changed in each release of Keywright. The plugin and the adapter are releas
 
 ## [Unreleased]
 
+**New**
+
+- **`delete_saved_clip`:** an agent can ask to delete one of a rig's saved clips, such as test clips no longer wanted. Like replacing a clip, a person approves or rejects it in the Keywright panel; it is refused if the clip changes first, and one Studio undo puts it back.
+
+**Fixed**
+
+- **A pairing code no longer stays usable for as long as it is shown.** One not used within 15 minutes is replaced by a new one.
+
 ## [0.8.0] - 2026-11-27
 
 **New**

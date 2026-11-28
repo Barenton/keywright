@@ -15,6 +15,7 @@ These are the tools Keywright gives an AI app, with the descriptions and argumen
 - [`validate_animation`](#validate_animation)
 - [`save_animation`](#save_animation)
 - [`discard_animation`](#discard_animation)
+- [`delete_saved_clip`](#delete_saved_clip)
 - [`preview_animation`](#preview_animation)
 
 ## How agents are asked to work
@@ -546,6 +547,16 @@ Remove a working copy that is no longer needed. Saved clips are not affected. On
 | `studio_session` | text | yes | Which Studio window to act in: a session id from get_workspace. |
 | `clip_id` | text | yes | Working copy id from open_animation or get_workspace. |
 | `expected_revision` | text | yes | Revision from the last read or edit of this clip. |
+
+## delete_saved_clip
+
+Ask to delete one of a rig's saved clips, such as a test clip no longer wanted. Like replacing a clip, it only proposes: a person approves or rejects it in the Keywright panel in Studio, and nothing is deleted otherwise. Call again with the same name to see the outcome: deletion.status is pending, approved or rejected. It is refused if the clip changes before it is approved, and one Studio undo puts a deleted clip back. Ask the person before proposing it.
+
+| Argument | Type | Required | Description |
+|---|---|---|---|
+| `studio_session` | text | yes | Which Studio window to act in: a session id from get_workspace. |
+| `rig_id` | text | yes | Which rig: a rig_id from get_workspace. |
+| `name` | text, 1 to 100 characters | yes | The saved clip's name, as get_workspace lists it. |
 
 ## preview_animation
 

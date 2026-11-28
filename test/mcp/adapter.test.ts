@@ -137,7 +137,7 @@ describe("MCP adapter over stdio", () => {
 		// Every tool it names is one the adapter offers.
 		for (const name of instructions.match(/\b[a-z]+_[a-z_]+\b/g) ?? []) {
 			if (name.endsWith("_animation") || name.startsWith("get_") || name.startsWith("inspect_") || name.startsWith("pair_")) {
-				assert.ok(["get_workspace", "get_guide", "install_plugin", "pair_studio", "inspect_rig", "open_animation", "read_animation", "edit_animation", "validate_animation", "save_animation", "discard_animation", "preview_animation"].includes(name), name);
+				assert.ok(["get_workspace", "get_guide", "install_plugin", "pair_studio", "inspect_rig", "open_animation", "read_animation", "edit_animation", "validate_animation", "save_animation", "discard_animation", "delete_saved_clip", "preview_animation"].includes(name), name);
 			}
 		}
 	});
@@ -146,7 +146,7 @@ describe("MCP adapter over stdio", () => {
 		const { tools } = await mcp.listTools();
 		assert.deepEqual(
 			tools.map((tool) => tool.name).sort(),
-			["discard_animation", "edit_animation", "get_guide", "get_workspace", "inspect_rig", "install_plugin", "open_animation", "pair_studio", "preview_animation", "read_animation", "save_animation", "validate_animation"],
+			["delete_saved_clip", "discard_animation", "edit_animation", "get_guide", "get_workspace", "inspect_rig", "install_plugin", "open_animation", "pair_studio", "preview_animation", "read_animation", "save_animation", "validate_animation"],
 		);
 		// A picture and a save are both asked for through documented inputs.
 		const properties = (name: string) => Object.keys((tools.find((tool) => tool.name === name)?.inputSchema.properties ?? {}) as object);

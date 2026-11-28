@@ -50,7 +50,7 @@ Only the [tools](tools.md), and within them:
 - **Nothing until you turn it on.** Agent access is off until you switch it on in the Keywright panel, separately for each place, and you can switch it off at any time. A place that has never been saved to Roblox can't be told apart from other such places, so access there is off each time it opens.
 - **Animations only.** The tools read rigs and clips and edit working copies of clips. No tool runs Luau, changes scripts or other instances, or reaches your files or the network.
 - **Originals stay as they are.** Editing happens in a working copy. The clip it was opened from is never changed by editing.
-- **Saving never overwrites.** A save makes a new clip, and a name that is already taken is refused. Replacing an existing clip needs a person to click **Replace the clip** in the panel; the agent can only ask. If the clip has changed since the agent asked, the replacement is refused.
+- **Saving never overwrites.** A save makes a new clip, and a name that is already taken is refused. Replacing an existing clip needs a person to click **Replace the clip** in the panel, and deleting a saved clip needs **Delete the clip**; the agent can only ask. If the clip has changed since the agent asked, the replacement is refused.
 - **Everything can be undone.** Each batch of edits, each save and each discard is one Studio undo step. If Studio won't start an undo step, Keywright refuses the change.
 - **No stale edits.** Every change names the revision it was made against, and a change against an older one is refused.
 - **Previews don't touch the rig.** A preview plays the clip on a hidden copy of the rig, which is removed afterwards. The rig and the camera are never moved.

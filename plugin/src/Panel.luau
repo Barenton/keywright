@@ -24,7 +24,7 @@ export type View = {
 	-- The pairing code to show, or nil to hide pairing.
 	setPairing: (code: string?) -> (),
 	setNote: (text: string) -> (),
-	setProposal: (text: string?) -> (),
+	setProposal: (text: string?, kind: ("replace" | "delete")?) -> (),
 	setOutcome: (text: string) -> (),
 	addNotice: (text: string) -> (),
 	setVersion: (text: string) -> (),
@@ -438,7 +438,7 @@ function Panel.new(widget: DockWidgetPluginGui): View
 			say(
 				pairingText,
 				if given
-					then `Pair once, within 5 minutes. Tell your AI app: "Pair Keywright with code {given}". The code is:`
+					then `Pair once, within 5 minutes of telling your AI app: "Pair Keywright with code {given}". A new code replaces this one after 15 minutes unused. The code is:`
 					else ""
 			)
 			code.Text = given or ""
@@ -447,9 +447,16 @@ function Panel.new(widget: DockWidgetPluginGui): View
 		setNote = function(words: string)
 			say(note, words)
 		end,
-		setProposal = function(words: string?)
+		setProposal = function(words: string?, kind: ("replace" | "delete")?)
 			card.Visible = words ~= nil
 			say(cardText, words or "")
+			local deleting = kind == "delete"
+			say(
+				cardTitle,
+				if deleting then "An agent is asking to delete a saved clip" else "An agent is asking to replace a clip"
+			)
+			approve.Text = if deleting then "Delete the clip" else "Replace the clip"
+			reject.Text = if deleting then "Keep the clip" else "Keep the clip as it is"
 		end,
 		setOutcome = function(words: string)
 			say(outcome, words)

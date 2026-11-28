@@ -166,6 +166,18 @@ case("replacing copies the working copy's content into the clip", function()
 	check("what the clip held before is taken out whole", stillWhole and #kept == 2)
 end)
 
+do
+	-- A deletion is a proposal of its own kind, keyed by rig and name, settled the same way.
+	local key = "delete:rig_1:Old test"
+	local proposal = Proposals.propose(key, "fingerprint", "Old test", "Rig", "delete")
+	check("a deletion is a proposal of its own kind", proposal.kind == "delete" and proposal.status == "pending")
+	check("a replacement is one by default", (Proposals.propose("clip_9", "r1", "Wave edit", "Wave")).kind == "replace")
+	Proposals.settle(key, false, "kept")
+	check("and settled like any other", (Proposals.get(key) :: any).status == "rejected")
+	Proposals.forget(key)
+	Proposals.forget("clip_9")
+end
+
 print(`{count - failures}/{count} proposal checks passed`)
 if failures > 0 then
 	process.exit(1)

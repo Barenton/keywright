@@ -57,7 +57,7 @@ describe("the single-file release", () => {
 			const { tools } = await client.listTools();
 			assert.deepEqual(
 				tools.map((tool) => tool.name),
-				["get_workspace", "get_guide", "install_plugin", "pair_studio", "inspect_rig", "open_animation", "read_animation", "edit_animation", "validate_animation", "save_animation", "discard_animation", "preview_animation"],
+				["get_workspace", "get_guide", "install_plugin", "pair_studio", "inspect_rig", "open_animation", "read_animation", "edit_animation", "validate_animation", "save_animation", "discard_animation", "delete_saved_clip", "preview_animation"],
 			);
 			const guide = await client.callTool({ name: "get_guide", arguments: { topic: "review" } });
 			assert.match((guide.content as Array<{ text: string }>)[0]?.text ?? "", /# Reviewing an animation/, "the guide is inside the file");

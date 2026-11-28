@@ -1,5 +1,6 @@
 --!strict
--- Proposals to replace a clip with the working copy that was opened from it.
+-- Proposals a person settles in the Studio panel: to replace a clip with the working copy
+-- that was opened from it, or to delete one of a rig's saved clips.
 --
 -- An agent can only propose. A proposal is settled by a person in the Studio panel, or
 -- falls away when the working copy is discarded. This module holds the proposals and
@@ -12,14 +13,21 @@
 local Proposals = {}
 
 export type Status = "pending" | "approved" | "rejected"
+export type Kind = "replace" | "delete"
 
 export type Proposal = {
+	-- What it is about: a working copy's id, or for a deletion "delete:", the rig's id and
+	-- the clip's name.
 	clipId: string,
+	-- For a replacement, the working copy's revision; for a deletion, the fingerprint of
+	-- the saved clip, which must still be the same when it is approved.
 	revision: string,
+	kind: Kind,
 	status: Status,
 	-- Why it was rejected, when it was.
 	reason: string?,
-	-- Names for the panel: the working copy, and the clip it would replace.
+	-- Names for the panel: the working copy and the clip it would replace; or the saved
+	-- clip to delete and its rig.
 	name: string,
 	source: string,
 	order: number,
@@ -52,7 +60,13 @@ end
 -- The proposal for this revision of the working copy, made now if there is none. An
 -- earlier proposal for another revision is dropped: the clip it was about no longer
 -- exists in that form. Returns the proposal and whether it was made by this call.
-function Proposals.propose(clipId: string, revision: string, name: string, source: string): (Proposal, boolean)
+function Proposals.propose(
+	clipId: string,
+	revision: string,
+	name: string,
+	source: string,
+	kind: Kind?
+): (Proposal, boolean)
 	local existing = byClip[clipId]
 	if existing and existing.revision == revision then
 		return existing, false
@@ -61,6 +75,7 @@ function Proposals.propose(clipId: string, revision: string, name: string, sourc
 	local proposal: Proposal = {
 		clipId = clipId,
 		revision = revision,
+		kind = kind or "replace",
 		status = "pending",
 		name = name,
 		source = source,

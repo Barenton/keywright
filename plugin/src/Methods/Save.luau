@@ -1,10 +1,11 @@
 --!strict
--- Saving a working copy as a new clip, and proposing that it replace the clip it came
--- from; settling a proposal is the panel's alone.
+-- Saving a working copy as a new clip, proposing that it replace the clip it came from,
+-- and proposing that a saved clip be deleted; settling a proposal is the panel's alone.
 
 local ServerStorage = game:GetService("ServerStorage")
 
 local Clips = require("../Storage/Clips")
+local Digest = require("../Inspection/Digest")
 local Errors = require("../Core/Errors")
 local Proposals = require("../Storage/Proposals")
 local Recording = require("../Editing/Recording")
@@ -116,6 +117,50 @@ function Save.install(methods: { [string]: (params: any) -> any }, kit: Shared.K
 		}
 	end
 
+	-- A saved clip of a rig, by name, as the Animation Editor keeps it.
+	local function savedClip(model: Model, name: string): Instance?
+		local container = Saves.container(model, ServerStorage)
+		local found = container and container:FindFirstChild(name)
+		if found and (found:IsA("KeyframeSequence") or found:IsA("CurveAnimation")) then
+			return found
+		end
+		return nil
+	end
+
+	-- Proposes deleting one of a rig's saved clips. Like a replacement, a person settles it
+	-- in the panel; the agent only asks, and calls again to see the outcome.
+	methods.delete_saved_clip = function(params: any): any
+		requireEdit()
+		local model, rigId = kit.rigModel(params)
+		local name = requireString(params, "name")
+		local clip = savedClip(model, name)
+		if not clip then
+			Errors.throw("NOT_FOUND", `The rig has no saved clip "{name}".`, "get_workspace lists a rig's saved clips.")
+		end
+		local key = `delete:{rigId}:{name}`
+		local fingerprint = Digest.of(clip :: Instance)
+		local existing = Proposals.get(key)
+		local proposal = if existing
+				and existing.revision == fingerprint
+				and existing.status ~= "approved"
+			then existing
+			else (Proposals.propose(key, fingerprint, name, model.Name, "delete"))
+		return {
+			rig_id = rigId,
+			deletion = {
+				name = name,
+				status = proposal.status,
+				reason = proposal.reason,
+				hint = if proposal.status == "pending"
+					then "A person must approve or reject this in the Keywright panel in Studio. Call again to see the outcome."
+					elseif
+						proposal.status == "rejected"
+					then "It will not be proposed again while the clip is unchanged."
+					else nil,
+			},
+		}
+	end
+
 	-- Settling a proposal is the panel's alone: it is not among the methods a request can
 	-- reach. An approval checks everything again, because time has passed since the
 	-- proposal was made.
@@ -129,8 +174,8 @@ function Save.install(methods: { [string]: (params: any) -> any }, kit: Shared.K
 				Proposals.settle(clipId, false, REJECTED_IN_STUDIO)
 				return nil
 			end
-			local ok, problem = pcall(function()
-				requireEdit()
+			-- A replacement: everything is checked again, as time has passed since it was proposed.
+			local function replace()
 				local working = Clips.get(clipId)
 				if Clips.revisionOf(working) ~= proposal.revision then
 					Errors.throw(
@@ -158,6 +203,35 @@ function Save.install(methods: { [string]: (params: any) -> any }, kit: Shared.K
 				Clips.replaceSource(working, function(done: boolean)
 					Recording.finish(recording, done)
 				end)
+			end
+			local ok, problem = pcall(function()
+				requireEdit()
+				if proposal.kind == "delete" then
+					-- The clip must still be there and still be what the agent asked about.
+					local rigId = string.match(clipId, "^delete:([^:]+):")
+					local model = rigId and registry.models[rigId]
+					if not model or model.Parent == nil then
+						Errors.throw("NOT_FOUND", "The rig the clip belongs to no longer exists.")
+					end
+					local clip = savedClip(model :: Model, proposal.name)
+					if not clip then
+						Errors.throw("NOT_FOUND", "The saved clip is no longer there.")
+					end
+					if Digest.of(clip :: Instance) ~= proposal.revision then
+						Errors.throw("SOURCE_CHANGED", "The saved clip was changed after the deletion was proposed.")
+					end
+					-- Taken out of the place as one undo step, so Undo puts it back.
+					local recording = Recording.begin("KeywrightDelete", "Keywright delete saved clip")
+					local removed, failure = pcall(function()
+						(clip :: Instance).Parent = nil
+					end)
+					Recording.finish(recording, removed)
+					if not removed then
+						error(failure, 0)
+					end
+				else
+					replace()
+				end
 			end)
 			if ok then
 				Proposals.settle(clipId, true)
