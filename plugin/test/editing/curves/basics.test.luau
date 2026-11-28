@@ -352,4 +352,45 @@ case("a working copy converted from a keyframe clip is restored by converting ag
 	check("with no keyframes inside it", #clip:GetChildren() > 0 and clip:FindFirstChildOfClass("Keyframe") == nil)
 end)
 
+case("a curve clip's hips are checked for jumps in place, and a loop for where they end", function()
+	local function validate(clip: any): any
+		return Validate.run(clip, { joints = JOINTS }, assert(Validate.thresholds({})))
+	end
+	local jump = blank()
+	run(jump, {
+		{ type = "set_key", joint = "LowerTorso", time = 0, position = { 0, 0, 0 }, interpolation = "Linear" },
+		{ type = "set_key", joint = "LowerTorso", time = 0.5, position = { 0, 0, 0 }, interpolation = "Linear" },
+		{ type = "set_key", joint = "LowerTorso", time = 0.5333333, position = { 0, 2, 0 }, interpolation = "Linear" },
+		{ type = "set_key", joint = "LowerTorso", time = 1, position = { 0, 2, 0 }, interpolation = "Linear" },
+	})
+	local abrupt = validate(jump)
+	check("hips that jump 2 studs in a frame move too fast", abrupt.counts.ABRUPT_MOVE == 1, abrupt.counts)
+	local issue
+	for _, found in abrupt.issues do
+		if found.code == "ABRUPT_MOVE" then
+			issue = found
+		end
+	end
+	check("with the speed measured", issue and near(issue.measured, 60, 1), issue and issue.measured)
+	jump.Loop = true
+	local loop = validate(jump)
+	check(
+		"a loop that ends with the hips elsewhere is a mismatch",
+		loop.counts.LOOP_POSITION_MISMATCH == 1,
+		loop.counts
+	)
+	local still = blank()
+	run(still, {
+		{ type = "set_key", joint = "LowerTorso", time = 0, position = { 0, -0.2, 0 } },
+		{ type = "set_key", joint = "LowerTorso", time = 1, position = { 0, -0.2, 0 } },
+	})
+	still.Loop = true
+	local fine = validate(still)
+	check(
+		"hips that end where they start are not",
+		fine.counts.LOOP_POSITION_MISMATCH == nil and fine.counts.ABRUPT_MOVE == nil,
+		fine.counts
+	)
+end)
+
 finish()

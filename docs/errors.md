@@ -53,8 +53,8 @@ Each finding has a `code`, a `severity`, a message, the joints and times it is a
 |---|---|---|
 | `LOOP_ROTATION_MISMATCH` | In a looping clip, a joint ends turned away from where it starts, so the loop jumps. | 2° (`loop_rotation_degrees`) |
 | `LOOP_POSITION_MISMATCH` | The same for a joint's position. | 0.02 studs (`loop_position_studs`) |
-| `ABRUPT_ROTATION` | A joint turns faster than the limit: between two keyframes, or in a curve clip at its fastest. Fast strikes and snaps can be meant. | 2,000° a second (`speed_degrees_per_second`) |
-| `ABRUPT_MOVE` | A joint moves faster than the limit between two keyframes. | 40 studs a second (`speed_studs_per_second`) |
+| `ABRUPT_ROTATION` | A joint turns faster than the limit: between two keyframes, or in a curve clip at its fastest. Fast strikes and snaps can be meant. | 2,500° a second (`speed_degrees_per_second`). Good fast motion measured up to about 2,050°; a joint flipping between two frames turns at 5,400° or more. |
+| `ABRUPT_MOVE` | A joint moves faster than the limit: between two keyframes, or in a curve clip at its fastest. | 40 studs a second (`speed_studs_per_second`) |
 | `BELOW_FLOOR` | Curve clips. A part goes below the floor, the floor being the rig's lowest point at rest. Parts are measured as boxes of their size with rounded corners, and the lower legs are left out. | 0.1 studs (`floor_studs`) |
 | `FOOT_SCUFF` | Curve clips. A foot touches the floor while moving fast across it: a swinging foot that drags, or a planted one that skates. | Over 3 studs a second |
 | `FOOT_SLIDE` | Curve clips. A foot on the floor creeps across it for three frames or more. | 0.1 studs (`slide_studs`) |

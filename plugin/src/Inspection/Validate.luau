@@ -24,7 +24,10 @@ Validate.MAX_ISSUES = 50
 Validate.DEFAULTS = {
 	loop_rotation_degrees = 2,
 	loop_position_studs = 0.02,
-	speed_degrees_per_second = 2000,
+	-- Measured 2026-11-28 on clips a person rated good: the fastest was a sprint's foot at
+	-- 2,054 degrees a second, a backflip's shin at 1,914, a jab's forearm at 1,342. A joint
+	-- flipping 180 degrees or more between two frames turns at 5,400 or more.
+	speed_degrees_per_second = 2500,
 	speed_studs_per_second = 40,
 	floor_studs = 0.1,
 	slide_studs = 0.1,

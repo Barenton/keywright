@@ -30,6 +30,16 @@ local function rotationAt(clip: Instance, joint: string, time: number): CFrame
 	return Roblox.CFrame.fromEulerAnglesXYZ(angles[1], angles[2], angles[3])
 end
 
+-- The position of a joint at a time, from its three position channels.
+local function positionAt(clip: Instance, joint: string, time: number): Vector3
+	local values = {}
+	for index, letter in { "x", "y", "z" } do
+		local curve = Store.channel(clip, joint, `position.{letter}`, false)
+		values[index] = if curve then Store.evaluate(Store.keys(curve), time) else 0
+	end
+	return Roblox.Vector3.new(values[1], values[2], values[3])
+end
+
 local function turn(a: CFrame, b: CFrame): number
 	local squares = (a.RightVector - b.RightVector).Magnitude ^ 2
 		+ (a.UpVector - b.UpVector).Magnitude ^ 2
@@ -422,7 +432,9 @@ function Contacts.validate(
 			continue
 		end
 		local fastest, at = 0, 0
+		local quickest, movedAt = 0, 0
 		local previous = rotationAt(clip, joint, 0)
+		local was = positionAt(clip, joint, 0)
 		for step = 1, steps do
 			local time = duration * step / steps
 			local now = rotationAt(clip, joint, time)
@@ -431,6 +443,24 @@ function Contacts.validate(
 				fastest, at = speed, time
 			end
 			previous = now
+			local here = positionAt(clip, joint, time)
+			local moving = (here - was).Magnitude / (duration / steps)
+			if moving > quickest then
+				quickest, movedAt = moving, time
+			end
+			was = here
+		end
+		if quickest > thresholds.speed_studs_per_second then
+			report({
+				code = "ABRUPT_MOVE",
+				severity = "warning",
+				message = `"{joint}" moves at {rounded(quickest, 2)} studs per second around {milliseconds(movedAt)} seconds.`,
+				joints = { joint },
+				time = milliseconds(movedAt),
+				measured = rounded(quickest, 2),
+				threshold = thresholds.speed_studs_per_second,
+				unit = "studs per second",
+			})
 		end
 		if fastest > thresholds.speed_degrees_per_second then
 			report({
@@ -445,6 +475,20 @@ function Contacts.validate(
 			})
 		end
 		if (clip :: any).Loop == true then
+			local shift = (positionAt(clip, joint, 0) - positionAt(clip, joint, duration)).Magnitude
+			if shift > thresholds.loop_position_studs then
+				report({
+					code = "LOOP_POSITION_MISMATCH",
+					severity = "warning",
+					message = `"{joint}" ends {rounded(shift, 3)} studs from where it starts, so the loop will jump.`,
+					joints = { joint },
+					time_from = 0,
+					time_to = milliseconds(duration),
+					measured = rounded(shift, 3),
+					threshold = thresholds.loop_position_studs,
+					unit = "studs",
+				})
+			end
 			local gap = turn(rotationAt(clip, joint, 0), rotationAt(clip, joint, duration))
 			if gap > thresholds.loop_rotation_degrees then
 				report({

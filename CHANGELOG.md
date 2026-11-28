@@ -11,6 +11,8 @@ What changed in each release of Keywright. The plugin and the adapter are releas
 **Fixed**
 
 - **A pairing code no longer stays usable for as long as it is shown.** One not used within 15 minutes is replaced by a new one.
+- **Curve clips are checked for jumps in place and for loops that end elsewhere:** `ABRUPT_MOVE` and `LOOP_POSITION_MISMATCH` were found only in keyframe clips; curve clips, which agents make most, now get both, as the errors page said they did.
+- **The joint speed limit is measured, not guessed:** `speed_degrees_per_second` defaults to 2,500 instead of 2,000. The fastest good motion measured, a sprint's foot, turned at 2,054° a second and was warned about; a joint flipping between two frames turns at 5,400° or more, and still is.
 - **A selected clip of another rig is refused** when opening a working copy, with the rig it belongs to: it would otherwise have been compared with, copied from and replaced as this rig's source.
 
 ## [0.8.0] - 2026-11-27

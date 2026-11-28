@@ -221,7 +221,7 @@ case("a joint that moves too fast between keyframes is a warning", function()
 	local rotation = only(result, "ABRUPT_ROTATION")
 	check(
 		"the turn rate is measured",
-		rotation and math.abs(rotation.measured - 4500) < 5 and rotation.threshold == 2000,
+		rotation and math.abs(rotation.measured - 4500) < 5 and rotation.threshold == 2500,
 		rotation and rotation.measured
 	)
 	check(

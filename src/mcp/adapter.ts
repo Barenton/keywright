@@ -455,7 +455,7 @@ export function createAdapter(options: AdapterOptions): McpServer {
 					.object({
 						loop_rotation_degrees: z.number().positive().optional().describe("How far a looping clip's last keyframe may be from its first, per joint. Default 2."),
 						loop_position_studs: z.number().positive().optional().describe("The same for position. Default 0.02."),
-						speed_degrees_per_second: z.number().positive().optional().describe("How fast a joint may turn between two keyframes. Default 2000."),
+						speed_degrees_per_second: z.number().positive().optional().describe("How fast a joint may turn between two keyframes, in degrees a second. Default 2500: good fast motion (a sprint, a backflip) stays under it, a joint flipping between two frames goes far over."),
 						speed_studs_per_second: z.number().positive().optional().describe("How fast a joint may move between two keyframes. Default 40."),
 						floor_studs: z.number().positive().optional().describe("Curve clips: how far a part may go below the floor; a foot within 0.4 of this above it touches the floor. Default 0.1."),
 						slide_studs: z.number().positive().optional().describe("Curve clips: how far a planted foot may slide. Default 0.1."),

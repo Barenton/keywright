@@ -521,7 +521,7 @@ Check a working copy. Errors mean the clip is not structurally sound and cannot 
 | `thresholds` | object |  | Limits to use in place of the defaults. |
 | `thresholds.loop_rotation_degrees` | number, over 0 |  | How far a looping clip's last keyframe may be from its first, per joint. Default 2. |
 | `thresholds.loop_position_studs` | number, over 0 |  | The same for position. Default 0.02. |
-| `thresholds.speed_degrees_per_second` | number, over 0 |  | How fast a joint may turn between two keyframes. Default 2000. |
+| `thresholds.speed_degrees_per_second` | number, over 0 |  | How fast a joint may turn between two keyframes, in degrees a second. Default 2500: good fast motion (a sprint, a backflip) stays under it, a joint flipping between two frames goes far over. |
 | `thresholds.speed_studs_per_second` | number, over 0 |  | How fast a joint may move between two keyframes. Default 40. |
 | `thresholds.floor_studs` | number, over 0 |  | Curve clips: how far a part may go below the floor; a foot within 0.4 of this above it touches the floor. Default 0.1. |
 | `thresholds.slide_studs` | number, over 0 |  | Curve clips: how far a planted foot may slide. Default 0.1. |
