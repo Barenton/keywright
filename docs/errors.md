@@ -59,7 +59,7 @@ Each finding has a `code`, a `severity`, a message, the joints and times it is a
 | `FOOT_SCUFF` | Curve clips. A foot touches the floor while moving fast across it: a swinging foot that drags, or a planted one that skates. | Over 3 studs a second |
 | `FOOT_SLIDE` | Curve clips. A foot on the floor creeps across it for three frames or more. | 0.1 studs (`slide_studs`) |
 | `KEY_OFF_FRAME` | Curve clips. Keys are between frames. Studio plays curve clips at 30 frames a second and goes straight from frame to frame, so a key between frames is never shown at its own value. | Whole frames, multiples of 1/30 s |
-| `NON_KINEMATIC_JOINT` | A joint is driven through forces (`IsKinematic` off), so what Studio shows can differ from the clip. | |
+| `NON_KINEMATIC_JOINT` | A joint is driven through forces (`IsKinematic` off), so what Studio shows can differ from the clip: measured on such a rig, a hand was 2.3 studs from where the clip put it. Previews and pictures show the clip as written. `inspect_rig` lists these joints and says so too. | |
 | `POSE_HIERARCHY` | In a keyframe clip, a pose sits under a different parent pose than its part has in the rig. | |
 | `OTHER_CONTENT` | The clip holds instances Keywright keeps as they are but does not edit or check. | |
 

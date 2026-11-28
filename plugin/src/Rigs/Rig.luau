@@ -215,6 +215,8 @@ export type Description = {
 	joint_names: { string },
 	joint_classes: { [string]: number },
 	non_kinematic_joints: { string },
+	-- Why joints with IsKinematic off matter, when there are any.
+	kinematic_note: string?,
 	extra_joints: { string },
 	joints: { any }?,
 }
@@ -284,6 +286,12 @@ function Rig.describe(model: Model, detail: boolean?): (Description, Scan)
 		non_kinematic_joints = nonKinematic,
 		extra_joints = scan.extras,
 	}
+	if #nonKinematic > 0 then
+		-- Measured 2026-11-28 on a copy of an AnimationConstraint rig with IsKinematic off:
+		-- Studio left a hand 2.3 studs and 104 degrees from where the clip put it.
+		description.kinematic_note =
+			`{#nonKinematic} of the joints have IsKinematic off: Studio moves their parts by physics, so the rig in Studio does not follow a clip as written (a hand was measured 2.3 studs off). Previews and pictures show the clip as written. Ask the person to turn IsKinematic on for these joints, or expect the clip to look different when it plays.`
+	end
 	if detail then
 		local list = {}
 		for _, name in Rig.R15_ORDER do
