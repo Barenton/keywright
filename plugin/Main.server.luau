@@ -102,6 +102,8 @@ function start()
 	view.setPairing(code)
 	view.setNote("")
 	local paired = false
+	-- The connection's latest state: a code is replaced only while it waits, unused.
+	local latest = "connecting"
 	local this: any = nil
 	this = Connection.start({
 		port = if type(port) == "number" then port else DEFAULT_PORT,
@@ -118,6 +120,7 @@ function start()
 			Preview.cancel(reason)
 		end,
 		onState = function(state, detail)
+			latest = state
 			local text: string, tone: Panel.Tone = Panel.describe(state, detail)
 			view.setStatus(text, tone)
 		end,
@@ -139,14 +142,21 @@ function start()
 	connection = this
 	if code then
 		-- A code not used in time is replaced, on this connection only: one turned off,
-		-- or already replaced, is left alone.
-		task.delay(CODE_LIFETIME, function()
-			if connection == this and not paired then
-				this.stop()
-				connection = nil
-				start()
+		-- or already replaced, is left alone. Only while it waits to be registered: one
+		-- being used at that moment, mid-pairing, is given time to finish.
+		local function expire()
+			if connection ~= this or paired then
+				return
 			end
-		end)
+			if latest ~= "unpaired" then
+				task.delay(30, expire)
+				return
+			end
+			this.stop()
+			connection = nil
+			start()
+		end
+		task.delay(CODE_LIFETIME, expire)
 	end
 end
 
@@ -155,17 +165,24 @@ end
 -- last decided.
 local shown: string? = nil
 local stopped: string? = nil
+-- The proposal on the card when an answer button was pressed (see the handlers below).
+local pressed: string? = nil
 
 local function showProposals()
 	local waiting = Proposals.pending()
 	local first = waiting[1]
-	shown = if first then first.clipId else nil
+	local next = if first then first.clipId else nil
+	if next ~= shown then
+		-- Another proposal on the card: a press begun on the last one decides nothing.
+		pressed = nil
+	end
+	shown = next
 	if first then
 		local more = if #waiting > 1 then ` ({#waiting - 1} more waiting)` else ""
 		local note = if stopped then `\n{stopped}` else ""
 		if first.kind == "delete" then
 			view.setProposal(
-				`It would delete the saved clip "{first.name}" of the rig "{first.source}". Nothing is deleted unless you choose it, and Undo (Ctrl+Z) puts it back.{more}{note}`,
+				`It would delete the saved clip "{first.name}" of the rig {first.source}. Nothing is deleted unless you choose it, and Undo (Ctrl+Z) puts it back.{more}{note}`,
 				"delete"
 			)
 		else
@@ -206,20 +223,32 @@ local function report(clipId: string)
 			else `The clip "{settled.source}" was not replaced: {settled.reason or "the proposal no longer applied."}`
 	)
 end
+-- A click decides the proposal that was on the card when the button was pressed, and only
+-- if it still is when the button is let go: the card can change in between, as when an
+-- agent discards the working copy it was about, and the next proposal must not take the
+-- decision meant for the last one.
+view.approve.MouseButton1Down:Connect(function()
+	pressed = shown
+end)
+view.reject.MouseButton1Down:Connect(function()
+	pressed = shown
+end)
 view.approve.MouseButton1Click:Connect(function()
 	local deciding = shown
-	if deciding then
+	if deciding and deciding == pressed then
 		stopped = panel.decide(deciding, true)
 		report(deciding)
 		showProposals()
 	end
+	pressed = nil
 end)
 view.reject.MouseButton1Click:Connect(function()
 	local deciding = shown
-	if deciding then
+	if deciding and deciding == pressed then
 		panel.decide(deciding, false)
 		report(deciding)
 	end
+	pressed = nil
 end)
 
 -- Whether access is on is remembered for this place, so that reloading the plugin or

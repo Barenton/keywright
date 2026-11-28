@@ -349,6 +349,11 @@ do
 	local inside = Instance.new("KeyframeSequence")
 	inside.Parent = theirs
 	check("a clip inside another rig is that rig's", Saves.otherRig(inside, mine) == theirs)
+	local nested = Instance.new("Model")
+	nested.Parent = theirs
+	local deep = Instance.new("KeyframeSequence")
+	deep.Parent = nested
+	check("one in a plain model inside another rig is that rig's", Saves.otherRig(deep, mine) == theirs)
 	local loose = Instance.new("KeyframeSequence")
 	loose.Parent = Instance.new("Folder")
 	check("a clip lying elsewhere is no rig's in particular", Saves.otherRig(loose, mine) == nil)

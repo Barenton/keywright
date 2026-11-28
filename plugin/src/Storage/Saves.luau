@@ -59,9 +59,17 @@ function Saves.otherRig(clip: Instance, model: Instance): Instance?
 			return named
 		end
 	end
+	-- Every model it lies in, not only the nearest: a plain model inside a rig is still
+	-- inside that rig.
 	local inside = clip:FindFirstAncestorWhichIsA("Model")
-	if inside and inside ~= model and inside:FindFirstChildOfClass("Humanoid") then
-		return inside
+	while inside do
+		if inside == model then
+			return nil
+		end
+		if inside:FindFirstChildOfClass("Humanoid") then
+			return inside
+		end
+		inside = inside:FindFirstAncestorWhichIsA("Model")
 	end
 	return nil
 end

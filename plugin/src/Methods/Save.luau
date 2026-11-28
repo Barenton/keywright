@@ -128,37 +128,55 @@ function Save.install(methods: { [string]: (params: any) -> any }, kit: Shared.K
 	end
 
 	-- Proposes deleting one of a rig's saved clips. Like a replacement, a person settles it
-	-- in the panel; the agent only asks, and calls again to see the outcome.
+	-- in the panel; the agent only asks, and calls again to see the outcome. The very clip
+	-- asked about is kept, so that approving deletes it and nothing put in its place.
+	local deletions: { [string]: Instance } = {}
 	methods.delete_saved_clip = function(params: any): any
 		requireEdit()
 		local model, rigId = kit.rigModel(params)
 		local name = requireString(params, "name")
+		local key = `delete:{rigId}:{name}`
+		local existing = Proposals.get(key)
 		local clip = savedClip(model, name)
+		local function answer(proposal: Proposals.Proposal): any
+			return {
+				rig_id = rigId,
+				deletion = {
+					name = name,
+					status = proposal.status,
+					reason = proposal.reason,
+					hint = if proposal.status == "pending"
+						then "A person must approve or reject this in the Keywright panel in Studio. Call again to see the outcome."
+						elseif
+							proposal.status == "rejected"
+						then "It will not be proposed again while the clip is unchanged."
+						else nil,
+				},
+			}
+		end
 		if not clip then
+			-- Gone because a person approved deleting it: that is the outcome to report.
+			if existing and existing.status == "approved" then
+				return answer(existing)
+			end
 			Errors.throw("NOT_FOUND", `The rig has no saved clip "{name}".`, "get_workspace lists a rig's saved clips.")
 		end
-		local key = `delete:{rigId}:{name}`
-		local fingerprint = Digest.of(clip :: Instance)
-		local existing = Proposals.get(key)
-		local proposal = if existing
-				and existing.revision == fingerprint
-				and existing.status ~= "approved"
-			then existing
-			else (Proposals.propose(key, fingerprint, name, model.Name, "delete"))
-		return {
-			rig_id = rigId,
-			deletion = {
-				name = name,
-				status = proposal.status,
-				reason = proposal.reason,
-				hint = if proposal.status == "pending"
-					then "A person must approve or reject this in the Keywright panel in Studio. Call again to see the outcome."
-					elseif
-						proposal.status == "rejected"
-					then "It will not be proposed again while the clip is unchanged."
-					else nil,
-			},
-		}
+		-- Every change counts, keyframe names and attributes too, which scripts can see.
+		local fingerprint = Digest.ofSource(clip :: Instance)
+		if
+			existing
+			and existing.status ~= "approved"
+			and existing.revision == fingerprint
+			and deletions[key] == clip
+		then
+			return answer(existing)
+		end
+		-- Asked about anew: a clip that changed, a different clip under the name, or one an
+		-- undo brought back after it was deleted.
+		Proposals.forget(key)
+		deletions[key] = clip :: Instance
+		local proposal = Proposals.propose(key, fingerprint, name, model:GetFullName(), "delete")
+		return answer(proposal)
 	end
 
 	-- Settling a proposal is the panel's alone: it is not among the methods a request can
@@ -213,11 +231,17 @@ function Save.install(methods: { [string]: (params: any) -> any }, kit: Shared.K
 					if not model or model.Parent == nil then
 						Errors.throw("NOT_FOUND", "The rig the clip belongs to no longer exists.")
 					end
-					local clip = savedClip(model :: Model, proposal.name)
-					if not clip then
-						Errors.throw("NOT_FOUND", "The saved clip is no longer there.")
+					-- The very clip asked about, still where it was and under its name: a clip
+					-- moved, renamed or put in its place is not deleted.
+					local clip = deletions[clipId]
+					local container = Saves.container(model :: Model, ServerStorage)
+					if not clip or not container or clip.Parent ~= container or clip.Name ~= proposal.name then
+						Errors.throw(
+							"NOT_FOUND",
+							"The saved clip is no longer where it was when the deletion was proposed."
+						)
 					end
-					if Digest.of(clip :: Instance) ~= proposal.revision then
+					if Digest.ofSource(clip :: Instance) ~= proposal.revision then
 						Errors.throw("SOURCE_CHANGED", "The saved clip was changed after the deletion was proposed.")
 					end
 					-- Taken out of the place as one undo step, so Undo puts it back.
