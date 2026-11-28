@@ -36,6 +36,11 @@ export type Working = {
 	sourceChanged: boolean,
 	sourceQuiet: number,
 	sourceSignals: { RBXScriptConnection },
+	-- The fingerprint of its content at its revision, for telling whether an undo or redo
+	-- changed it: a curve's keys change without any event to say so.
+	content: string?,
+	-- Whether a new fingerprint is already due.
+	refreshing: boolean?,
 }
 
 local registry: { [string]: Working } = {}
@@ -99,10 +104,29 @@ function Clips.revisionOf(working: Working): string
 	return "r" .. working.revision
 end
 
+-- Takes the fingerprint of a working copy's content as it is now, at its revision.
+local function fingerprint(working: Working)
+	local ok, digest = pcall(Digest.of, working.instance)
+	working.content = if ok then digest else nil
+end
+
+-- A new fingerprint once the changes now under way are done, however many there are.
+local function refreshSoon(working: Working)
+	if working.refreshing then
+		return
+	end
+	working.refreshing = true
+	task.defer(function()
+		working.refreshing = false
+		fingerprint(working)
+	end)
+end
+
 local function watch(working: Working)
 	local function bump()
 		if working.suppress == 0 then
 			working.revision += 1
+			refreshSoon(working)
 		end
 	end
 	local function hook(instance: Instance)
@@ -181,6 +205,7 @@ local function register(instance: Instance, rigId: string, source: Instance?): W
 	if source then
 		watchSource(working, source)
 	end
+	fingerprint(working)
 	return working
 end
 
@@ -379,6 +404,25 @@ function Clips.mutate(working: Working, change: () -> (), finish: (ok: boolean) 
 		error(finishProblem, 0)
 	end
 	working.revision += 1
+	fingerprint(working)
+end
+
+-- After an undo or a redo in Studio: a working copy whose content no longer matches its
+-- fingerprint was changed by it, and gets a new revision, so that an agent holding the
+-- old one re-reads it. A curve's keys change without any event, so this is the only way
+-- to see an undo that restores only keys.
+function Clips.noticeHistory()
+	for _, working in registry do
+		if working.instance.Parent ~= nil then
+			local ok, now = pcall(Digest.of, working.instance)
+			if ok and working.content ~= nil and now ~= working.content then
+				working.revision += 1
+			end
+			if ok then
+				working.content = now
+			end
+		end
+	end
 end
 
 -- Reading a clip's keyframes and poses is the same whether or not it is a working copy.

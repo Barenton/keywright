@@ -4,6 +4,7 @@
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
 
+local Clips = require("./src/Storage/Clips")
 local Connection = require("./src/Network/Connection")
 local Edit = require("./src/Editing/Edit")
 local Handlers = require("./src/Handlers")
@@ -291,7 +292,23 @@ if settings.accessOn(game.PlaceId) then
 	start()
 end
 
+-- An undo or redo can change a working copy's keys without any event on the clip: after
+-- each one, the working copies are checked against what their revisions say they hold.
+local ChangeHistoryService = game:GetService("ChangeHistoryService")
+local historyWatchers = {}
+for _, event in { ChangeHistoryService.OnUndo, ChangeHistoryService.OnRedo } do
+	table.insert(
+		historyWatchers,
+		event:Connect(function()
+			task.defer(Clips.noticeHistory)
+		end)
+	)
+end
+
 plugin.Unloading:Connect(function()
+	for _, watcher in historyWatchers do
+		watcher:Disconnect()
+	end
 	stopProposals()
 	view.destroy()
 	-- An undo recording still open now would never be finished, and Studio would refuse
