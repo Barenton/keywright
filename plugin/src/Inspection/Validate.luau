@@ -28,6 +28,8 @@ Validate.DEFAULTS = {
 	-- 2,054 degrees a second, a backflip's shin at 1,914, a jab's forearm at 1,342. A joint
 	-- flipping 180 degrees or more between two frames turns at 5,400 or more.
 	speed_degrees_per_second = 2500,
+	-- Measured the same day on the same clips: the fastest hips were a backflip's at 13.4
+	-- studs a second, a sprint's at 6.6. A jump of 2 studs in one frame moves at 60.
 	speed_studs_per_second = 40,
 	floor_studs = 0.1,
 	slide_studs = 0.1,
