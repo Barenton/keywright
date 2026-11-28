@@ -47,6 +47,25 @@ function Saves.container(model: Instance, storage: Instance): (Instance?, string
 	return container, nil
 end
 
+-- The rig a clip clearly belongs to, if it is not `model`: one whose saved clips it is in
+-- (held by an ObjectValue naming that rig, as the Animation Editor and the working copies
+-- keep them), or one it lies inside. A clip lying anywhere else belongs to no rig in
+-- particular, and nil is returned.
+function Saves.otherRig(clip: Instance, model: Instance): Instance?
+	local holder = clip.Parent
+	if holder and holder:IsA("ObjectValue") then
+		local named = (holder :: ObjectValue).Value
+		if named and named ~= model and named:IsA("Model") then
+			return named
+		end
+	end
+	local inside = clip:FindFirstAncestorWhichIsA("Model")
+	if inside and inside ~= model and inside:FindFirstChildOfClass("Humanoid") then
+		return inside
+	end
+	return nil
+end
+
 -- Returns the instance that holds the rig's saved clips, making the editor's layout for
 -- a rig that has no AnimSaves at all. A reference that exists but is not usable is left
 -- alone and reported. `create` makes a new instance of the given class. Must be called

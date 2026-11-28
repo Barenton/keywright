@@ -11,6 +11,7 @@ What changed in each release of Keywright. The plugin and the adapter are releas
 **Fixed**
 
 - **A pairing code no longer stays usable for as long as it is shown.** One not used within 15 minutes is replaced by a new one.
+- **A selected clip of another rig is refused** when opening a working copy, with the rig it belongs to: it would otherwise have been compared with, copied from and replaced as this rig's source.
 
 ## [0.8.0] - 2026-11-27
 

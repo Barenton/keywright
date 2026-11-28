@@ -51,6 +51,16 @@ function ClipMethods.install(methods: { [string]: (params: any) -> any }, kit: S
 				Errors.throw("NOT_FOUND", "Nothing is selected in the Explorer.")
 			end
 			source = clipOrRefuse(selected, "The selection")
+			-- A clip of another rig would be compared, copied from and replaced as this
+			-- rig's source.
+			local other = Saves.otherRig(source :: Instance, model)
+			if other then
+				Errors.throw(
+					"INVALID_ARGUMENT",
+					`The selected clip belongs to the rig "{other.Name}", not to this one.`,
+					"Open it for that rig, or select a clip of this rig."
+				)
+			end
 		elseif type(params.source) == "string" and string.sub(params.source, 1, 6) == "saved:" then
 			-- One of the rig's saved clips, as the Animation Editor lists them.
 			local wanted = string.sub(params.source, 7)

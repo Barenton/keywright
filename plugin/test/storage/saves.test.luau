@@ -331,6 +331,29 @@ case("only clips are listed, and no more than the limit", function()
 	check("things that are not clips are left out", names[1] == "Clip 01", names[1])
 end)
 
+do
+	-- Whose clip is it: a rig's saved clips, a clip inside a rig, or one lying elsewhere.
+	local function rig(name: string): any
+		local model = Instance.new("Model")
+		model.Name = name
+		Instance.new("Humanoid").Parent = model
+		return model
+	end
+	local mine, theirs = rig("Mine"), rig("Theirs")
+	local saved = Instance.new("ObjectValue")
+	saved.Value = theirs
+	local theirClip = Instance.new("KeyframeSequence")
+	theirClip.Parent = saved
+	check("a clip in another rig's saved clips is that rig's", Saves.otherRig(theirClip, mine) == theirs)
+	check("one in this rig's own is not another's", Saves.otherRig(theirClip, theirs) == nil)
+	local inside = Instance.new("KeyframeSequence")
+	inside.Parent = theirs
+	check("a clip inside another rig is that rig's", Saves.otherRig(inside, mine) == theirs)
+	local loose = Instance.new("KeyframeSequence")
+	loose.Parent = Instance.new("Folder")
+	check("a clip lying elsewhere is no rig's in particular", Saves.otherRig(loose, mine) == nil)
+end
+
 print(`{count - failures}/{count} saves checks passed`)
 if failures > 0 then
 	process.exit(1)
