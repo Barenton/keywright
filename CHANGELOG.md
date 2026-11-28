@@ -4,18 +4,20 @@ What changed in each release of Keywright. The plugin and the adapter are releas
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-28
+
 **New**
 
 - **`delete_saved_clip`:** an agent can ask to delete one of a rig's saved clips, such as test clips no longer wanted. Like replacing a clip, a person approves or rejects it in the Keywright panel; it is refused if the clip changes first, and one Studio undo puts it back.
 
 **Fixed**
 
-- **A pairing code no longer stays usable for as long as it is shown.** One not used within 15 minutes is replaced by a new one.
+- **A working copy gets a new revision when an undo or redo changes it.** An undo that only restored a curve's keys left the revision as it was, so an agent was told nothing had changed; working copies are now checked against what their revisions hold after every undo and redo in Studio.
 - **Curve clips are checked for jumps in place and for loops that end elsewhere:** `ABRUPT_MOVE` and `LOOP_POSITION_MISMATCH` were found only in keyframe clips; curve clips, which agents make most, now get both, as the errors page said they did.
 - **The joint speed limit is measured, not guessed:** `speed_degrees_per_second` defaults to 2,500 instead of 2,000. The fastest good motion measured, a sprint's foot, turned at 2,054° a second and was warned about; a joint flipping between two frames turns at 5,400° or more, and still is.
-- **A working copy gets a new revision when an undo or redo changes it.** An undo that only restored a curve's keys left the revision as it was, so an agent was told nothing had changed; working copies are now checked against what their revisions hold after every undo and redo in Studio.
-- **`inspect_rig` explains joints with `IsKinematic` off:** it listed them; it now says that Studio moves such parts by physics and doesn't follow a clip as written, measured at 2.3 studs off at a hand.
 - **A selected clip of another rig is refused** when opening a working copy, with the rig it belongs to: it would otherwise have been compared with, copied from and replaced as this rig's source.
+- **A pairing code no longer stays usable for as long as it is shown.** One not used within 15 minutes is replaced by a new one.
+- **`inspect_rig` explains joints with `IsKinematic` off:** it listed them; it now says that Studio moves such parts by physics and doesn't follow a clip as written, measured at 2.3 studs off at a hand.
 
 ## [0.8.0] - 2026-11-27
 
@@ -157,7 +159,8 @@ The first numbered release.
 - **Setup:** `npm run install:plugin` installs the plugin into Studio. The panel and `node dist/src/cli.js version` show the version, and the agent is told when the plugin and the adapter don't match.
 - **Panel:** fits whatever size it is docked or floated at, follows Studio's theme, and shows the pairing command ready to copy.
 
-[Unreleased]: https://github.com/Barenton/keywright/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/Barenton/keywright/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/Barenton/keywright/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/Barenton/keywright/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/Barenton/keywright/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/Barenton/keywright/compare/v0.5.0...v0.6.0
